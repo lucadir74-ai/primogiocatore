@@ -499,3 +499,93 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, .elenco-giocatori li { transition: none !important; animation: none !important; }
 }
+
+/* ---------- Sottoschede dello Storico ---------- */
+
+.sottoschede {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0 0 1.2rem;
+  padding: 0.25rem;
+  background: var(--carta);
+  border-radius: 999px;
+  overflow-x: auto;
+}
+
+.sottoschede button {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  flex: 1;
+  white-space: nowrap;
+  padding: 0.4rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--inchiostro-tenue);
+  cursor: pointer;
+}
+
+.sottoschede button.attiva {
+  background: var(--superficie);
+  color: var(--inchiostro);
+  font-weight: 600;
+  box-shadow: 0 1px 2px var(--ombra);
+}
+
+.sottoschede button:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; }
+
+/* ---------- Riga partita apribile ---------- */
+
+.riga-partita { border-bottom: 1px solid var(--bordo); }
+.riga-partita:last-child { border-bottom: 0; }
+.riga-partita.aperta { background: var(--carta); border-radius: var(--raggio); margin: 0 -0.5rem; padding: 0 0.5rem; }
+
+.testa-partita {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.testa-partita:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; border-radius: 6px; }
+
+.dati-partita { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dati-partita .anno { font-size: 0.82rem; }
+
+.riga-vincitore {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--verde);
+  margin-top: 0.1rem;
+}
+
+.freccia {
+  font-family: var(--display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--inchiostro-tenue);
+  flex: none;
+  width: 1.2rem;
+  text-align: center;
+}
+
+.dettaglio { padding: 0.25rem 0 0.9rem; }
+.dettaglio .elenco { margin-bottom: 0.5rem; }
+
+.punti-finali {
+  font-family: var(--display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.note-partita { font-style: italic; margin-bottom: 0.6rem; }
+.pericolo { color: var(--rosso); }
+.anno.block { display: block; }

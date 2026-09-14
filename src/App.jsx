@@ -1,4 +1,4 @@
-// Primo Giocatore v1.5.0 - 202609142100
+// Primo Giocatore v1.6.0 - 202609142200
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { supabase, configurato, COLORI } from './supabase'
 import Giochi from './Giochi.jsx'
 import Partita from './Partita.jsx'
+import Storico from './Storico.jsx'
 
 function Marchio() {
   return (
@@ -301,6 +302,12 @@ export default function App() {
               Partita
             </button>
             <button
+              className={scheda === 'storico' ? 'scheda-attiva' : ''}
+              onClick={() => setScheda('storico')}
+            >
+              Storico
+            </button>
+            <button
               className={scheda === 'giochi' ? 'scheda-attiva' : ''}
               onClick={() => setScheda('giochi')}
             >
@@ -337,6 +344,8 @@ export default function App() {
         <>
           {scheda === 'partita' ? (
             <Partita profilo={profilo} />
+          ) : scheda === 'storico' ? (
+            <Storico profilo={profilo} />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : (

@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione partita
-// v1.4.0 - 202609142000
+// v1.6.0 - 202609142200
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -14,7 +14,6 @@ export default function Partita({ profilo }) {
   const [catalogo, setCatalogo] = useState([])
   const [persone, setPersone] = useState([])
   const [ospiti, setOspiti] = useState([])
-  const [ultime, setUltime] = useState([])
 
   const [gioco, setGioco] = useState(null)
   const [filtro, setFiltro] = useState('')
@@ -43,20 +42,14 @@ export default function Partita({ profilo }) {
   }, [inCorso])
 
   async function caricaTutto() {
-    const [g, p, o, u] = await Promise.all([
+    const [g, p, o] = await Promise.all([
       supabase.from('giochi').select('*').order('nome'),
       supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
       supabase.from('ospiti').select('id, nome').order('nome'),
-      supabase
-        .from('partite')
-        .select('id, giocata_il, durata_minuti, giochi(nome), partecipazioni(id, vincitore, punteggio_totale, utente_id, ospite_id)')
-        .order('giocata_il', { ascending: false })
-        .limit(10),
     ])
     if (g.data) setCatalogo(g.data)
     if (p.data) setPersone(p.data)
     if (o.data) setOspiti(o.data)
-    if (u.data) setUltime(u.data)
   }
 
   function scegliGioco(g) {
@@ -227,7 +220,7 @@ export default function Partita({ profilo }) {
       {!gioco ? (
         <>
           <div className="campo">
-            <label htmlFor="f-gioco">A cosa avete giocato?</label>
+            <label htmlFor="f-gioco">A che giochiamo?</label>
             <input
               id="f-gioco"
               value={filtro}
@@ -388,29 +381,6 @@ export default function Partita({ profilo }) {
         </>
       )}
 
-      {/* --- Ultime partite --- */}
-      <h3 className="titolo-sezione">
-        Ultime partite <span className="conteggio">{ultime.length}</span>
-      </h3>
-      {ultime.length === 0 ? (
-        <p className="aiuto">Ancora nessuna partita registrata.</p>
-      ) : (
-        <ul className="elenco">
-          {ultime.map((p) => (
-            <li key={p.id}>
-              <div>
-                <strong>{p.giochi?.nome || 'Gioco'}</strong>
-                <span className="anno">
-                  {' '}
-                  {new Date(p.giocata_il).toLocaleDateString('it-IT')}
-                  {p.durata_minuti ? ` · ${p.durata_minuti} min` : ''}
-                </span>
-              </div>
-              <span className="anno">{p.partecipazioni?.length || 0} giocatori</span>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }
