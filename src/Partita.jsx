@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.9.0 - 202609151100
+// v1.9.1 - 202609151130
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -341,23 +341,26 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               onChange={(e) => setQuando(e.target.value)} />
           </div>
 
-          <div className="timer">
-            <span className="orologio">{mmss(secondi)}</span>
-            <button className="bottone bottone-stretto" onClick={() => setInCorso(!inCorso)}>
-              {inCorso ? 'Pausa' : secondi > 0 ? 'Riprendi' : 'Avvia'}
-            </button>
-            {secondi > 0 && (
-              <button className="bottone-piatto" onClick={() => { setSecondi(0); setInCorso(false) }}>
-                azzera
+          <div className="campo">
+            <label htmlFor="minuti">Durata</label>
+            <div className="barra-durata">
+              <button
+                className={`tasto-timer${inCorso ? ' attivo' : ''}`}
+                onClick={() => setInCorso(!inCorso)}
+                aria-label={inCorso ? 'Ferma il timer' : 'Avvia il timer'}
+              >
+                {inCorso ? '❚❚' : '▶'}
               </button>
-            )}
-          </div>
-
-          <div className="campo campo-minuti">
-            <label htmlFor="minuti">Durata in minuti</label>
-            <input id="minuti" type="number" min="1" className="mini" value={minuti}
-              onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
-            <p className="aiuto">Il timer la riempie da sé, ma puoi scriverla a mano.</p>
+              <span className={`orologio${inCorso ? ' acceso' : ''}`}>{mmss(secondi)}</span>
+              {secondi > 0 && (
+                <button className="azzera-timer" onClick={() => { setSecondi(0); setInCorso(false) }}
+                  aria-label="Azzera il timer">↺</button>
+              )}
+              <span className="separatore-durata" aria-hidden="true" />
+              <input id="minuti" type="number" min="1" className="mini minuti" value={minuti}
+                onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
+              <span className="unita">min</span>
+            </div>
           </div>
 
           <h3 className="titolo-sezione">Chi ha giocato</h3>

@@ -388,21 +388,67 @@ body {
 
 .gioco-scelto .aiuto { margin: 0.2rem 0 0; }
 
-.timer {
+/* Durata: timer e minuti sulla stessa riga, in un solo riquadro */
+.barra-durata {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  margin-bottom: 0.25rem;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
 }
+
+.tasto-timer {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--superficie);
+  background: var(--inchiostro);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tasto-timer.attivo { background: var(--verde); }
+.tasto-timer:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
 
 .orologio {
   font-family: var(--display);
-  font-size: 2.4rem;
-  font-weight: 800;
+  font-size: 1.15rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
   line-height: 1;
+  color: var(--inchiostro-tenue);
 }
+
+.orologio.acceso { color: var(--inchiostro); }
+
+.azzera-timer {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--inchiostro-tenue);
+  cursor: pointer;
+}
+
+.azzera-timer:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+.separatore-durata {
+  flex: 1;
+  height: 1px;
+  background: var(--bordo);
+}
+
+.mini.minuti { width: 3.6rem; text-align: right; }
+.unita { font-size: 0.82rem; color: var(--inchiostro-tenue); }
 
 .elenco-giocatori li {
   gap: 0.5rem;
@@ -592,7 +638,6 @@ body {
 
 /* ---------- Durata e ospite al volo ---------- */
 
-.campo-minuti .mini { width: 6rem; text-align: left; }
 .riga-ospite { margin-top: 0.5rem; }
 .riga-ospite input { flex: 1; }
 
