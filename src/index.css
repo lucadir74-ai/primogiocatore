@@ -606,3 +606,12 @@ body {
 }
 
 .spareggio-nota { white-space: nowrap; font-size: 0.78rem; }
+
+/* ---------- Pareggio ---------- */
+.blocco-pareggio { margin-bottom: 1rem; }
+.blocco-pareggio .aiuto { margin-bottom: 0.4rem; }
+.bottone-secondario.attivo {
+  border-color: var(--verde);
+  color: var(--verde);
+  font-weight: 700;
+}

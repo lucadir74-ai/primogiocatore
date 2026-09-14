@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.8.1 - 202609151030
+// v1.9.0 - 202609151100
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -161,6 +161,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       if (pa !== pb) return tipo === 'posizione' ? pa - pb : pb - pa
       const sa = spar(a), sb = spar(b)
       if (sa != null && sb != null && sa !== sb) return sb - sa
+      // vittoria condivisa: restano pari merito
+      if (vincitoreScelto === 'condivisa') return 0
       // scelto a mano: davanti a tutti i suoi pari merito
       if (vincitoreScelto === a.chiave) return -1
       if (vincitoreScelto === b.chiave) return 1
@@ -191,7 +193,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const mostraScelta = (r) => pareggio && contendenti.some((c) => c.chiave === r.chiave)
 
   const inTesta = ordinata.filter((r) => r.pos === 1)
-  const vincitori = pareggio && !vincitoreScelto ? [] : inTesta.map((r) => r.chiave)
+  const condivisa = vincitoreScelto === 'condivisa'
+  const vincitori = condivisa
+    ? contendenti.map((r) => r.chiave)
+    : pareggio && !vincitoreScelto
+      ? []
+      : inTesta.map((r) => r.chiave)
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
@@ -384,7 +391,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     />
                   )}
 
-                  {mostraScelta(r) && (
+                  {mostraScelta(r) && !condivisa && (
                     <button
                       className={`bottone-piatto scegli-vincitore${vincitoreScelto === r.chiave ? ' scelto' : ''}`}
                       onClick={() =>
@@ -403,10 +410,19 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           </ul>
 
           {pareggio && (
-            <p className="aiuto avviso-pareggio">
-              Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso
-              secondo lo spareggio del gioco. L'altro scala al secondo posto.
-            </p>
+            <div className="blocco-pareggio">
+              <p className="aiuto avviso-pareggio">
+                {condivisa
+                  ? `Vittoria condivisa fra ${contendenti.length} giocatori.`
+                  : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso secondo lo spareggio del gioco, oppure dichiara la vittoria condivisa.'}
+              </p>
+              <button
+                className={`bottone bottone-secondario${condivisa ? ' attivo' : ''}`}
+                onClick={() => setVincitoreScelto(condivisa ? null : 'condivisa')}
+              >
+                {condivisa ? 'Annulla vittoria condivisa' : 'Vittoria condivisa'}
+              </button>
+            </div>
           )}
 
           {tipo === 'coop' && (
