@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.14.0 - 202609151800
+// v1.14.2 - 202609151900
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -142,7 +142,7 @@ export default function Storico({ profilo, onModifica }) {
         ))}
       </div>
 
-      {sezione === 'partite' && partite.length > 3 && (
+      {sezione === 'partite' && partite.length > 1 && (
         <input
           className="campo-cerca"
           value={cerca}

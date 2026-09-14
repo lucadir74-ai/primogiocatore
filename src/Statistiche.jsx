@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.14.1 - 202609151830
+// v1.14.2 - 202609151900
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -284,7 +284,7 @@ export default function Statistiche({ profilo }) {
 
       {tipo !== 'gruppo' && (
         <div className="campo">
-          {tutteOpzioni.length > 6 && (
+          {tutteOpzioni.length > 1 && (
             <input
               className="campo-cerca"
               value={cerca}
