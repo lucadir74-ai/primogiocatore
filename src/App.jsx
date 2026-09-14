@@ -1,4 +1,4 @@
-// Primo Giocatore v1.13.0 - 202609151700
+// Primo Giocatore v1.16.0 - 202609152100
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -9,6 +9,25 @@ import Giochi from './Giochi.jsx'
 import Partita from './Partita.jsx'
 import Storico from './Storico.jsx'
 import Statistiche from './Statistiche.jsx'
+
+/* Icone: tracciati semplici, si colorano da sole col testo. */
+const ICONE = {
+  partita: 'M5 5h14v14H5z M9 9h.01 M15 15h.01 M15 9h.01 M9 15h.01',
+  storico: 'M4 6h16 M4 12h16 M4 18h10',
+  statistiche: 'M5 20V10 M12 20V4 M19 20v-7',
+  giochi: 'M4 7l8-4 8 4v10l-8 4-8-4z M4 7l8 4 8-4 M12 11v10',
+  profilo: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4 3.6-6 8-6s8 2 8 6',
+}
+
+function Icona({ nome }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <path d={ICONE[nome]} />
+    </svg>
+  )
+}
 
 function Marchio() {
   return (
@@ -245,6 +264,10 @@ function Profilo({ sessione, profilo, setProfilo }) {
       <button className="bottone" onClick={salva} disabled={salvataggio}>
         {salvataggio ? 'Salvo\u2026' : 'Salva profilo'}
       </button>
+
+      <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>
+        Esci dall'account
+      </button>
     </div>
   )
 }
@@ -295,41 +318,6 @@ export default function App() {
     <div className="guscio">
       <header className="testata">
         <Marchio />
-        {profilo && sessione && (
-          <nav className="schede">
-            <button
-              className={scheda === 'partita' ? 'scheda-attiva' : ''}
-              onClick={() => { setPartitaId(null); setScheda('partita') }}
-            >
-              Partita
-            </button>
-            <button
-              className={scheda === 'storico' ? 'scheda-attiva' : ''}
-              onClick={() => setScheda('storico')}
-            >
-              Storico
-            </button>
-            <button
-              className={scheda === 'statistiche' ? 'scheda-attiva' : ''}
-              onClick={() => setScheda('statistiche')}
-            >
-              Statistiche
-            </button>
-            <button
-              className={scheda === 'giochi' ? 'scheda-attiva' : ''}
-              onClick={() => setScheda('giochi')}
-            >
-              Giochi
-            </button>
-            <button
-              className={scheda === 'profilo' ? 'scheda-attiva' : ''}
-              onClick={() => setScheda('profilo')}
-            >
-              Profilo
-            </button>
-            <button className="esci" onClick={() => supabase.auth.signOut()}>Esci</button>
-          </nav>
-        )}
       </header>
 
       {!configurato ? (
@@ -350,6 +338,26 @@ export default function App() {
         </div>
       ) : (
         <>
+          <nav className="barra-basso">
+            {[
+              ['partita', 'Partita'],
+              ['storico', 'Storico'],
+              ['statistiche', 'Numeri'],
+              ['giochi', 'Giochi'],
+              ['profilo', 'Profilo'],
+            ].map(([id, etichetta]) => (
+              <button
+                key={id}
+                className={scheda === id ? 'attiva' : ''}
+                onClick={() => { if (id === 'partita') setPartitaId(null); setScheda(id) }}
+                aria-current={scheda === id ? 'page' : undefined}
+              >
+                <Icona nome={id} />
+                <span>{etichetta}</span>
+              </button>
+            ))}
+          </nav>
+
           {scheda === 'partita' ? (
             <Partita
               key={partitaId || 'nuova'}
