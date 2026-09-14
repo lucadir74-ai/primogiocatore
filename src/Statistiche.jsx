@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.13.0 - 202609151700
+// v1.14.0 - 202609151800
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -30,6 +30,7 @@ export default function Statistiche({ profilo }) {
 
   const [tipo, setTipo] = useState('persona')
   const [scelto, setScelto] = useState(profilo.id)
+  const [cerca, setCerca] = useState('')
 
   useEffect(() => { carica() }, [])
 
@@ -246,13 +247,23 @@ export default function Statistiche({ profilo }) {
 
   if (caricamento) return <div className="scheda"><p>Conto&hellip;</p></div>
 
-  const opzioni = tipo === 'persona' ? elenchi.persone
+  const tutteOpzioni = tipo === 'persona' ? elenchi.persone
     : tipo === 'gioco' ? elenchi.giochi
     : tipo === 'luogo' ? [...elenchi.luoghi, ['ignoto', 'Non indicato']]
     : []
 
+  const q = cerca.trim().toLowerCase()
+  const opzioni = q ? tutteOpzioni.filter(([, nome]) => nome.toLowerCase().includes(q)) : tutteOpzioni
+
+  // Se la ricerca esclude ciò che stavi guardando, passo al primo risultato.
+  useEffect(() => {
+    if (!q || opzioni.length === 0) return
+    if (!opzioni.some(([id]) => id === scelto)) setScelto(opzioni[0][0])
+  }, [cerca, tipo])
+
   function cambiaTipo(nuovo) {
     setTipo(nuovo)
+    setCerca('')
     if (nuovo === 'persona') setScelto(profilo.id)
     else if (nuovo === 'gioco') setScelto(elenchi.giochi[0]?.[0] || null)
     else if (nuovo === 'luogo') setScelto(elenchi.luoghi[0]?.[0] || 'ignoto')
@@ -275,6 +286,18 @@ export default function Statistiche({ profilo }) {
 
       {tipo !== 'gruppo' && (
         <div className="campo">
+          {tutteOpzioni.length > 6 && (
+            <input
+              className="campo-cerca"
+              value={cerca}
+              onChange={(e) => setCerca(e.target.value)}
+              placeholder={tipo === 'persona' ? 'Cerca un giocatore' : tipo === 'gioco' ? 'Cerca un gioco' : 'Cerca un luogo'}
+              aria-label="Filtra l'elenco"
+            />
+          )}
+          {opzioni.length === 0 ? (
+            <p className="aiuto">Nessun risultato per «{cerca}».</p>
+          ) : (
           <select
             className="scelta-punteggio larga"
             value={scelto || ''}
@@ -285,6 +308,7 @@ export default function Statistiche({ profilo }) {
               <option key={id} value={id}>{nome}</option>
             ))}
           </select>
+          )}
         </div>
       )}
 

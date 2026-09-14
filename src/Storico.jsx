@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.10.0 - 202609151200
+// v1.14.0 - 202609151800
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -18,6 +18,7 @@ export default function Storico({ profilo, onModifica }) {
   const [partite, setPartite] = useState([])
   const [aperta, setAperta] = useState(null)
   const [caricamento, setCaricamento] = useState(true)
+  const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
 
   useEffect(() => { carica() }, [])
@@ -110,6 +111,17 @@ export default function Storico({ profilo, onModifica }) {
 
   /* ---------- Vista ---------- */
 
+  const q = cerca.trim().toLowerCase()
+  const filtrate = !q ? partite : partite.filter((p) => {
+    const pezzi = [
+      p.giochi?.nome,
+      p.luoghi?.nome,
+      p.note,
+      ...(p.partecipazioni || []).map((x) => chi(x).nome),
+    ]
+    return pezzi.filter(Boolean).some((t) => t.toLowerCase().includes(q))
+  })
+
   if (caricamento) return <div className="scheda"><p>Carico lo storico&hellip;</p></div>
 
   return (
@@ -130,10 +142,24 @@ export default function Storico({ profilo, onModifica }) {
         ))}
       </div>
 
+      {sezione === 'partite' && partite.length > 3 && (
+        <input
+          className="campo-cerca"
+          value={cerca}
+          onChange={(e) => setCerca(e.target.value)}
+          placeholder="Cerca per gioco, giocatore, luogo o nota"
+          aria-label="Cerca fra le partite"
+        />
+      )}
+
       {partite.length === 0 && <p className="aiuto">Ancora nessuna partita registrata.</p>}
 
+      {sezione === 'partite' && cerca.trim() && filtrate.length === 0 && (
+        <p className="aiuto">Nessuna partita per «{cerca}».</p>
+      )}
+
       {/* --- Partite --- */}
-      {sezione === 'partite' && partite.map((p) => {
+      {sezione === 'partite' && filtrate.map((p) => {
         const apertaQui = aperta === p.id
         // Ordina per piazzamento; dove manca (partite registrate prima
         // della classifica automatica) ripiega sul punteggio.

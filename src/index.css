@@ -763,3 +763,21 @@ body {
 
 .numerone.sopra .cifra { color: var(--verde); }
 .numerone.sotto .cifra { color: var(--rosso); }
+
+/* ---------- Campo di ricerca ---------- */
+.campo-cerca {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+  font: inherit;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+}
+
+.campo-cerca:focus-visible {
+  outline: 2px solid var(--blu);
+  outline-offset: 1px;
+  background: var(--superficie);
+}
