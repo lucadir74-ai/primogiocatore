@@ -1,10 +1,12 @@
-// Primo Giocatore v1.1.0 - 202609141500
+// Primo Giocatore v1.3.0 - 202609141800
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
+// Punto 3b: registrazione partite con timer e punteggi.
 
 import { useEffect, useState } from 'react'
 import { supabase, configurato, COLORI } from './supabase'
 import Giochi from './Giochi.jsx'
+import Partita from './Partita.jsx'
 
 function Marchio() {
   return (
@@ -251,7 +253,7 @@ export default function App() {
   const [sessione, setSessione] = useState(null)
   const [profilo, setProfilo] = useState(null)
   const [pronto, setPronto] = useState(false)
-  const [scheda, setScheda] = useState('giochi')
+  const [scheda, setScheda] = useState('partita')
   const [erroreProfilo, setErroreProfilo] = useState('')
 
   useEffect(() => {
@@ -310,6 +312,12 @@ export default function App() {
         <>
           <nav className="schede">
             <button
+              className={scheda === 'partita' ? 'scheda-attiva' : ''}
+              onClick={() => setScheda('partita')}
+            >
+              Partita
+            </button>
+            <button
               className={scheda === 'giochi' ? 'scheda-attiva' : ''}
               onClick={() => setScheda('giochi')}
             >
@@ -324,7 +332,9 @@ export default function App() {
             <button className="esci" onClick={() => supabase.auth.signOut()}>Esci</button>
           </nav>
 
-          {scheda === 'giochi' ? (
+          {scheda === 'partita' ? (
+            <Partita profilo={profilo} />
+          ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : (
             <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />

@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v1.0.0 - 202609141500
+// v1.3.0 - 202609141800
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
@@ -20,6 +20,7 @@ export default function Giochi({ profilo }) {
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
   const [importando, setImportando] = useState(false)
+  const [manuale, setManuale] = useState(null) // null = chiuso
 
   useEffect(() => { caricaCatalogo() }, [])
 
@@ -145,6 +146,29 @@ export default function Giochi({ profilo }) {
     }
   }
 
+  // Gioco non presente su BGG: prototipo, print and play, autoprodotto.
+  async function salvaManuale() {
+    setErrore('')
+    setMessaggio('')
+    if (!manuale.nome.trim()) {
+      setErrore('Serve almeno il nome del gioco.')
+      return
+    }
+    const { error } = await supabase.from('giochi').insert({
+      nome: manuale.nome.trim(),
+      anno: manuale.anno ? Number(manuale.anno) : null,
+      min_giocatori: manuale.min ? Number(manuale.min) : null,
+      max_giocatori: manuale.max ? Number(manuale.max) : null,
+      durata_minuti: manuale.durata ? Number(manuale.durata) : null,
+      tipo_punteggio: manuale.tipo_punteggio,
+      creato_da: profilo.id,
+    })
+    if (error) { setErrore(error.message); return }
+    setMessaggio(`${manuale.nome.trim()} aggiunto a mano.`)
+    setManuale(null)
+    caricaCatalogo()
+  }
+
   async function cambiaPunteggio(giocoId, tipo) {
     const { error } = await supabase.from('giochi').update({ tipo_punteggio: tipo }).eq('id', giocoId)
     if (error) setErrore(error.message)
@@ -205,6 +229,73 @@ export default function Giochi({ profilo }) {
       <button className="bottone bottone-secondario" onClick={importaCollezione} disabled={importando}>
         {importando ? 'Importo\u2026' : 'Importa la mia collezione BGG'}
       </button>
+
+      {manuale === null ? (
+        <p className="riga-fondo">
+          Il gioco non è su BGG?{' '}
+          <button
+            className="bottone-piatto"
+            onClick={() =>
+              setManuale({ nome: '', anno: '', min: '', max: '', durata: '', tipo_punteggio: 'punti' })
+            }
+          >
+            Aggiungilo a mano
+          </button>
+        </p>
+      ) : (
+        <div className="riquadro-manuale">
+          <h3 className="titolo-sezione">Gioco senza BGG</h3>
+          <p className="aiuto">Per prototipi, print and play e autoprodotti.</p>
+
+          <div className="campo">
+            <label htmlFor="m-nome">Nome</label>
+            <input
+              id="m-nome"
+              value={manuale.nome}
+              onChange={(e) => setManuale({ ...manuale, nome: e.target.value })}
+            />
+          </div>
+
+          <div className="riga-campi">
+            <div className="campo">
+              <label htmlFor="m-min">Da</label>
+              <input id="m-min" type="number" min="1" value={manuale.min}
+                onChange={(e) => setManuale({ ...manuale, min: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="m-max">A</label>
+              <input id="m-max" type="number" min="1" value={manuale.max}
+                onChange={(e) => setManuale({ ...manuale, max: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="m-dur">Minuti</label>
+              <input id="m-dur" type="number" min="1" value={manuale.durata}
+                onChange={(e) => setManuale({ ...manuale, durata: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="m-tipo">Come si conta il punteggio</label>
+            <select
+              id="m-tipo"
+              className="scelta-punteggio larga"
+              value={manuale.tipo_punteggio}
+              onChange={(e) => setManuale({ ...manuale, tipo_punteggio: e.target.value })}
+            >
+              {TIPI_PUNTEGGIO.map((t) => (
+                <option key={t.id} value={t.id}>{t.etichetta}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="riga-bottoni">
+            <button className="bottone" onClick={salvaManuale}>Salva gioco</button>
+            <button className="bottone bottone-secondario" onClick={() => setManuale(null)}>
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
 
       <h3 className="titolo-sezione">
         In catalogo <span className="conteggio">{catalogo.length}</span>

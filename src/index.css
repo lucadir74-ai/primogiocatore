@@ -319,3 +319,91 @@ body {
   font-weight: 500;
   color: var(--inchiostro-tenue);
 }
+
+/* --- Inserimento manuale --- */
+.riquadro-manuale {
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.riga-campi { display: flex; gap: 0.5rem; }
+.riga-campi .campo { flex: 1; }
+.riga-bottoni { display: flex; gap: 0.5rem; }
+.scelta-punteggio.larga { max-width: none; width: 100%; padding: 0.7rem 0.8rem; font-size: 1rem; }
+
+/* --- Partita --- */
+.gioco-scelto {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  margin-bottom: 1rem;
+}
+
+.gioco-scelto .aiuto { margin: 0.2rem 0 0; }
+
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.orologio {
+  font-family: var(--display);
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.elenco-giocatori li { gap: 0.5rem; }
+
+.pallino {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.nome-giocatore { flex: 1; min-width: 0; }
+
+.mini {
+  width: 4.5rem;
+  padding: 0.45rem 0.5rem;
+  font: inherit;
+  text-align: right;
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: 6px;
+}
+
+.vince {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--inchiostro-tenue);
+}
+
+.pastiglie-persone { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.pastiglia-nome {
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--superficie);
+  cursor: pointer;
+}
+
+.pastiglia-nome.ospite { border-style: dashed; }
+.pastiglia-nome.nuovo { border-color: var(--inchiostro); font-weight: 600; }
+.pastiglia-nome:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
