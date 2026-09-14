@@ -1,8 +1,8 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.9.1 - 202609151130
+// v1.10.0 - 202609151200
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, COLORI } from './supabase'
+import { supabase, COLORI, daMostrare } from './supabase'
 
 function mmss(secondi) {
   const m = Math.floor(secondi / 60)
@@ -77,7 +77,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
           id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio,
-          profili:utente_id ( nome ), ospiti:ospite_id ( nome )
+          profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome )
         )
       `)
       .eq('id', id)
@@ -96,7 +96,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
         utente_id: p.utente_id || undefined,
         ospite_id: p.ospite_id || undefined,
-        nome: p.profili?.nome || p.ospiti?.nome || 'Sconosciuto',
+        nome: p.profili ? daMostrare(p.profili) : (p.ospiti?.nome || 'Sconosciuto'),
         punteggio: p.punteggio_totale == null ? '' : String(p.punteggio_totale),
         posizione: p.posizione == null ? '' : String(p.posizione),
         spareggio: p.spareggio == null ? '' : String(p.spareggio),
@@ -112,13 +112,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setFiltro('')
     setErrore('')
     if (righe.length === 0) {
-      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: profilo.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
+      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: daMostrare(profilo), punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
     }
   }
 
   function aggiungiPersona(p) {
     if (righe.some((r) => r.utente_id === p.id)) return
-    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: p.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
+    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: daMostrare(p), punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
   }
 
   function aggiungiOspite(o) {
@@ -444,7 +444,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             <div className="pastiglie-persone">
               {persone.filter((p) => !righe.some((r) => r.utente_id === p.id)).map((p) => (
                 <button key={p.id} className="pastiglia-nome" onClick={() => aggiungiPersona(p)}>
-                  {p.nome}
+                  {daMostrare(p)}
                 </button>
               ))}
               {ospiti.filter((o) => !righe.some((r) => r.ospite_id === o.id)).map((o) => (

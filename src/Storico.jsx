@@ -1,8 +1,8 @@
 // Primo Giocatore - Storico
-// v1.8.0 - 202609151000
+// v1.10.0 - 202609151200
 
 import { useEffect, useState } from 'react'
-import { supabase, COLORI } from './supabase'
+import { supabase, COLORI, daMostrare } from './supabase'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -32,7 +32,7 @@ export default function Storico({ profilo, onModifica }) {
         luoghi ( id, nome ),
         partecipazioni (
           id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio,
-          profili:utente_id ( nome, colore ),
+          profili:utente_id ( nome, nickname, colore ),
           ospiti:ospite_id ( nome, utente_collegato )
         )
       `)
@@ -55,7 +55,7 @@ export default function Storico({ profilo, onModifica }) {
 
   // Nome e colore di un partecipante, ospiti compresi.
   const chi = (p) => ({
-    nome: p.profili?.nome || p.ospiti?.nome || 'Sconosciuto',
+    nome: p.profili ? daMostrare(p.profili) : (p.ospiti?.nome || 'Sconosciuto'),
     colore: COLORI.find((c) => c.id === p.profili?.colore)?.hex || '#C9D1D8',
     ospite: Boolean(p.ospite_id),
     // Se l'ospite si è iscritto, da qui in poi è la stessa persona.

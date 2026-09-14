@@ -18,3 +18,8 @@ export const COLORI = [
   { id: 'verde',  nome: 'Verde',  hex: '#3E8E5A' },
   { id: 'viola',  nome: 'Viola',  hex: '#7A5195' },
 ]
+
+// Come si chiama una persona dentro l'app: il soprannome se ce l'ha,
+// altrimenti nome e cognome. Un posto solo, per non doverlo ricordare.
+export const daMostrare = (p) =>
+  (p?.nickname && p.nickname.trim()) || p?.nome || 'Sconosciuto'

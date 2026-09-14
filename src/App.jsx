@@ -1,10 +1,10 @@
-// Primo Giocatore v1.7.0 - 202609150900
+// Primo Giocatore v1.10.0 - 202609151200
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
 import { useEffect, useState } from 'react'
-import { supabase, configurato, COLORI } from './supabase'
+import { supabase, configurato, COLORI, daMostrare } from './supabase'
 import Giochi from './Giochi.jsx'
 import Partita from './Partita.jsx'
 import Storico from './Storico.jsx'
@@ -187,7 +187,7 @@ function Profilo({ sessione, profilo, setProfilo }) {
 
   return (
     <div className="scheda">
-      <h2>{profilo.nome}</h2>
+      <h2>{daMostrare(profilo)}</h2>
       <p className="sottotitolo">{sessione.user.email}</p>
 
       <Avviso tipo="errore" testo={errore} />
