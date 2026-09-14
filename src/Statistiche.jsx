@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.14.0 - 202609151800
+// v1.14.1 - 202609151830
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -255,11 +255,9 @@ export default function Statistiche({ profilo }) {
   const q = cerca.trim().toLowerCase()
   const opzioni = q ? tutteOpzioni.filter(([, nome]) => nome.toLowerCase().includes(q)) : tutteOpzioni
 
-  // Se la ricerca esclude ciò che stavi guardando, passo al primo risultato.
-  useEffect(() => {
-    if (!q || opzioni.length === 0) return
-    if (!opzioni.some(([id]) => id === scelto)) setScelto(opzioni[0][0])
-  }, [cerca, tipo])
+  // Se la ricerca esclude ciò che stavi guardando, mostro il primo risultato.
+  // Calcolato, non impostato: cambiare stato qui romperebbe il disegno.
+  const attivo = opzioni.some(([id]) => id === scelto) ? scelto : opzioni[0]?.[0] ?? null
 
   function cambiaTipo(nuovo) {
     setTipo(nuovo)
@@ -300,7 +298,7 @@ export default function Statistiche({ profilo }) {
           ) : (
           <select
             className="scelta-punteggio larga"
-            value={scelto || ''}
+            value={attivo || ''}
             onChange={(e) => setScelto(e.target.value)}
             aria-label="Scegli di chi vedere le statistiche"
           >
@@ -315,11 +313,11 @@ export default function Statistiche({ profilo }) {
       {partite.length === 0 ? (
         <p className="aiuto">Ancora nessuna partita registrata.</p>
       ) : tipo === 'persona' ? (
-        <SchedaPersona d={dellaPersona(scelto)} istogramma={istogramma} />
+        <SchedaPersona d={dellaPersona(attivo)} istogramma={istogramma} />
       ) : tipo === 'gioco' ? (
-        <SchedaGioco d={delGioco(scelto)} nome={elenchi.giochi.find((g) => g[0] === scelto)?.[1]} istogramma={istogramma} />
+        <SchedaGioco d={delGioco(attivo)} nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]} istogramma={istogramma} />
       ) : tipo === 'luogo' ? (
-        <SchedaLuogo d={delLuogo(scelto)} istogramma={istogramma} />
+        <SchedaLuogo d={delLuogo(attivo)} istogramma={istogramma} />
       ) : (
         <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} />
       )}
