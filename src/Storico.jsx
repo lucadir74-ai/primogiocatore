@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.6.1 - 202609142300
+// v1.7.0 - 202609150900
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -13,7 +13,7 @@ const SEZIONI = [
 
 const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
-export default function Storico({ profilo }) {
+export default function Storico({ profilo, onModifica }) {
   const [sezione, setSezione] = useState('partite')
   const [partite, setPartite] = useState([])
   const [aperta, setAperta] = useState(null)
@@ -193,9 +193,14 @@ export default function Storico({ profilo }) {
                 {p.note && <p className="aiuto note-partita">{p.note}</p>}
 
                 {p.registrata_da === profilo.id && (
-                  <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
-                    Cancella partita
-                  </button>
+                  <div className="azioni-partita">
+                    <button className="bottone-piatto" onClick={() => onModifica?.(p.id)}>
+                      Modifica
+                    </button>
+                    <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
+                      Cancella
+                    </button>
+                  </div>
                 )}
               </div>
             )}

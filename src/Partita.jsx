@@ -1,5 +1,5 @@
-// Primo Giocatore - registrazione partita
-// v1.6.0 - 202609142200
+// Primo Giocatore - registrazione e modifica partita
+// v1.7.0 - 202609150900
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -10,17 +10,29 @@ function mmss(secondi) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export default function Partita({ profilo }) {
+// "2026-09-14T21:30" per il campo data/ora del browser.
+function perCampo(d) {
+  const x = new Date(d)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`
+}
+
+export default function Partita({ profilo, partitaId, finitaModifica }) {
+  const modifica = Boolean(partitaId)
+
   const [catalogo, setCatalogo] = useState([])
   const [persone, setPersone] = useState([])
   const [ospiti, setOspiti] = useState([])
 
   const [gioco, setGioco] = useState(null)
   const [filtro, setFiltro] = useState('')
-  const [righe, setRighe] = useState([])   // i giocatori di questa partita
+  const [righe, setRighe] = useState([])
   const [luogo, setLuogo] = useState('')
   const [note, setNote] = useState('')
   const [esitoCoop, setEsitoCoop] = useState('vinta')
+  const [quando, setQuando] = useState(perCampo(new Date()))
+  const [minuti, setMinuti] = useState('')
+  const [vincitoreScelto, setVincitoreScelto] = useState(null)
 
   const [secondi, setSecondi] = useState(0)
   const [inCorso, setInCorso] = useState(false)
@@ -29,19 +41,23 @@ export default function Partita({ profilo }) {
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [caricamento, setCaricamento] = useState(modifica)
 
-  useEffect(() => { caricaTutto() }, [])
+  useEffect(() => { caricaElenchi() }, [])
+  useEffect(() => { if (partitaId) caricaPartita(partitaId) }, [partitaId])
 
   useEffect(() => {
-    if (inCorso) {
-      tick.current = setInterval(() => setSecondi((s) => s + 1), 1000)
-    } else if (tick.current) {
-      clearInterval(tick.current)
-    }
+    if (inCorso) tick.current = setInterval(() => setSecondi((s) => s + 1), 1000)
+    else if (tick.current) clearInterval(tick.current)
     return () => tick.current && clearInterval(tick.current)
   }, [inCorso])
 
-  async function caricaTutto() {
+  // Il timer alimenta il campo dei minuti, che resta comunque scrivibile.
+  useEffect(() => {
+    if (secondi > 0) setMinuti(String(Math.max(1, Math.round(secondi / 60))))
+  }, [secondi])
+
+  async function caricaElenchi() {
     const [g, p, o] = await Promise.all([
       supabase.from('giochi').select('*').order('nome'),
       supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
@@ -52,136 +68,91 @@ export default function Partita({ profilo }) {
     if (o.data) setOspiti(o.data)
   }
 
+  async function caricaPartita(id) {
+    setCaricamento(true)
+    const { data, error } = await supabase
+      .from('partite')
+      .select(`
+        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop,
+        giochi ( * ), luoghi ( nome ),
+        partecipazioni (
+          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo,
+          profili:utente_id ( nome ), ospiti:ospite_id ( nome )
+        )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) { setErrore(error.message); setCaricamento(false); return }
+
+    setGioco(data.giochi)
+    setLuogo(data.luoghi?.nome || '')
+    setNote(data.note || '')
+    setQuando(perCampo(data.giocata_il))
+    setMinuti(data.durata_minuti ? String(data.durata_minuti) : '')
+    setEsitoCoop(data.esito_coop || 'vinta')
+    setRighe(
+      (data.partecipazioni || []).map((p) => ({
+        chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
+        utente_id: p.utente_id || undefined,
+        ospite_id: p.ospite_id || undefined,
+        nome: p.profili?.nome || p.ospiti?.nome || 'Sconosciuto',
+        punteggio: p.punteggio_totale == null ? '' : String(p.punteggio_totale),
+        posizione: p.posizione == null ? '' : String(p.posizione),
+        ruolo: p.ruolo || '',
+        primo: false,
+      }))
+    )
+    setCaricamento(false)
+  }
+
   function scegliGioco(g) {
     setGioco(g)
     setFiltro('')
     setErrore('')
-    // Chi registra la partita di solito c'era: lo metto già dentro.
     if (righe.length === 0) {
-      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: profilo.nome, punteggio: '', posizione: '', vincitore: false, primo: false, ruolo: '' }])
+      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: profilo.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
     }
   }
 
   function aggiungiPersona(p) {
     if (righe.some((r) => r.utente_id === p.id)) return
-    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: p.nome, punteggio: '', posizione: '', vincitore: false, primo: false, ruolo: '' }])
+    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: p.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
   }
 
   function aggiungiOspite(o) {
     if (righe.some((r) => r.ospite_id === o.id)) return
-    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', vincitore: false, primo: false, ruolo: '' }])
+    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
   }
 
+  const [nuovoOspite, setNuovoOspite] = useState('')
+
   async function creaOspite() {
-    const nome = prompt('Nome del giocatore senza account:')
-    if (!nome?.trim()) return
+    const nome = nuovoOspite.trim()
+    if (!nome) return
     const { data, error } = await supabase
-      .from('ospiti')
-      .insert({ nome: nome.trim(), creato_da: profilo.id })
-      .select()
-      .single()
+      .from('ospiti').insert({ nome, creato_da: profilo.id }).select().single()
     if (error) { setErrore(error.message); return }
     setOspiti([...ospiti, data])
     aggiungiOspite(data)
+    setNuovoOspite('')
   }
 
-  function modifica(chiave, campo, valore) {
+  const cambia = (chiave, campo, valore) =>
     setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, [campo]: valore } : r)))
-  }
 
-  function togli(chiave) {
-    setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
-  }
-
-  // Chi ha vinto lo decide chi registra, ma solo quando serve davvero:
-  // in caso di pareggio in testa. Altrimenti è il punteggio a parlare.
-  const [vincitoreScelto, setVincitoreScelto] = useState(null)
-
-  async function salva() {
-    setErrore('')
-    setMessaggio('')
-    if (!gioco) { setErrore('Scegli prima il gioco.'); return }
-    if (righe.length < 1) { setErrore('Aggiungi almeno un giocatore.'); return }
-
-    setSalvando(true)
-    try {
-      let luogoId = null
-      if (luogo.trim()) {
-        const { data: esistente } = await supabase
-          .from('luoghi').select('id').eq('nome', luogo.trim()).maybeSingle()
-        if (esistente) luogoId = esistente.id
-        else {
-          const { data, error } = await supabase
-            .from('luoghi')
-            .insert({ nome: luogo.trim(), tipo: 'altro', creato_da: profilo.id })
-            .select().single()
-          if (error) throw error
-          luogoId = data.id
-        }
-      }
-
-      const tipo = gioco.tipo_punteggio || 'punti'
-
-      const { data: partita, error: e1 } = await supabase
-        .from('partite')
-        .insert({
-          gioco_id: gioco.id,
-          luogo_id: luogoId,
-          durata_minuti: secondi > 0 ? Math.max(1, Math.round(secondi / 60)) : null,
-          tipo_punteggio: tipo,
-          esito_coop: tipo === 'coop' ? esitoCoop : null,
-          note: note.trim() || null,
-          registrata_da: profilo.id,
-        })
-        .select().single()
-      if (e1) throw e1
-
-      // La posizione viene salvata, non ricalcolata a ogni lettura:
-      // gli spareggi cambiano da gioco a gioco.
-      const partecipazioni = ordinata.map((r) => ({
-        partita_id: partita.id,
-        utente_id: r.utente_id || null,
-        ospite_id: r.ospite_id || null,
-        ruolo: r.ruolo?.trim() || null,
-        punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
-        posizione: tipo === 'coop' ? null : r.pos,
-        vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
-        primo_giocatore: Boolean(r.primo),
-      }))
-      const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
-      if (e2) throw e2
-
-      setMessaggio('Partita registrata.')
-      setGioco(null)
-      setRighe([])
-      setVincitoreScelto(null)
-      setNote('')
-      setSecondi(0)
-      setInCorso(false)
-      caricaTutto()
-    } catch (e) {
-      setErrore(e.message)
-    } finally {
-      setSalvando(false)
-    }
-  }
+  const togli = (chiave) => setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
 
   const tipo = gioco?.tipo_punteggio || 'punti'
 
-  // Classifica ricalcolata a ogni battuta. I pari merito prendono la
-  // stessa posizione, e il successivo salta i posti occupati:
-  // 100, 100, 80 dà 1°, 1°, 3°.
   function classifica() {
     if (tipo === 'coop') return righe.map((r) => ({ ...r, pos: null }))
-
     const valore = (r) =>
       tipo === 'posizione' ? (r.posizione === '' ? Infinity : Number(r.posizione))
                            : (r.punteggio === '' ? -Infinity : Number(r.punteggio))
-
     const ordinate = [...righe].sort((a, b) =>
       tipo === 'posizione' ? valore(a) - valore(b) : valore(b) - valore(a)
     )
-
     let ultimoValore = null
     let ultimaPos = 0
     return ordinate.map((r, i) => {
@@ -201,32 +172,112 @@ export default function Partita({ profilo }) {
     ? (vincitoreScelto ? [vincitoreScelto] : [])
     : inTesta.map((r) => r.chiave)
 
+  function azzera() {
+    setGioco(null); setRighe([]); setNote(''); setLuogo('')
+    setSecondi(0); setInCorso(false); setMinuti('')
+    setQuando(perCampo(new Date())); setVincitoreScelto(null)
+  }
+
+  async function salva() {
+    setErrore(''); setMessaggio('')
+    if (!gioco) { setErrore('Scegli prima il gioco.'); return }
+    if (righe.length < 1) { setErrore('Aggiungi almeno un giocatore.'); return }
+
+    setSalvando(true)
+    try {
+      let luogoId = null
+      if (luogo.trim()) {
+        const { data: esistente } = await supabase
+          .from('luoghi').select('id').ilike('nome', luogo.trim()).maybeSingle()
+        if (esistente) luogoId = esistente.id
+        else {
+          const { data, error } = await supabase
+            .from('luoghi')
+            .insert({ nome: luogo.trim(), tipo: 'altro', creato_da: profilo.id })
+            .select().single()
+          if (error) throw error
+          luogoId = data.id
+        }
+      }
+
+      const campi = {
+        gioco_id: gioco.id,
+        luogo_id: luogoId,
+        giocata_il: new Date(quando).toISOString(),
+        durata_minuti: minuti ? Number(minuti) : null,
+        tipo_punteggio: tipo,
+        esito_coop: tipo === 'coop' ? esitoCoop : null,
+        note: note.trim() || null,
+      }
+
+      let id = partitaId
+      if (modifica) {
+        const { error } = await supabase.from('partite').update(campi).eq('id', id)
+        if (error) throw error
+        // Le partecipazioni si riscrivono da zero: più semplice e più
+        // sicuro che inseguire chi è stato aggiunto o tolto.
+        const { error: e0 } = await supabase.from('partecipazioni').delete().eq('partita_id', id)
+        if (e0) throw e0
+      } else {
+        const { data, error } = await supabase
+          .from('partite')
+          .insert({ ...campi, registrata_da: profilo.id })
+          .select().single()
+        if (error) throw error
+        id = data.id
+      }
+
+      const partecipazioni = ordinata.map((r) => ({
+        partita_id: id,
+        utente_id: r.utente_id || null,
+        ospite_id: r.ospite_id || null,
+        ruolo: r.ruolo?.trim() || null,
+        punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
+        posizione: tipo === 'coop' ? null : r.pos,
+        vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
+        primo_giocatore: Boolean(r.primo),
+      }))
+      const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
+      if (e2) throw e2
+
+      if (modifica) {
+        setMessaggio('Partita aggiornata.')
+        finitaModifica?.()
+      } else {
+        setMessaggio('Partita registrata.')
+        azzera()
+      }
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   const trovati = filtro.trim().length > 0
     ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase())).slice(0, 8)
     : []
+
   const coloreDi = (r) => {
     const p = persone.find((x) => x.id === r.utente_id)
     return COLORI.find((c) => c.id === p?.colore)?.hex || '#C9D1D8'
   }
 
+  if (caricamento) return <div className="scheda"><p>Carico la partita&hellip;</p></div>
+
   return (
     <div className="scheda">
-      <h2>Nuova partita</h2>
+      <h2>{modifica ? 'Modifica partita' : 'Nuova partita'}</h2>
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      {/* --- Gioco --- */}
       {!gioco ? (
         <>
           <div className="campo">
             <label htmlFor="f-gioco">A che giochiamo?</label>
-            <input
-              id="f-gioco"
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Scrivi le prime lettere"
-            />
+            <input id="f-gioco" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+              placeholder="Scrivi le prime lettere" />
           </div>
           {trovati.length > 0 && (
             <ul className="elenco">
@@ -255,7 +306,12 @@ export default function Partita({ profilo }) {
             </div>
           </div>
 
-          {/* --- Timer --- */}
+          <div className="campo">
+            <label htmlFor="quando">Quando</label>
+            <input id="quando" type="datetime-local" value={quando}
+              onChange={(e) => setQuando(e.target.value)} />
+          </div>
+
           <div className="timer">
             <span className="orologio">{mmss(secondi)}</span>
             <button className="bottone bottone-stretto" onClick={() => setInCorso(!inCorso)}>
@@ -267,9 +323,14 @@ export default function Partita({ profilo }) {
               </button>
             )}
           </div>
-          <p className="aiuto">Se te ne dimentichi, la durata si può lasciare vuota.</p>
 
-          {/* --- Giocatori --- */}
+          <div className="campo campo-minuti">
+            <label htmlFor="minuti">Durata in minuti</label>
+            <input id="minuti" type="number" min="1" className="mini" value={minuti}
+              onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
+            <p className="aiuto">Il timer la riempie da sé, ma puoi scriverla a mano.</p>
+          </div>
+
           <h3 className="titolo-sezione">Chi ha giocato</h3>
 
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
@@ -280,9 +341,7 @@ export default function Partita({ profilo }) {
               return (
                 <li key={r.chiave} className={vince ? 'vincitore' : ''}>
                   {tipo !== 'coop' && (
-                    <span className="posto" aria-hidden="true">
-                      {r.pos ? `${r.pos}°` : '–'}
-                    </span>
+                    <span className="posto" aria-hidden="true">{r.pos ? `${r.pos}°` : '–'}</span>
                   )}
                   <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
                   <div className="nome-giocatore">
@@ -293,14 +352,12 @@ export default function Partita({ profilo }) {
 
                   {tipo !== 'coop' && (
                     <input
-                      className="mini"
-                      type="number"
-                      inputMode="numeric"
+                      className="mini" type="number" inputMode="numeric"
                       aria-label={`Punteggio di ${r.nome}`}
                       placeholder={tipo === 'posizione' ? 'pos.' : 'punti'}
                       value={tipo === 'posizione' ? r.posizione : r.punteggio}
                       onChange={(e) =>
-                        modifica(r.chiave, tipo === 'posizione' ? 'posizione' : 'punteggio', e.target.value)
+                        cambia(r.chiave, tipo === 'posizione' ? 'posizione' : 'punteggio', e.target.value)
                       }
                     />
                   )}
@@ -314,9 +371,8 @@ export default function Partita({ profilo }) {
                     </button>
                   )}
 
-                  <button className="bottone-piatto" onClick={() => togli(r.chiave)} aria-label={`Togli ${r.nome}`}>
-                    ×
-                  </button>
+                  <button className="bottone-piatto" onClick={() => togli(r.chiave)}
+                    aria-label={`Togli ${r.nome}`}>×</button>
                 </li>
               )
             })}
@@ -342,25 +398,24 @@ export default function Partita({ profilo }) {
           <div className="campo">
             <label>Aggiungi giocatori</label>
             <div className="pastiglie-persone">
-              {persone
-                .filter((p) => !righe.some((r) => r.utente_id === p.id))
-                .map((p) => (
-                  <button key={p.id} className="pastiglia-nome" onClick={() => aggiungiPersona(p)}>
-                    {p.nome}
-                  </button>
-                ))}
-              {ospiti
-                .filter((o) => !righe.some((r) => r.ospite_id === o.id))
-                .map((o) => (
-                  <button key={o.id} className="pastiglia-nome ospite" onClick={() => aggiungiOspite(o)}>
-                    {o.nome}
-                  </button>
-                ))}
-              <button className="pastiglia-nome nuovo" onClick={creaOspite}>+ ospite</button>
+              {persone.filter((p) => !righe.some((r) => r.utente_id === p.id)).map((p) => (
+                <button key={p.id} className="pastiglia-nome" onClick={() => aggiungiPersona(p)}>
+                  {p.nome}
+                </button>
+              ))}
+              {ospiti.filter((o) => !righe.some((r) => r.ospite_id === o.id)).map((o) => (
+                <button key={o.id} className="pastiglia-nome ospite" onClick={() => aggiungiOspite(o)}>
+                  {o.nome}
+                </button>
+              ))}
             </div>
-            <p className="aiuto">
-              Gli ospiti sono chi non ha un account. Se un giorno si iscrive, le partite lo seguono.
-            </p>
+            <div className="riga-ricerca riga-ospite">
+              <input value={nuovoOspite} onChange={(e) => setNuovoOspite(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && creaOspite()}
+                placeholder="Nome di chi non ha l'account" />
+              <button className="bottone bottone-stretto" onClick={creaOspite}>+</button>
+            </div>
+            <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
           </div>
 
           <div className="campo">
@@ -376,11 +431,16 @@ export default function Partita({ profilo }) {
           </div>
 
           <button className="bottone" onClick={salva} disabled={salvando}>
-            {salvando ? 'Salvo…' : 'Registra partita'}
+            {salvando ? 'Salvo…' : modifica ? 'Salva modifiche' : 'Registra partita'}
           </button>
+
+          {modifica && (
+            <button className="bottone bottone-secondario" onClick={() => finitaModifica?.()}>
+              Annulla
+            </button>
+          )}
         </>
       )}
-
     </div>
   )
 }

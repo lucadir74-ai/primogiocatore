@@ -589,3 +589,11 @@ body {
 .note-partita { font-style: italic; margin-bottom: 0.6rem; }
 .pericolo { color: var(--rosso); }
 .anno.block { display: block; }
+
+/* ---------- Durata e ospite al volo ---------- */
+
+.campo-minuti .mini { width: 6rem; text-align: left; }
+.riga-ospite { margin-top: 0.5rem; }
+.riga-ospite input { flex: 1; }
+
+.azioni-partita { display: flex; gap: 1rem; }

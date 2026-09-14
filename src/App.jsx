@@ -1,4 +1,4 @@
-// Primo Giocatore v1.6.0 - 202609142200
+// Primo Giocatore v1.7.0 - 202609150900
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -256,6 +256,7 @@ export default function App() {
   const [pronto, setPronto] = useState(false)
   const [scheda, setScheda] = useState('partita')
   const [erroreProfilo, setErroreProfilo] = useState('')
+  const [partitaId, setPartitaId] = useState(null)
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -297,7 +298,7 @@ export default function App() {
           <nav className="schede">
             <button
               className={scheda === 'partita' ? 'scheda-attiva' : ''}
-              onClick={() => setScheda('partita')}
+              onClick={() => { setPartitaId(null); setScheda('partita') }}
             >
               Partita
             </button>
@@ -343,9 +344,17 @@ export default function App() {
       ) : (
         <>
           {scheda === 'partita' ? (
-            <Partita profilo={profilo} />
+            <Partita
+              key={partitaId || 'nuova'}
+              profilo={profilo}
+              partitaId={partitaId}
+              finitaModifica={() => { setPartitaId(null); setScheda('storico') }}
+            />
           ) : scheda === 'storico' ? (
-            <Storico profilo={profilo} />
+            <Storico
+              profilo={profilo}
+              onModifica={(id) => { setPartitaId(id); setScheda('partita') }}
+            />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : (
