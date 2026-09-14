@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.0.0 - 202609141500
+// v1.2.0 - 202609141700
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -13,6 +13,13 @@
 import { XMLParser } from 'fast-xml-parser'
 
 const BGG = 'https://boardgamegeek.com/xmlapi2'
+
+// Da autunno 2025 BGG richiede l'autorizzazione su quasi tutte le chiamate.
+// Il token si ottiene registrando l'applicazione su
+// https://boardgamegeek.com/applications
+// Va messo fra le variabili d'ambiente di Vercel come BGG_TOKEN
+// (senza prefisso VITE_: deve restare sul server, non finire nel browser).
+const TOKEN = process.env.BGG_TOKEN
 
 // BGG chiede circa 5 secondi fra una richiesta e l'altra.
 const PAUSA_MINIMA = 5000
@@ -46,9 +53,11 @@ async function chiamaBGG(percorso) {
   // La collezione può rispondere 202: significa "richiama fra poco".
   for (let tentativo = 0; tentativo < 4; tentativo++) {
     ultimaChiamata = Date.now()
-    risposta = await fetch(`${BGG}${percorso}`, {
-      headers: { 'User-Agent': 'PrimoGiocatore/1.0 (app per gruppi di gioco)' },
-    })
+    const intestazioni = { 'User-Agent': 'PrimoGiocatore/1.0 (app per gruppi di gioco)' }
+    // "Bearer" seguito da uno spazio, nessun due punti.
+    if (TOKEN) intestazioni.Authorization = `Bearer ${TOKEN}`
+
+    risposta = await fetch(`${BGG}${percorso}`, { headers: intestazioni })
     if (risposta.status === 202) {
       await attesa(3000)
       continue
@@ -59,6 +68,15 @@ async function chiamaBGG(percorso) {
   if (risposta.status === 202) {
     const e = new Error('BGG sta ancora preparando i dati. Riprova fra qualche secondo.')
     e.codice = 202
+    throw e
+  }
+  if (risposta.status === 401) {
+    const e = new Error(
+      TOKEN
+        ? 'BGG ha rifiutato il token. Controlla che sia scritto per intero e senza spazi.'
+        : 'Manca il token di BoardGameGeek. Registra l\u2019applicazione su boardgamegeek.com/applications e aggiungi BGG_TOKEN fra le variabili di Vercel.'
+    )
+    e.codice = 401
     throw e
   }
   if (!risposta.ok) {
@@ -146,6 +164,7 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ errore: 'Azione sconosciuta.' })
   } catch (e) {
-    return res.status(e.codice === 202 ? 202 : 502).json({ errore: e.message })
+    const codice = e.codice === 202 ? 202 : e.codice === 401 ? 401 : 502
+    return res.status(codice).json({ errore: e.message })
   }
 }
