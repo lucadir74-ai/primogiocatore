@@ -597,3 +597,12 @@ body {
 .riga-ospite input { flex: 1; }
 
 .azioni-partita { display: flex; gap: 1rem; }
+
+/* ---------- Spareggio ---------- */
+.mini.spareggio {
+  width: 3.6rem;
+  border-style: dashed;
+  font-size: 0.88rem;
+}
+
+.spareggio-nota { white-space: nowrap; font-size: 0.78rem; }

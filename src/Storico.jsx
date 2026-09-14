@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.7.0 - 202609150900
+// v1.8.0 - 202609151000
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -31,7 +31,7 @@ export default function Storico({ profilo, onModifica }) {
         giochi ( id, nome, immagine_url ),
         luoghi ( id, nome ),
         partecipazioni (
-          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore,
+          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio,
           profili:utente_id ( nome, colore ),
           ospiti:ospite_id ( nome, utente_collegato )
         )
@@ -182,6 +182,9 @@ export default function Storico({ profilo, onModifica }) {
                           <strong>{c.nome}</strong>
                           {c.ospite && <span className="anno"> ospite</span>}
                         </div>
+                        {par.spareggio != null && (
+                          <span className="anno spareggio-nota">sp. {par.spareggio}</span>
+                        )}
                         {par.punteggio_totale != null && (
                           <span className="punti-finali">{par.punteggio_totale}</span>
                         )}

@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.7.0 - 202609150900
+// v1.8.0 - 202609151000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -76,7 +76,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop,
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
-          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo,
+          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio,
           profili:utente_id ( nome ), ospiti:ospite_id ( nome )
         )
       `)
@@ -99,6 +99,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         nome: p.profili?.nome || p.ospiti?.nome || 'Sconosciuto',
         punteggio: p.punteggio_totale == null ? '' : String(p.punteggio_totale),
         posizione: p.posizione == null ? '' : String(p.posizione),
+        spareggio: p.spareggio == null ? '' : String(p.spareggio),
         ruolo: p.ruolo || '',
         primo: false,
       }))
@@ -111,18 +112,18 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setFiltro('')
     setErrore('')
     if (righe.length === 0) {
-      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: profilo.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
+      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: profilo.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
     }
   }
 
   function aggiungiPersona(p) {
     if (righe.some((r) => r.utente_id === p.id)) return
-    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: p.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
+    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: p.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
   }
 
   function aggiungiOspite(o) {
     if (righe.some((r) => r.ospite_id === o.id)) return
-    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', ruolo: '', primo: false }])
+    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
   }
 
   const [nuovoOspite, setNuovoOspite] = useState('')
@@ -145,32 +146,45 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   const tipo = gioco?.tipo_punteggio || 'punti'
 
+  // Ordine: prima il punteggio, poi il valore di spareggio, poi la
+  // scelta fatta a mano. Chi resta davvero pari condivide la posizione.
   function classifica() {
     if (tipo === 'coop') return righe.map((r) => ({ ...r, pos: null }))
-    const valore = (r) =>
+
+    const punti = (r) =>
       tipo === 'posizione' ? (r.posizione === '' ? Infinity : Number(r.posizione))
                            : (r.punteggio === '' ? -Infinity : Number(r.punteggio))
-    const ordinate = [...righe].sort((a, b) =>
-      tipo === 'posizione' ? valore(a) - valore(b) : valore(b) - valore(a)
-    )
-    let ultimoValore = null
+    const spar = (r) => (r.spareggio === '' || r.spareggio == null ? null : Number(r.spareggio))
+
+    const confronta = (a, b) => {
+      const pa = punti(a), pb = punti(b)
+      if (pa !== pb) return tipo === 'posizione' ? pa - pb : pb - pa
+      const sa = spar(a), sb = spar(b)
+      if (sa != null && sb != null && sa !== sb) return sb - sa
+      // scelto a mano: davanti a tutti i suoi pari merito
+      if (vincitoreScelto === a.chiave) return -1
+      if (vincitoreScelto === b.chiave) return 1
+      return 0
+    }
+
+    const ordinate = [...righe].sort(confronta)
+
     let ultimaPos = 0
     return ordinate.map((r, i) => {
-      const v = valore(r)
-      const vuoto = v === -Infinity || v === Infinity
-      if (!vuoto && v === ultimoValore) return { ...r, pos: ultimaPos }
-      ultimoValore = v
+      const v = punti(r)
+      if (v === -Infinity || v === Infinity) return { ...r, pos: null }
+      // pari merito solo se il confronto non ha saputo separarli
+      if (i > 0 && confronta(ordinate[i - 1], r) === 0) return { ...r, pos: ultimaPos }
       ultimaPos = i + 1
-      return { ...r, pos: vuoto ? null : i + 1 }
+      return { ...r, pos: ultimaPos }
     })
   }
 
   const ordinata = classifica()
   const inTesta = ordinata.filter((r) => r.pos === 1)
+  // Pareggio vero: due in testa che nemmeno lo spareggio ha separato.
   const pareggio = inTesta.length > 1
-  const vincitori = pareggio
-    ? (vincitoreScelto ? [vincitoreScelto] : [])
-    : inTesta.map((r) => r.chiave)
+  const vincitori = pareggio ? [] : inTesta.map((r) => r.chiave)
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
@@ -233,6 +247,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         ospite_id: r.ospite_id || null,
         ruolo: r.ruolo?.trim() || null,
         punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
+        spareggio: r.spareggio === '' ? null : Number(r.spareggio),
         posizione: tipo === 'coop' ? null : r.pos,
         vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
         primo_giocatore: Boolean(r.primo),
@@ -252,6 +267,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     } finally {
       setSalvando(false)
     }
+  }
+
+  // Vero se questo giocatore condivide il punteggio con almeno un altro:
+  // solo allora ha senso mostrare il campo dello spareggio.
+  function paritaDi(r) {
+    if (tipo === 'posizione' || r.punteggio === '') return false
+    return righe.filter((x) => x.punteggio === r.punteggio).length > 1
   }
 
   const trovati = filtro.trim().length > 0
@@ -362,12 +384,22 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     />
                   )}
 
+                  {tipo !== 'coop' && paritaDi(r) && (
+                    <input
+                      className="mini spareggio" type="number" inputMode="numeric"
+                      aria-label={`Spareggio di ${r.nome}`}
+                      placeholder="spar."
+                      value={r.spareggio}
+                      onChange={(e) => cambia(r.chiave, 'spareggio', e.target.value)}
+                    />
+                  )}
+
                   {pareggio && r.pos === 1 && (
                     <button
-                      className={`bottone-piatto scegli-vincitore${vincitoreScelto === r.chiave ? ' scelto' : ''}`}
+                      className="bottone-piatto scegli-vincitore"
                       onClick={() => setVincitoreScelto(r.chiave)}
                     >
-                      {vincitoreScelto === r.chiave ? 'vince' : 'ha vinto'}
+                      ha vinto
                     </button>
                   )}
 
@@ -380,7 +412,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
           {pareggio && (
             <p className="aiuto avviso-pareggio">
-              Pareggio in testa: scegli chi ha vinto secondo lo spareggio del gioco.
+              Pareggio in testa. Scrivi il valore di spareggio previsto dal gioco
+              (monete, denaro residuo, ordine di turno) oppure indica direttamente chi ha vinto.
             </p>
           )}
 
