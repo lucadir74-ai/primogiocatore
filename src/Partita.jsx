@@ -1,8 +1,27 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.10.0 - 202609151200
+// v1.11.0 - 202609151300
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
+
+// La partita in corso resta sul telefono finché non la salvi: se chiudi
+// la pagina o cade la linea, la ritrovi com'era.
+const BOZZA = 'primo-giocatore:bozza'
+
+function leggiBozza() {
+  try {
+    const grezzo = localStorage.getItem(BOZZA)
+    return grezzo ? JSON.parse(grezzo) : null
+  } catch { return null }
+}
+
+function scriviBozza(dati) {
+  try { localStorage.setItem(BOZZA, JSON.stringify(dati)) } catch { /* spazio pieno */ }
+}
+
+function cancellaBozza() {
+  try { localStorage.removeItem(BOZZA) } catch { /* niente da fare */ }
+}
 
 function mmss(secondi) {
   const m = Math.floor(secondi / 60)
@@ -36,21 +55,76 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   const [secondi, setSecondi] = useState(0)
   const [inCorso, setInCorso] = useState(false)
+  // Istante in cui il timer è stato avviato e secondi già accumulati
+  // prima dell'ultima pausa: insieme sopravvivono alla chiusura.
+  const [avviatoIl, setAvviatoIl] = useState(null)
+  const [accumulati, setAccumulati] = useState(0)
   const tick = useRef(null)
+  const bozzaLetta = useRef(false)
 
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [caricamento, setCaricamento] = useState(modifica)
+  const [ripresa, setRipresa] = useState(false)
 
   useEffect(() => { caricaElenchi() }, [])
   useEffect(() => { if (partitaId) caricaPartita(partitaId) }, [partitaId])
 
+  // Al primo avvio: se c'è una partita lasciata a metà, la rimetto com'era.
   useEffect(() => {
-    if (inCorso) tick.current = setInterval(() => setSecondi((s) => s + 1), 1000)
+    if (modifica || bozzaLetta.current) return
+    bozzaLetta.current = true
+    const b = leggiBozza()
+    if (!b) return
+    if (b.gioco) setGioco(b.gioco)
+    if (b.righe) setRighe(b.righe)
+    if (b.luogo) setLuogo(b.luogo)
+    if (b.note) setNote(b.note)
+    if (b.quando) setQuando(b.quando)
+    if (b.minuti) setMinuti(b.minuti)
+    if (b.esitoCoop) setEsitoCoop(b.esitoCoop)
+    if (b.vincitoreScelto) setVincitoreScelto(b.vincitoreScelto)
+    setAccumulati(b.accumulati || 0)
+    setAvviatoIl(b.avviatoIl || null)
+    setInCorso(Boolean(b.avviatoIl))
+    setRipresa(true)
+  }, [modifica])
+
+  // Ogni cambiamento viene messo da parte.
+  useEffect(() => {
+    if (modifica || !bozzaLetta.current) return
+    if (!gioco && righe.length === 0 && !accumulati && !avviatoIl) { cancellaBozza(); return }
+    scriviBozza({
+      gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto,
+      accumulati, avviatoIl,
+    })
+  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, accumulati, avviatoIl, modifica])
+
+  useEffect(() => {
+    function aggiorna() {
+      setSecondi(accumulati + (avviatoIl ? Math.floor((Date.now() - avviatoIl) / 1000) : 0))
+    }
+    aggiorna()
+    if (inCorso) tick.current = setInterval(aggiorna, 1000)
     else if (tick.current) clearInterval(tick.current)
     return () => tick.current && clearInterval(tick.current)
-  }, [inCorso])
+  }, [inCorso, avviatoIl, accumulati])
+
+  function avviaOFerma() {
+    if (inCorso) {
+      setAccumulati(accumulati + Math.floor((Date.now() - avviatoIl) / 1000))
+      setAvviatoIl(null)
+      setInCorso(false)
+    } else {
+      setAvviatoIl(Date.now())
+      setInCorso(true)
+    }
+  }
+
+  function azzeraTimer() {
+    setAvviatoIl(null); setAccumulati(0); setSecondi(0); setInCorso(false)
+  }
 
   // Il timer alimenta il campo dei minuti, che resta comunque scrivibile.
   useEffect(() => {
@@ -202,8 +276,10 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
-    setSecondi(0); setInCorso(false); setMinuti('')
-    setQuando(perCampo(new Date())); setVincitoreScelto(null)
+    setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
+    setRipresa(false)
+    azzeraTimer()
+    cancellaBozza()
   }
 
   async function salva() {
@@ -301,6 +377,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
+      {ripresa && !modifica && (
+        <div className="avviso ok">
+          Ripresa la partita lasciata a metà.{' '}
+          <button className="bottone-piatto" onClick={azzera}>ricomincia da capo</button>
+        </div>
+      )}
+
       {!gioco ? (
         <>
           <div className="campo">
@@ -346,14 +429,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             <div className="barra-durata">
               <button
                 className={`tasto-timer${inCorso ? ' attivo' : ''}`}
-                onClick={() => setInCorso(!inCorso)}
+                onClick={avviaOFerma}
                 aria-label={inCorso ? 'Ferma il timer' : 'Avvia il timer'}
               >
                 {inCorso ? '❚❚' : '▶'}
               </button>
               <span className={`orologio${inCorso ? ' acceso' : ''}`}>{mmss(secondi)}</span>
               {secondi > 0 && (
-                <button className="azzera-timer" onClick={() => { setSecondi(0); setInCorso(false) }}
+                <button className="azzera-timer" onClick={azzeraTimer}
                   aria-label="Azzera il timer">↺</button>
               )}
               <span className="separatore-durata" aria-hidden="true" />
