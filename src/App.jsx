@@ -1,8 +1,10 @@
-// Primo Giocatore v1.0.0 - 202609141400
+// Primo Giocatore v1.1.0 - 202609141500
 // Punto 2: registrazione, accesso, profilo.
+// Punto 3a: catalogo giochi da BoardGameGeek.
 
 import { useEffect, useState } from 'react'
 import { supabase, configurato, COLORI } from './supabase'
+import Giochi from './Giochi.jsx'
 
 function Marchio() {
   return (
@@ -24,7 +26,7 @@ function Avviso({ tipo, testo }) {
 /* ---------------- Accesso e registrazione ---------------- */
 
 function Accesso() {
-  const [modo, setModo] = useState('entra') // 'entra' | 'iscriviti'
+  const [modo, setModo] = useState('entra')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -58,7 +60,7 @@ function Accesso() {
           options: { data: { nome: nome.trim() } },
         })
         if (error) throw error
-        if (data.session) return // entrato subito: ci pensa onAuthStateChange
+        if (data.session) return
         setOk('Account creato. Controlla la posta e conferma l\u2019indirizzo, poi torna qui.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -143,31 +145,10 @@ function Accesso() {
 
 /* ---------------- Profilo ---------------- */
 
-function Profilo({ sessione }) {
-  const [profilo, setProfilo] = useState(null)
-  const [caricamento, setCaricamento] = useState(true)
+function Profilo({ sessione, profilo, setProfilo }) {
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState('')
   const [ok, setOk] = useState('')
-
-  useEffect(() => {
-    let vivo = true
-    async function carica() {
-      const { data, error } = await supabase
-        .from('profili')
-        .select('*')
-        .eq('id', sessione.user.id)
-        .maybeSingle()
-
-      if (!vivo) return
-      if (error) setErrore(traduciErrore(error))
-      else if (data) setProfilo(data)
-      else setErrore('Il profilo non è stato creato. Controlla che il trigger su auth.users sia attivo.')
-      setCaricamento(false)
-    }
-    carica()
-    return () => { vivo = false }
-  }, [sessione.user.id])
 
   function aggiorna(campo, valore) {
     setProfilo((p) => ({ ...p, [campo]: valore }))
@@ -199,22 +180,12 @@ function Profilo({ sessione }) {
     else setOk('Profilo salvato.')
   }
 
-  if (caricamento) return <div className="scheda"><p>Carico il profilo&hellip;</p></div>
-  if (!profilo) return <div className="scheda"><Avviso tipo="errore" testo={errore} /></div>
-
   const coloreAttivo = COLORI.find((c) => c.id === profilo.colore)
 
   return (
     <div className="scheda">
-      <div className="intestazione-profilo">
-        <div>
-          <h2>{profilo.nome}</h2>
-          <p className="sottotitolo" style={{ margin: 0 }}>{sessione.user.email}</p>
-        </div>
-        <button className="bottone-piatto" onClick={() => supabase.auth.signOut()}>
-          Esci
-        </button>
-      </div>
+      <h2>{profilo.nome}</h2>
+      <p className="sottotitolo">{sessione.user.email}</p>
 
       <Avviso tipo="errore" testo={errore} />
       <Avviso tipo="ok" testo={ok} />
@@ -258,7 +229,7 @@ function Profilo({ sessione }) {
       <div className="campo">
         <label htmlFor="p-bgg">Utente BoardGameGeek</label>
         <input id="p-bgg" value={profilo.bgg_username || ''} onChange={(e) => aggiorna('bgg_username', e.target.value)} />
-        <p className="aiuto">Facoltativo. Servirà per leggere la tua collezione.</p>
+        <p className="aiuto">Facoltativo. Serve per importare la tua collezione.</p>
       </div>
 
       <div className="campo">
@@ -278,7 +249,10 @@ function Profilo({ sessione }) {
 
 export default function App() {
   const [sessione, setSessione] = useState(null)
+  const [profilo, setProfilo] = useState(null)
   const [pronto, setPronto] = useState(false)
+  const [scheda, setScheda] = useState('giochi')
+  const [erroreProfilo, setErroreProfilo] = useState('')
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -290,13 +264,32 @@ export default function App() {
 
     const { data: iscrizione } = supabase.auth.onAuthStateChange((_evento, s) => {
       setSessione(s)
+      if (!s) setProfilo(null)
     })
     return () => iscrizione.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!sessione) return
+    let vivo = true
+    supabase
+      .from('profili')
+      .select('*')
+      .eq('id', sessione.user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!vivo) return
+        if (error) setErroreProfilo(traduciErrore(error))
+        else if (data) setProfilo(data)
+        else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
+      })
+    return () => { vivo = false }
+  }, [sessione])
+
   return (
     <div className="guscio">
       <Marchio />
+
       {!configurato ? (
         <div className="scheda">
           <h2>Manca il collegamento al database</h2>
@@ -307,10 +300,36 @@ export default function App() {
         </div>
       ) : !pronto ? (
         <div className="scheda"><p>Un attimo&hellip;</p></div>
-      ) : sessione ? (
-        <Profilo sessione={sessione} />
-      ) : (
+      ) : !sessione ? (
         <Accesso />
+      ) : !profilo ? (
+        <div className="scheda">
+          {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
+        </div>
+      ) : (
+        <>
+          <nav className="schede">
+            <button
+              className={scheda === 'giochi' ? 'scheda-attiva' : ''}
+              onClick={() => setScheda('giochi')}
+            >
+              Giochi
+            </button>
+            <button
+              className={scheda === 'profilo' ? 'scheda-attiva' : ''}
+              onClick={() => setScheda('profilo')}
+            >
+              Profilo
+            </button>
+            <button className="esci" onClick={() => supabase.auth.signOut()}>Esci</button>
+          </nav>
+
+          {scheda === 'giochi' ? (
+            <Giochi profilo={profilo} />
+          ) : (
+            <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
+          )}
+        </>
       )}
     </div>
   )
