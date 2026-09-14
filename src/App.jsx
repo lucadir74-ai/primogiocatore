@@ -1,4 +1,4 @@
-// Primo Giocatore v1.11.0 - 202609151300
+// Primo Giocatore v1.13.0 - 202609151700
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -313,7 +313,7 @@ export default function App() {
               className={scheda === 'statistiche' ? 'scheda-attiva' : ''}
               onClick={() => setScheda('statistiche')}
             >
-              Numeri
+              Statistiche
             </button>
             <button
               className={scheda === 'giochi' ? 'scheda-attiva' : ''}
