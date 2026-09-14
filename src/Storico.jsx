@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.6.0 - 202609142200
+// v1.6.1 - 202609142300
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -135,9 +135,14 @@ export default function Storico({ profilo }) {
       {/* --- Partite --- */}
       {sezione === 'partite' && partite.map((p) => {
         const apertaQui = aperta === p.id
-        const classifica = [...(p.partecipazioni || [])].sort(
-          (a, b) => (a.posizione ?? 99) - (b.posizione ?? 99)
-        )
+        // Ordina per piazzamento; dove manca (partite registrate prima
+        // della classifica automatica) ripiega sul punteggio.
+        const classifica = [...(p.partecipazioni || [])].sort((a, b) => {
+          if (a.posizione != null && b.posizione != null) return a.posizione - b.posizione
+          if (a.posizione != null) return -1
+          if (b.posizione != null) return 1
+          return (b.punteggio_totale ?? -Infinity) - (a.punteggio_totale ?? -Infinity)
+        })
         const vincitori = classifica.filter((x) => x.vincitore).map((x) => chi(x).nome)
 
         return (
