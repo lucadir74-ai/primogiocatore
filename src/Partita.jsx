@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.11.0 - 202609151300
+// v1.15.0 - 202609152000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -201,6 +201,24 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   const [nuovoOspite, setNuovoOspite] = useState('')
+  const [fazioniNote, setFazioniNote] = useState([])
+
+  // I suggerimenti nascono dall'uso: le fazioni già scritte in altre
+  // partite a questo gioco. Nessun elenco da compilare a mano.
+  useEffect(() => {
+    if (!gioco?.usa_fazioni) { setFazioniNote([]); return }
+    let vivo = true
+    supabase
+      .from('partecipazioni')
+      .select('ruolo, partite!inner(gioco_id)')
+      .eq('partite.gioco_id', gioco.id)
+      .not('ruolo', 'is', null)
+      .then(({ data }) => {
+        if (!vivo || !data) return
+        setFazioniNote([...new Set(data.map((r) => r.ruolo).filter(Boolean))].sort())
+      })
+    return () => { vivo = false }
+  }, [gioco?.id, gioco?.usa_fazioni])
 
   async function creaOspite() {
     const nome = nuovoOspite.trim()
@@ -446,6 +464,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             </div>
           </div>
 
+          {gioco.usa_fazioni && (
+            <datalist id="fazioni-note">
+              {fazioniNote.map((f) => <option key={f} value={f} />)}
+            </datalist>
+          )}
+
           <h3 className="titolo-sezione">Chi ha giocato</h3>
 
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
@@ -463,6 +487,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     <strong>{r.nome}</strong>
                     {r.ospite_id && <span className="anno"> ospite</span>}
                     {vince && <span className="etichetta-vince">vince</span>}
+                    {gioco.usa_fazioni && (
+                      <input
+                        className="campo-fazione"
+                        list="fazioni-note"
+                        value={r.ruolo || ''}
+                        onChange={(e) => cambia(r.chiave, 'ruolo', e.target.value)}
+                        placeholder="fazione"
+                        aria-label={`Fazione di ${r.nome}`}
+                      />
+                    )}
                   </div>
 
                   {tipo !== 'coop' && (

@@ -781,3 +781,39 @@ body {
   outline-offset: 1px;
   background: var(--superficie);
 }
+
+/* ---------- Fazioni ---------- */
+.spunta-fazioni {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--inchiostro-tenue);
+}
+
+.campo-fazione {
+  display: block;
+  width: 100%;
+  max-width: 11rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px dashed var(--bordo);
+  border-radius: 6px;
+}
+
+.campo-fazione:focus-visible {
+  outline: 2px solid var(--blu);
+  outline-offset: 1px;
+  background: var(--superficie);
+  border-style: solid;
+}
+
+.fazione-nota {
+  font-size: 0.78rem;
+  color: var(--inchiostro-tenue);
+}

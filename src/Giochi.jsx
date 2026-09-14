@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v1.3.0 - 202609141800
+// v1.15.0 - 202609152000
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
@@ -27,7 +27,7 @@ export default function Giochi({ profilo }) {
   async function caricaCatalogo() {
     const { data, error } = await supabase
       .from('giochi')
-      .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio')
+      .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni')
       .order('nome')
     if (error) setErrore(error.message)
     else setCatalogo(data || [])
@@ -167,6 +167,12 @@ export default function Giochi({ profilo }) {
     setMessaggio(`${manuale.nome.trim()} aggiunto a mano.`)
     setManuale(null)
     caricaCatalogo()
+  }
+
+  async function cambiaFazioni(giocoId, valore) {
+    const { error } = await supabase.from('giochi').update({ usa_fazioni: valore }).eq('id', giocoId)
+    if (error) setErrore(error.message)
+    else setCatalogo((c) => c.map((g) => (g.id === giocoId ? { ...g, usa_fazioni: valore } : g)))
   }
 
   async function cambiaPunteggio(giocoId, tipo) {
@@ -321,6 +327,14 @@ export default function Giochi({ profilo }) {
                       <option key={t.id} value={t.id}>{t.etichetta}</option>
                     ))}
                   </select>
+                  <label className="spunta-fazioni">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(g.usa_fazioni)}
+                      onChange={(e) => cambiaFazioni(g.id, e.target.checked)}
+                    />
+                    ha fazioni
+                  </label>
                 </div>
               </div>
             </li>

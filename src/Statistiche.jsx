@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.14.2 - 202609151900
+// v1.15.0 - 202609152000
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -42,7 +42,7 @@ export default function Statistiche({ profilo }) {
         giochi ( id, nome ),
         luoghi ( id, nome ),
         partecipazioni (
-          utente_id, ospite_id, punteggio_totale, posizione, vincitore,
+          utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo,
           profili:utente_id ( nome, nickname, colore ),
           ospiti:ospite_id ( nome, utente_collegato )
         )
@@ -112,11 +112,18 @@ export default function Statistiche({ profilo }) {
     for (const p of sue) {
       if (!p.giochi) continue
       const r = suaRiga(p)
-      const v = perGioco.get(p.giochi.id) || { nome: p.giochi.nome, partite: 0, vinte: 0, attese: 0, punteggi: [] }
+      const v = perGioco.get(p.giochi.id) || { nome: p.giochi.nome, partite: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
       v.partite++
       if (r.vincitore) v.vinte++
       if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
       if (r.punteggio_totale != null) v.punteggi.push(r.punteggio_totale)
+      const f = (r.ruolo || '').trim()
+      if (f) {
+        const fv = v.fazioni.get(f.toLowerCase()) || { nome: f, n: 0, vinte: 0 }
+        fv.n++
+        if (r.vincitore) fv.vinte++
+        v.fazioni.set(f.toLowerCase(), fv)
+      }
       perGioco.set(p.giochi.id, v)
     }
 
@@ -175,9 +182,25 @@ export default function Statistiche({ profilo }) {
       }
     }
 
+    // Fazioni: solo se in questo gioco qualcuno le ha scritte.
+    const fazioni = new Map()
+    for (const p of sue) {
+      for (const x of p.partecipazioni || []) {
+        const f = (x.ruolo || '').trim()
+        if (!f) continue
+        const v = fazioni.get(f.toLowerCase()) || { nome: f, partite: 0, vinte: 0, attese: 0, punteggi: [] }
+        v.partite++
+        if (x.vincitore) v.vinte++
+        if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
+        if (x.punteggio_totale != null) v.punteggi.push(x.punteggio_totale)
+        fazioni.set(f.toLowerCase(), v)
+      }
+    }
+
     const conDurata = sue.filter((p) => p.durata_minuti)
     return {
       sue, competitive,
+      fazioni: [...fazioni.values()].sort((a, b) => b.partite - a.partite),
       giocatori: [...giocatori.values()].sort((a, b) => b.partite - a.partite),
       punteggioTipico: mediana(tuttiPunteggi),
       punteggioMax: tuttiPunteggi.length ? Math.max(...tuttiPunteggi) : null,
@@ -435,6 +458,14 @@ function SchedaPersona({ d, istogramma }) {
                   {r != null ? ` · ${r.toFixed(2)}× atteso` : ''}
                 </span>
                 {med != null && <span className="anno block">punteggio tipico {med}</span>}
+                {g.fazioni?.size > 0 && (
+                  <span className="anno block fazione-nota">
+                    {[...g.fazioni.values()]
+                      .sort((a, b) => b.n - a.n)
+                      .map((f) => `${f.nome} ${f.vinte}/${f.n}`)
+                      .join(' · ')}
+                  </span>
+                )}
               </div>
             </li>
           )
@@ -484,6 +515,38 @@ function SchedaGioco({ d, nome, istogramma }) {
       </div>
 
       <Istogramma dati={istogramma(d.sue)} />
+
+      {d.fazioni.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">
+            Fazioni <span className="conteggio">{d.fazioni.length}</span>
+          </h3>
+          <ul className="elenco">
+            {d.fazioni.map((f) => {
+              const r = f.attese > 0 ? f.vinte / f.attese : null
+              const med = mediana(f.punteggi)
+              return (
+                <li key={f.nome}>
+                  <div className="nome-giocatore">
+                    <strong>{f.nome}</strong>
+                    <span className="anno block">
+                      {f.partite} {f.partite === 1 ? 'volta' : 'volte'} · {f.vinte} vinte
+                      {med != null ? ` · tipico ${med}` : ''}
+                    </span>
+                  </div>
+                  {r != null && (
+                    <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <p className="aiuto">
+            Con poche partite questi numeri dicono poco: una fazione vista due volte
+            può sembrare fortissima per caso.
+          </p>
+        </>
+      )}
 
       <h3 className="titolo-sezione">Chi lo domina</h3>
       <ul className="elenco">
