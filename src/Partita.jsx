@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.8.0 - 202609151000
+// v1.8.1 - 202609151030
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -181,10 +181,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   const ordinata = classifica()
+
+  // Chi è a pari punteggio col migliore: sono loro a doversi spareggiare.
+  const migliore = ordinata.find((r) => r.pos != null)
+  const contendenti = migliore
+    ? ordinata.filter((r) => r.punteggio !== '' && r.punteggio === migliore.punteggio)
+    : []
+  const pareggio = contendenti.length > 1 && tipo !== 'coop'
+  const mostraScelta = (r) => pareggio && contendenti.some((c) => c.chiave === r.chiave)
+
   const inTesta = ordinata.filter((r) => r.pos === 1)
-  // Pareggio vero: due in testa che nemmeno lo spareggio ha separato.
-  const pareggio = inTesta.length > 1
-  const vincitori = pareggio ? [] : inTesta.map((r) => r.chiave)
+  const vincitori = pareggio && !vincitoreScelto ? [] : inTesta.map((r) => r.chiave)
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
@@ -267,13 +274,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     } finally {
       setSalvando(false)
     }
-  }
-
-  // Vero se questo giocatore condivide il punteggio con almeno un altro:
-  // solo allora ha senso mostrare il campo dello spareggio.
-  function paritaDi(r) {
-    if (tipo === 'posizione' || r.punteggio === '') return false
-    return righe.filter((x) => x.punteggio === r.punteggio).length > 1
   }
 
   const trovati = filtro.trim().length > 0
@@ -384,22 +384,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     />
                   )}
 
-                  {tipo !== 'coop' && paritaDi(r) && (
-                    <input
-                      className="mini spareggio" type="number" inputMode="numeric"
-                      aria-label={`Spareggio di ${r.nome}`}
-                      placeholder="spar."
-                      value={r.spareggio}
-                      onChange={(e) => cambia(r.chiave, 'spareggio', e.target.value)}
-                    />
-                  )}
-
-                  {pareggio && r.pos === 1 && (
+                  {mostraScelta(r) && (
                     <button
-                      className="bottone-piatto scegli-vincitore"
-                      onClick={() => setVincitoreScelto(r.chiave)}
+                      className={`bottone-piatto scegli-vincitore${vincitoreScelto === r.chiave ? ' scelto' : ''}`}
+                      onClick={() =>
+                        setVincitoreScelto(vincitoreScelto === r.chiave ? null : r.chiave)
+                      }
                     >
-                      ha vinto
+                      {vincitoreScelto === r.chiave ? 'ha vinto ✓' : 'ha vinto'}
                     </button>
                   )}
 
@@ -412,8 +404,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
           {pareggio && (
             <p className="aiuto avviso-pareggio">
-              Pareggio in testa. Scrivi il valore di spareggio previsto dal gioco
-              (monete, denaro residuo, ordine di turno) oppure indica direttamente chi ha vinto.
+              Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso
+              secondo lo spareggio del gioco. L'altro scala al secondo posto.
             </p>
           )}
 
