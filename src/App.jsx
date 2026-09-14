@@ -1,4 +1,4 @@
-// Primo Giocatore v1.3.0 - 202609141800
+// Primo Giocatore v1.5.0 - 202609142100
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -290,26 +290,9 @@ export default function App() {
 
   return (
     <div className="guscio">
-      <Marchio />
-
-      {!configurato ? (
-        <div className="scheda">
-          <h2>Manca il collegamento al database</h2>
-          <p className="sottotitolo">
-            Imposta VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY fra le variabili
-            d&rsquo;ambiente del progetto su Vercel, poi rilancia la build.
-          </p>
-        </div>
-      ) : !pronto ? (
-        <div className="scheda"><p>Un attimo&hellip;</p></div>
-      ) : !sessione ? (
-        <Accesso />
-      ) : !profilo ? (
-        <div className="scheda">
-          {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
-        </div>
-      ) : (
-        <>
+      <header className="testata">
+        <Marchio />
+        {profilo && sessione && (
           <nav className="schede">
             <button
               className={scheda === 'partita' ? 'scheda-attiva' : ''}
@@ -331,7 +314,27 @@ export default function App() {
             </button>
             <button className="esci" onClick={() => supabase.auth.signOut()}>Esci</button>
           </nav>
+        )}
+      </header>
 
+      {!configurato ? (
+        <div className="scheda">
+          <h2>Manca il collegamento al database</h2>
+          <p className="sottotitolo">
+            Imposta VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY fra le variabili
+            d&rsquo;ambiente del progetto su Vercel, poi rilancia la build.
+          </p>
+        </div>
+      ) : !pronto ? (
+        <div className="scheda"><p>Un attimo&hellip;</p></div>
+      ) : !sessione ? (
+        <Accesso />
+      ) : !profilo ? (
+        <div className="scheda">
+          {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
+        </div>
+      ) : (
+        <>
           {scheda === 'partita' ? (
             <Partita profilo={profilo} />
           ) : scheda === 'giochi' ? (
