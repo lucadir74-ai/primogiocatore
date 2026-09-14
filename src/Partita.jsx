@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione partita
-// v1.3.0 - 202609141800
+// v1.4.0 - 202609142000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI } from './supabase'
@@ -100,15 +100,9 @@ export default function Partita({ profilo }) {
     setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
   }
 
-  // Ordina per punteggio e propone i piazzamenti. Restano modificabili:
-  // gli spareggi cambiano da gioco a gioco.
-  function calcolaPosizioni() {
-    const ordinate = [...righe].sort(
-      (a, b) => (Number(b.punteggio) || 0) - (Number(a.punteggio) || 0)
-    )
-    const conPosizione = ordinate.map((r, i) => ({ ...r, posizione: i + 1, vincitore: i === 0 }))
-    setRighe(righe.map((r) => conPosizione.find((c) => c.chiave === r.chiave)))
-  }
+  // Chi ha vinto lo decide chi registra, ma solo quando serve davvero:
+  // in caso di pareggio in testa. Altrimenti è il punteggio a parlare.
+  const [vincitoreScelto, setVincitoreScelto] = useState(null)
 
   async function salva() {
     setErrore('')
@@ -149,14 +143,16 @@ export default function Partita({ profilo }) {
         .select().single()
       if (e1) throw e1
 
-      const partecipazioni = righe.map((r) => ({
+      // La posizione viene salvata, non ricalcolata a ogni lettura:
+      // gli spareggi cambiano da gioco a gioco.
+      const partecipazioni = ordinata.map((r) => ({
         partita_id: partita.id,
         utente_id: r.utente_id || null,
         ospite_id: r.ospite_id || null,
         ruolo: r.ruolo?.trim() || null,
         punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
-        posizione: r.posizione === '' ? null : Number(r.posizione),
-        vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : Boolean(r.vincitore),
+        posizione: tipo === 'coop' ? null : r.pos,
+        vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
         primo_giocatore: Boolean(r.primo),
       }))
       const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
@@ -165,6 +161,7 @@ export default function Partita({ profilo }) {
       setMessaggio('Partita registrata.')
       setGioco(null)
       setRighe([])
+      setVincitoreScelto(null)
       setNote('')
       setSecondi(0)
       setInCorso(false)
@@ -177,6 +174,40 @@ export default function Partita({ profilo }) {
   }
 
   const tipo = gioco?.tipo_punteggio || 'punti'
+
+  // Classifica ricalcolata a ogni battuta. I pari merito prendono la
+  // stessa posizione, e il successivo salta i posti occupati:
+  // 100, 100, 80 dà 1°, 1°, 3°.
+  function classifica() {
+    if (tipo === 'coop') return righe.map((r) => ({ ...r, pos: null }))
+
+    const valore = (r) =>
+      tipo === 'posizione' ? (r.posizione === '' ? Infinity : Number(r.posizione))
+                           : (r.punteggio === '' ? -Infinity : Number(r.punteggio))
+
+    const ordinate = [...righe].sort((a, b) =>
+      tipo === 'posizione' ? valore(a) - valore(b) : valore(b) - valore(a)
+    )
+
+    let ultimoValore = null
+    let ultimaPos = 0
+    return ordinate.map((r, i) => {
+      const v = valore(r)
+      const vuoto = v === -Infinity || v === Infinity
+      if (!vuoto && v === ultimoValore) return { ...r, pos: ultimaPos }
+      ultimoValore = v
+      ultimaPos = i + 1
+      return { ...r, pos: vuoto ? null : i + 1 }
+    })
+  }
+
+  const ordinata = classifica()
+  const inTesta = ordinata.filter((r) => r.pos === 1)
+  const pareggio = inTesta.length > 1
+  const vincitori = pareggio
+    ? (vincitoreScelto ? [vincitoreScelto] : [])
+    : inTesta.map((r) => r.chiave)
+
   const trovati = filtro.trim().length > 0
     ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase())).slice(0, 8)
     : []
@@ -251,50 +282,57 @@ export default function Partita({ profilo }) {
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
 
           <ul className="elenco elenco-giocatori">
-            {righe.map((r) => (
-              <li key={r.chiave}>
-                <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
-                <div className="nome-giocatore">
-                  <strong>{r.nome}</strong>
-                  {r.ospite_id && <span className="anno"> ospite</span>}
-                </div>
+            {ordinata.map((r) => {
+              const vince = vincitori.includes(r.chiave)
+              return (
+                <li key={r.chiave} className={vince ? 'vincitore' : ''}>
+                  {tipo !== 'coop' && (
+                    <span className="posto" aria-hidden="true">
+                      {r.pos ? `${r.pos}°` : '–'}
+                    </span>
+                  )}
+                  <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
+                  <div className="nome-giocatore">
+                    <strong>{r.nome}</strong>
+                    {r.ospite_id && <span className="anno"> ospite</span>}
+                    {vince && <span className="etichetta-vince">vince</span>}
+                  </div>
 
-                {tipo !== 'coop' && (
-                  <input
-                    className="mini"
-                    type="number"
-                    inputMode="numeric"
-                    aria-label={`Punteggio di ${r.nome}`}
-                    placeholder={tipo === 'posizione' ? 'pos.' : 'punti'}
-                    value={tipo === 'posizione' ? r.posizione : r.punteggio}
-                    onChange={(e) =>
-                      modifica(r.chiave, tipo === 'posizione' ? 'posizione' : 'punteggio', e.target.value)
-                    }
-                  />
-                )}
-
-                {tipo !== 'coop' && (
-                  <label className="vince">
+                  {tipo !== 'coop' && (
                     <input
-                      type="checkbox"
-                      checked={r.vincitore}
-                      onChange={(e) => modifica(r.chiave, 'vincitore', e.target.checked)}
+                      className="mini"
+                      type="number"
+                      inputMode="numeric"
+                      aria-label={`Punteggio di ${r.nome}`}
+                      placeholder={tipo === 'posizione' ? 'pos.' : 'punti'}
+                      value={tipo === 'posizione' ? r.posizione : r.punteggio}
+                      onChange={(e) =>
+                        modifica(r.chiave, tipo === 'posizione' ? 'posizione' : 'punteggio', e.target.value)
+                      }
                     />
-                    vince
-                  </label>
-                )}
+                  )}
 
-                <button className="bottone-piatto" onClick={() => togli(r.chiave)} aria-label={`Togli ${r.nome}`}>
-                  ×
-                </button>
-              </li>
-            ))}
+                  {pareggio && r.pos === 1 && (
+                    <button
+                      className={`bottone-piatto scegli-vincitore${vincitoreScelto === r.chiave ? ' scelto' : ''}`}
+                      onClick={() => setVincitoreScelto(r.chiave)}
+                    >
+                      {vincitoreScelto === r.chiave ? 'vince' : 'ha vinto'}
+                    </button>
+                  )}
+
+                  <button className="bottone-piatto" onClick={() => togli(r.chiave)} aria-label={`Togli ${r.nome}`}>
+                    ×
+                  </button>
+                </li>
+              )
+            })}
           </ul>
 
-          {tipo === 'punti' && righe.length > 1 && (
-            <button className="bottone bottone-secondario" onClick={calcolaPosizioni}>
-              Ordina per punteggio
-            </button>
+          {pareggio && (
+            <p className="aiuto avviso-pareggio">
+              Pareggio in testa: scegli chi ha vinto secondo lo spareggio del gioco.
+            </p>
           )}
 
           {tipo === 'coop' && (

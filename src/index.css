@@ -407,3 +407,46 @@ body {
 .pastiglia-nome.ospite { border-style: dashed; }
 .pastiglia-nome.nuovo { border-color: var(--inchiostro); font-weight: 600; }
 .pastiglia-nome:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+/* --- Classifica in corso --- */
+.elenco-giocatori li {
+  padding: 0.55rem 0.5rem;
+  border-radius: 8px;
+  transition: background 140ms ease;
+}
+
+.elenco-giocatori li.vincitore {
+  background: #F3F7F4;
+  box-shadow: inset 3px 0 0 var(--verde);
+}
+
+.posto {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--inchiostro-tenue);
+  font-variant-numeric: tabular-nums;
+  width: 1.6rem;
+  flex: none;
+}
+
+.elenco-giocatori li.vincitore .posto { color: var(--verde); }
+
+.etichetta-vince {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--verde);
+}
+
+.scegli-vincitore { font-size: 0.82rem; white-space: nowrap; }
+.scegli-vincitore.scelto { color: var(--verde); font-weight: 600; }
+
+.avviso-pareggio { color: var(--rosso); }
+
+@media (prefers-reduced-motion: reduce) {
+  .elenco-giocatori li { transition: none; }
+}
