@@ -1,8 +1,9 @@
 // Primo Giocatore - Esporta e importa
-// v1.18.0 - 202609160900
+// v1.20.0 - 202609161100
 
 import { useRef, useState } from 'react'
 import { supabase } from './supabase'
+import { importaBgstats, analizzaBgstats } from './bgstats'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
@@ -21,6 +22,11 @@ export default function Dati({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [lavorando, setLavorando] = useState(false)
   const fileRef = useRef(null)
+  const bgsRef = useRef(null)
+  const [avanzamento, setAvanzamento] = useState(null)
+  const [anteprima, setAnteprima] = useState(null)   // { doc, analisi }
+  const [miei, setMiei] = useState([])               // id dei profili che sono io
+  const [cercaGiocatore, setCercaGiocatore] = useState('')
 
   async function leggiTutto() {
     const { data, error } = await supabase
@@ -133,8 +139,18 @@ export default function Dati({ profilo }) {
     try {
       const testo = await file.text()
       const doc = JSON.parse(testo)
+
+      // Il backup di BG Stats si riconosce dai suoi array: lo passo
+      // al convertitore invece di rifiutarlo.
+      if (doc.plays && doc.games && doc.players) {
+        const analisi = analizzaBgstats(doc)
+        setAnteprima({ doc, analisi })
+        setMiei(analisi.suggerito != null ? [analisi.suggerito] : [])
+        return
+      }
+
       if (doc.formato !== 'primo-giocatore') {
-        throw new Error('Questo file non è un\u2019esportazione di Primo Giocatore.')
+        throw new Error('Questo file non è né un\u2019esportazione di Primo Giocatore né un backup di BG Stats.')
       }
 
       let aggiunte = 0
@@ -266,8 +282,112 @@ export default function Dati({ profilo }) {
       setErrore(e.message)
     } finally {
       setLavorando(false)
+      setAvanzamento(null)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  async function confermaBgstats() {
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    try {
+      const esito = await importaBgstats(anteprima.doc, profilo, miei, setAvanzamento)
+      setMessaggio(
+        `Importate ${esito.importate} partite` +
+        (esito.saltate ? `, ${esito.saltate} già presenti e saltate` : '') +
+        (esito.senzaGioco ? `, ${esito.senzaGioco} senza gioco riconoscibile` : '') +
+        `. Catalogo aggiornato con ${esito.giochi} giochi.`
+      )
+      setAnteprima(null)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+      setAvanzamento(null)
+    }
+  }
+
+  const listaGiocatori = anteprima
+    ? anteprima.analisi.giocatori.filter((g) =>
+        !cercaGiocatore.trim() || g.nome.toLowerCase().includes(cercaGiocatore.trim().toLowerCase())
+      )
+    : []
+
+  if (anteprima) {
+    return (
+      <div className="scheda">
+        <h2>Backup di BG Stats</h2>
+        <p className="sottotitolo">
+          {anteprima.analisi.partite} partite, {anteprima.analisi.giochi} giochi,
+          {' '}{anteprima.analisi.giocatori.length} giocatori.
+        </p>
+
+        {errore && <div className="avviso errore">{errore}</div>}
+
+        <h3 className="titolo-sezione">Quale di questi sei tu?</h3>
+        <p className="aiuto">
+          Serve per attribuirti le partite. Puoi sceglierne più di uno: se in BG Stats
+          ti sei ritrovato con profili doppi, qui tornano a essere una persona sola.
+          Tutti gli altri diventano ospiti.
+        </p>
+
+        <input
+          className="campo-cerca"
+          value={cercaGiocatore}
+          onChange={(e) => setCercaGiocatore(e.target.value)}
+          placeholder="Cerca un nome"
+          aria-label="Cerca fra i giocatori del file"
+        />
+
+        <ul className="elenco elenco-scelta">
+          {listaGiocatori.slice(0, 40).map((g) => (
+            <li key={g.id}>
+              <label className="scelta-io">
+                <input
+                  type="checkbox"
+                  checked={miei.includes(g.id)}
+                  onChange={(e) =>
+                    setMiei(e.target.checked ? [...miei, g.id] : miei.filter((x) => x !== g.id))
+                  }
+                />
+                <span className="nome-giocatore">
+                  <strong>{g.nome}</strong>
+                  {g.id === anteprima.analisi.meRefId && (
+                    <span className="anno"> · indicato da BG Stats</span>
+                  )}
+                </span>
+                <span className="anno">{g.partite}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+
+        {avanzamento && (
+          <div className="avanzamento">
+            <span>{avanzamento.fase}</span>
+            {avanzamento.totale > 1 && (
+              <>
+                <div className="barra-avanzamento">
+                  <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
+                </div>
+                <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        <button className="bottone" onClick={confermaBgstats} disabled={lavorando || miei.length === 0}>
+          {lavorando ? 'Importo\u2026' : `Importa ${anteprima.analisi.partite} partite`}
+        </button>
+        <button className="bottone bottone-secondario" onClick={() => setAnteprima(null)} disabled={lavorando}>
+          Annulla
+        </button>
+
+        <p className="aiuto">
+          Può volerci qualche minuto. Non chiudere la pagina: se si interrompe, i giochi e
+          le partite già scritti restano, e ricaricando lo stesso file riprende da dove era.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -288,9 +408,25 @@ export default function Dati({ profilo }) {
 
       <h3 className="titolo-sezione">Importa</h3>
       <p className="aiuto">
-        Accetta i file esportati da qui. Le partite già presenti vengono riconosciute e
-        saltate, quindi puoi reimportare lo stesso file senza creare doppioni.
+        Accetta sia i file esportati da qui, sia il backup di <strong>BG Stats</strong>
+        (Impostazioni → Esportazione). Il formato viene riconosciuto da solo. Le partite
+        già presenti vengono saltate, quindi lo stesso file si può ricaricare senza
+        creare doppioni.
       </p>
+
+      {avanzamento && (
+        <div className="avanzamento">
+          <span>{avanzamento.fase}</span>
+          {avanzamento.totale > 1 && (
+            <>
+              <div className="barra-avanzamento">
+                <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
+              </div>
+              <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
+            </>
+          )}
+        </div>
+      )}
       <input
         ref={fileRef}
         type="file"

@@ -890,3 +890,42 @@ body {
   border-radius: 8px;
   cursor: pointer;
 }
+
+/* ---------- Avanzamento dell'importazione ---------- */
+.avanzamento {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+  color: var(--inchiostro-tenue);
+}
+
+.barra-avanzamento {
+  flex: 1;
+  height: 6px;
+  background: var(--carta);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barra-avanzamento div {
+  height: 100%;
+  background: var(--verde);
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+
+/* ---------- Scelta dei propri profili in importazione ---------- */
+.elenco-scelta { max-height: 22rem; overflow-y: auto; }
+
+.scelta-io {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.scelta-io input { flex: none; width: 1.1rem; height: 1.1rem; }
+.scelta-io .nome-giocatore { flex: 1; min-width: 0; }
