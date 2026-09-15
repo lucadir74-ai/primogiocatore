@@ -929,3 +929,36 @@ body {
 
 .scelta-io input { flex: none; width: 1.1rem; height: 1.1rem; }
 .scelta-io .nome-giocatore { flex: 1; min-width: 0; }
+
+/* ---------- Partite dentro le statistiche ---------- */
+.nome-cliccabile {
+  font: inherit;
+  font-weight: 700;
+  color: var(--inchiostro);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--bordo);
+  text-underline-offset: 3px;
+}
+
+.nome-cliccabile:hover { text-decoration-color: var(--blu); }
+.nome-cliccabile:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; border-radius: 4px; }
+
+.gruppo-giorno { margin-bottom: 1rem; }
+
+.giorno {
+  font-family: var(--testo);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--inchiostro-tenue);
+  margin: 0.9rem 0 0.2rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 45%, transparent);
+}
+
+.giorno .conteggio { font-weight: 500; }

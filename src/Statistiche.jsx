@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.17.0 - 202609152200
+// v1.21.0 - 202609161400
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -23,7 +23,7 @@ const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x
 const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
-export default function Statistiche({ profilo }) {
+export default function Statistiche({ profilo, onModifica }) {
   const [partite, setPartite] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -38,7 +38,7 @@ export default function Statistiche({ profilo }) {
     const { data, error } = await supabase
       .from('partite')
       .select(`
-        id, giocata_il, durata_minuti, tipo_punteggio, esito_coop,
+        id, giocata_il, durata_minuti, tipo_punteggio, esito_coop, note, registrata_da,
         giochi ( id, nome ),
         luoghi ( id, nome ),
         partecipazioni (
@@ -112,7 +112,7 @@ export default function Statistiche({ profilo }) {
     for (const p of sue) {
       if (!p.giochi) continue
       const r = suaRiga(p)
-      const v = perGioco.get(p.giochi.id) || { nome: p.giochi.nome, partite: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
+      const v = perGioco.get(p.giochi.id) || { id: p.giochi.id, nome: p.giochi.nome, partite: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
       v.partite++
       if (r.vincitore) v.vinte++
       if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
@@ -351,9 +351,19 @@ export default function Statistiche({ profilo }) {
       {partite.length === 0 ? (
         <p className="aiuto">Ancora nessuna partita registrata.</p>
       ) : tipo === 'persona' ? (
-        <SchedaPersona d={dellaPersona(attivo)} istogramma={istogramma} />
+        <SchedaPersona
+          d={dellaPersona(attivo)}
+          istogramma={istogramma}
+          vaiAlGioco={(id) => { setTipo('gioco'); setCerca(''); setScelto(id) }}
+        />
       ) : tipo === 'gioco' ? (
-        <SchedaGioco d={delGioco(attivo)} nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]} istogramma={istogramma} />
+        <SchedaGioco
+          d={delGioco(attivo)}
+          nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]}
+          istogramma={istogramma}
+          profilo={profilo}
+          onModifica={onModifica}
+        />
       ) : tipo === 'luogo' ? (
         <SchedaLuogo d={delLuogo(attivo)} istogramma={istogramma} />
       ) : (
@@ -394,7 +404,7 @@ function Istogramma({ dati }) {
 
 /* ---------- Giocatore ---------- */
 
-function SchedaPersona({ d, istogramma }) {
+function SchedaPersona({ d, istogramma, vaiAlGioco }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita per questo giocatore.</p>
   return (
     <>
@@ -467,7 +477,9 @@ function SchedaPersona({ d, istogramma }) {
           return (
             <li key={g.nome}>
               <div className="nome-giocatore">
-                <strong>{g.nome}</strong>
+                <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>
+                  {g.nome}
+                </button>
                 <span className="anno block">
                   {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {g.vinte} vinte
                   {r != null ? ` · ${r.toFixed(2)}× atteso` : ''}
@@ -508,7 +520,109 @@ function SchedaPersona({ d, istogramma }) {
 
 /* ---------- Gioco ---------- */
 
-function SchedaGioco({ d, nome, istogramma }) {
+function PartiteDelGioco({ partite, profilo, onModifica }) {
+  const [aperta, setAperta] = useState(null)
+
+  // Raggruppate per giorno: le serate di gioco stanno insieme.
+  const perGiorno = new Map()
+  for (const p of [...partite].reverse()) {
+    const k = p.giocata_il.slice(0, 10)
+    if (!perGiorno.has(k)) perGiorno.set(k, [])
+    perGiorno.get(k).push(p)
+  }
+
+  const nomeDiRiga = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
+  const coloreDiRiga = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
+
+  return (
+    <>
+      <h3 className="titolo-sezione">
+        Tutte le partite <span className="conteggio">{partite.length}</span>
+      </h3>
+
+      {[...perGiorno.entries()].map(([data, delGiorno]) => (
+        <div className="gruppo-giorno" key={data}>
+          <h4 className="giorno">
+            {giorno(data)}
+            {delGiorno.length > 1 && <span className="conteggio"> {delGiorno.length} partite</span>}
+          </h4>
+
+          {delGiorno.map((p) => {
+            const apertaQui = aperta === p.id
+            const classifica = [...(p.partecipazioni || [])].sort((a, b) => {
+              if (a.posizione != null && b.posizione != null) return a.posizione - b.posizione
+              if (a.posizione != null) return -1
+              if (b.posizione != null) return 1
+              return (b.punteggio_totale ?? -Infinity) - (a.punteggio_totale ?? -Infinity)
+            })
+            const vincitori = classifica.filter((x) => x.vincitore).map(nomeDiRiga)
+
+            return (
+              <div className={`riga-partita${apertaQui ? ' aperta' : ''}`} key={p.id}>
+                <button className="testa-partita" onClick={() => setAperta(apertaQui ? null : p.id)}>
+                  <div className="dati-partita">
+                    <strong>
+                      {p.luoghi?.nome || 'Luogo non indicato'}
+                      {p.durata_minuti ? ` · ${p.durata_minuti} min` : ''}
+                    </strong>
+                    <span className="anno">
+                      {(p.partecipazioni || []).length} giocatori
+                      {vincitori.length
+                        ? p.tipo_punteggio === 'coop'
+                          ? p.esito_coop === 'vinta' ? ' · vinta insieme' : ' · persa insieme'
+                          : ` · vince ${vincitori.join(', ')}`
+                        : ''}
+                    </span>
+                  </div>
+                  <span className="freccia" aria-hidden="true">{apertaQui ? '−' : '+'}</span>
+                </button>
+
+                {apertaQui && (
+                  <div className="dettaglio">
+                    <ul className="elenco elenco-giocatori">
+                      {classifica.map((x, i) => (
+                        <li key={i} className={x.vincitore ? 'vincitore' : ''}>
+                          {p.tipo_punteggio !== 'coop' && (
+                            <span className="posto">{x.posizione ? `${x.posizione}°` : '–'}</span>
+                          )}
+                          <span className="pallino" style={{ background: coloreDiRiga(x) }} aria-hidden="true" />
+                          <div className="nome-giocatore">
+                            <strong>{nomeDiRiga(x)}</strong>
+                            {x.ospite_id && <span className="anno"> ospite</span>}
+                            {(x.ruolo || x.ordine_turno != null) && (
+                              <span className="anno block fazione-nota">
+                                {x.ruolo}
+                                {x.ruolo && x.ordine_turno != null ? ' · ' : ''}
+                                {x.ordine_turno != null ? `${x.ordine_turno}° di turno` : ''}
+                              </span>
+                            )}
+                          </div>
+                          {x.punteggio_totale != null && (
+                            <span className="punti-finali">{x.punteggio_totale}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {p.note && <p className="aiuto note-partita">{p.note}</p>}
+
+                    {p.registrata_da === profilo.id && onModifica && (
+                      <button className="bottone-piatto" onClick={() => onModifica(p.id)}>
+                        Modifica
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
     <>
@@ -616,6 +730,8 @@ function SchedaGioco({ d, nome, istogramma }) {
           )
         })}
       </ul>
+
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} />
     </>
   )
 }
