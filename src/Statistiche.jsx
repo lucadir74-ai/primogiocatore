@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.15.0 - 202609152000
+// v1.17.0 - 202609152200
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -42,7 +42,7 @@ export default function Statistiche({ profilo }) {
         giochi ( id, nome ),
         luoghi ( id, nome ),
         partecipazioni (
-          utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo,
+          utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, ordine_turno,
           profili:utente_id ( nome, nickname, colore ),
           ospiti:ospite_id ( nome, utente_collegato )
         )
@@ -197,9 +197,24 @@ export default function Statistiche({ profilo }) {
       }
     }
 
+    // Ordine di turno: quanto conta partire per primi in questo gioco.
+    const turni = new Map()
+    for (const p of competitive) {
+      for (const x of p.partecipazioni || []) {
+        if (x.ordine_turno == null) continue
+        const v = turni.get(x.ordine_turno) || { ordine: x.ordine_turno, partite: 0, vinte: 0, attese: 0, punteggi: [] }
+        v.partite++
+        if (x.vincitore) v.vinte++
+        if (quanti(p) > 0) v.attese += 1 / quanti(p)
+        if (x.punteggio_totale != null) v.punteggi.push(x.punteggio_totale)
+        turni.set(x.ordine_turno, v)
+      }
+    }
+
     const conDurata = sue.filter((p) => p.durata_minuti)
     return {
       sue, competitive,
+      turni: [...turni.values()].sort((a, b) => a.ordine - b.ordine),
       fazioni: [...fazioni.values()].sort((a, b) => b.partite - a.partite),
       giocatori: [...giocatori.values()].sort((a, b) => b.partite - a.partite),
       punteggioTipico: mediana(tuttiPunteggi),
@@ -515,6 +530,37 @@ function SchedaGioco({ d, nome, istogramma }) {
       </div>
 
       <Istogramma dati={istogramma(d.sue)} />
+
+      {d.turni.length > 1 && (
+        <>
+          <h3 className="titolo-sezione">Ordine di turno</h3>
+          <ul className="elenco">
+            {d.turni.map((t) => {
+              const r = t.attese > 0 ? t.vinte / t.attese : null
+              const med = mediana(t.punteggi)
+              return (
+                <li key={t.ordine}>
+                  <span className="posto">{t.ordine}°</span>
+                  <div className="nome-giocatore">
+                    <strong>{t.ordine === 1 ? 'Chi inizia' : `${t.ordine}° di turno`}</strong>
+                    <span className="anno block">
+                      {t.partite} {t.partite === 1 ? 'volta' : 'volte'} · {t.vinte} vinte
+                      {med != null ? ` · tipico ${med}` : ''}
+                    </span>
+                  </div>
+                  {r != null && (
+                    <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <p className="aiuto">
+            Sopra 1,00 significa che da quella posizione si vince più del dovuto. Serve
+            parecchie partite prima che il dato smetta di essere rumore.
+          </p>
+        </>
+      )}
 
       {d.fazioni.length > 0 && (
         <>

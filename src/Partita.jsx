@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.15.0 - 202609152000
+// v1.17.0 - 202609152200
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -150,7 +150,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop,
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
-          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio,
+          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
           profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome )
         )
       `)
@@ -175,7 +175,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         posizione: p.posizione == null ? '' : String(p.posizione),
         spareggio: p.spareggio == null ? '' : String(p.spareggio),
         ruolo: p.ruolo || '',
-        primo: false,
+        ordine: p.ordine_turno ?? null,
       }))
     )
     setCaricamento(false)
@@ -186,22 +186,23 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setFiltro('')
     setErrore('')
     if (righe.length === 0) {
-      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: daMostrare(profilo), punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
+      setRighe([{ chiave: `u-${profilo.id}`, utente_id: profilo.id, nome: daMostrare(profilo), punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
     }
   }
 
   function aggiungiPersona(p) {
     if (righe.some((r) => r.utente_id === p.id)) return
-    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: daMostrare(p), punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
+    setRighe([...righe, { chiave: `u-${p.id}`, utente_id: p.id, nome: daMostrare(p), punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
   }
 
   function aggiungiOspite(o) {
     if (righe.some((r) => r.ospite_id === o.id)) return
-    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', primo: false }])
+    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
   }
 
   const [nuovoOspite, setNuovoOspite] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
+  const [segnandoOrdine, setSegnandoOrdine] = useState(false)
 
   // I suggerimenti nascono dall'uso: le fazioni già scritte in altre
   // partite a questo gioco. Nessun elenco da compilare a mano.
@@ -235,6 +236,26 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, [campo]: valore } : r)))
 
   const togli = (chiave) => setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
+
+  // Si tocca nell'ordine in cui si è giocato: 1 a chi ha iniziato.
+  // Ritoccare un numero già dato lo toglie e ricompatta gli altri.
+  function segnaOrdine(chiave) {
+    setRighe((rs) => {
+      const r = rs.find((x) => x.chiave === chiave)
+      if (r?.ordine != null) {
+        const tolto = r.ordine
+        return rs.map((x) =>
+          x.chiave === chiave ? { ...x, ordine: null }
+          : x.ordine != null && x.ordine > tolto ? { ...x, ordine: x.ordine - 1 }
+          : x
+        )
+      }
+      const prossimo = Math.max(0, ...rs.map((x) => x.ordine || 0)) + 1
+      return rs.map((x) => (x.chiave === chiave ? { ...x, ordine: prossimo } : x))
+    })
+  }
+
+  const azzeraOrdine = () => setRighe((rs) => rs.map((x) => ({ ...x, ordine: null })))
 
   const tipo = gioco?.tipo_punteggio || 'punti'
 
@@ -358,7 +379,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         spareggio: r.spareggio === '' ? null : Number(r.spareggio),
         posizione: tipo === 'coop' ? null : r.pos,
         vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
-        primo_giocatore: Boolean(r.primo),
+        ordine_turno: r.ordine ?? null,
+        primo_giocatore: r.ordine === 1,
       }))
       const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
       if (e2) throw e2
@@ -482,11 +504,24 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   {tipo !== 'coop' && (
                     <span className="posto" aria-hidden="true">{r.pos ? `${r.pos}°` : '–'}</span>
                   )}
-                  <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
+                  {segnandoOrdine ? (
+                    <button
+                      className={`tondo-ordine${r.ordine != null ? ' dato' : ''}`}
+                      onClick={() => segnaOrdine(r.chiave)}
+                      aria-label={r.ordine != null ? `${r.nome} ha giocato ${r.ordine}° di turno` : `Segna ${r.nome}`}
+                    >
+                      {r.ordine ?? ''}
+                    </button>
+                  ) : (
+                    <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
+                  )}
                   <div className="nome-giocatore">
                     <strong>{r.nome}</strong>
                     {r.ospite_id && <span className="anno"> ospite</span>}
                     {vince && <span className="etichetta-vince">vince</span>}
+                    {!segnandoOrdine && r.ordine != null && (
+                      <span className="anno fazione-nota"> · {r.ordine}° di turno</span>
+                    )}
                     {gioco.usa_fazioni && (
                       <input
                         className="campo-fazione"
@@ -528,6 +563,27 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               )
             })}
           </ul>
+
+          {righe.length > 1 && (
+            <div className="riga-ordine">
+              <button
+                className={`bottone bottone-secondario${segnandoOrdine ? ' attivo' : ''}`}
+                onClick={() => setSegnandoOrdine(!segnandoOrdine)}
+              >
+                {segnandoOrdine ? 'Fatto' : 'Segna l\u2019ordine di turno'}
+              </button>
+              {segnandoOrdine && righe.some((r) => r.ordine != null) && (
+                <button className="bottone-piatto" onClick={azzeraOrdine}>azzera</button>
+              )}
+            </div>
+          )}
+
+          {segnandoOrdine && (
+            <p className="aiuto">
+              Tocca i giocatori nell&rsquo;ordine in cui hanno giocato: il primo prende 1.
+              Toccando di nuovo un numero lo togli.
+            </p>
+          )}
 
           {pareggio && (
             <div className="blocco-pareggio">

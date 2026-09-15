@@ -836,3 +836,33 @@ body {
   font-size: 0.78rem;
   color: var(--inchiostro-tenue);
 }
+
+/* ---------- Ordine di turno ---------- */
+.tondo-ordine {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-family: var(--display);
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--inchiostro-tenue);
+  background: none;
+  border: 2px dashed var(--bordo);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tondo-ordine.dato {
+  border-style: solid;
+  border-color: var(--giallo);
+  background: var(--giallo);
+  color: #131C26;
+}
+
+.tondo-ordine:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+.riga-ordine { display: flex; align-items: center; gap: 0.8rem; }
+.riga-ordine .bottone { margin-top: 0; }
