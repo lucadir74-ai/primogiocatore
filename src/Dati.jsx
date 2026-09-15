@@ -1,0 +1,310 @@
+// Primo Giocatore - Esporta e importa
+// v1.18.0 - 202609160900
+
+import { useRef, useState } from 'react'
+import { supabase } from './supabase'
+
+const OGGI = () => new Date().toISOString().slice(0, 10)
+
+function scarica(nomeFile, contenuto, tipo) {
+  const blob = new Blob([contenuto], { type: tipo })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nomeFile
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export default function Dati({ profilo }) {
+  const [errore, setErrore] = useState('')
+  const [messaggio, setMessaggio] = useState('')
+  const [lavorando, setLavorando] = useState(false)
+  const fileRef = useRef(null)
+
+  async function leggiTutto() {
+    const { data, error } = await supabase
+      .from('partite')
+      .select(`
+        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, chiave_esterna,
+        giochi ( bgg_id, nome, anno, min_giocatori, max_giocatori, tipo_punteggio, usa_fazioni ),
+        luoghi ( nome, tipo ),
+        partecipazioni (
+          punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
+          profili:utente_id ( nome, nickname ),
+          ospiti:ospite_id ( nome )
+        )
+      `)
+      .order('giocata_il', { ascending: true })
+    if (error) throw error
+    return data || []
+  }
+
+  async function esportaJson() {
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    try {
+      const partite = await leggiTutto()
+      const documento = {
+        formato: 'primo-giocatore',
+        versione: 1,
+        esportato_il: new Date().toISOString(),
+        partite: partite.map((p) => ({
+          // La chiave serve a riconoscere la partita se il file viene reimportato.
+          chiave: p.chiave_esterna || `pg:${p.id}`,
+          giocata_il: p.giocata_il,
+          durata_minuti: p.durata_minuti,
+          note: p.note,
+          tipo_punteggio: p.tipo_punteggio,
+          esito_coop: p.esito_coop,
+          gioco: p.giochi
+            ? {
+                nome: p.giochi.nome, bgg_id: p.giochi.bgg_id, anno: p.giochi.anno,
+                min_giocatori: p.giochi.min_giocatori, max_giocatori: p.giochi.max_giocatori,
+                tipo_punteggio: p.giochi.tipo_punteggio, usa_fazioni: p.giochi.usa_fazioni,
+              }
+            : null,
+          luogo: p.luoghi ? { nome: p.luoghi.nome, tipo: p.luoghi.tipo } : null,
+          giocatori: (p.partecipazioni || []).map((x) => ({
+            nome: x.profili ? (x.profili.nickname || x.profili.nome) : x.ospiti?.nome || 'Sconosciuto',
+            registrato: Boolean(x.profili),
+            punteggio: x.punteggio_totale,
+            posizione: x.posizione,
+            vincitore: x.vincitore,
+            fazione: x.ruolo,
+            spareggio: x.spareggio,
+            ordine_turno: x.ordine_turno,
+          })),
+        })),
+      }
+      scarica(`primo-giocatore-${OGGI()}.json`, JSON.stringify(documento, null, 2), 'application/json')
+      setMessaggio(`Esportate ${documento.partite.length} partite.`)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+    }
+  }
+
+  async function esportaCsv() {
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    try {
+      const partite = await leggiTutto()
+      const virgolette = (v) => {
+        if (v == null) return ''
+        const t = String(v)
+        return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+      }
+      // Una riga per giocatore: è la forma che i fogli di calcolo digeriscono.
+      const righe = [
+        ['data', 'gioco', 'luogo', 'durata_minuti', 'giocatore', 'punteggio', 'posizione', 'vincitore', 'fazione', 'ordine_turno', 'note'],
+      ]
+      for (const p of partite) {
+        for (const x of p.partecipazioni || []) {
+          righe.push([
+            p.giocata_il?.slice(0, 10),
+            p.giochi?.nome,
+            p.luoghi?.nome,
+            p.durata_minuti,
+            x.profili ? (x.profili.nickname || x.profili.nome) : x.ospiti?.nome,
+            x.punteggio_totale,
+            x.posizione,
+            x.vincitore ? 'sì' : 'no',
+            x.ruolo,
+            x.ordine_turno,
+            p.note,
+          ])
+        }
+      }
+      const csv = righe.map((r) => r.map(virgolette).join(';')).join('\n')
+      // Il segno iniziale serve a Excel per capire che il file è in UTF-8.
+      scarica(`primo-giocatore-${OGGI()}.csv`, '\uFEFF' + csv, 'text/csv;charset=utf-8')
+      setMessaggio(`Esportate ${partite.length} partite in formato foglio di calcolo.`)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+    }
+  }
+
+  async function importa(evento) {
+    const file = evento.target.files?.[0]
+    if (!file) return
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    try {
+      const testo = await file.text()
+      const doc = JSON.parse(testo)
+      if (doc.formato !== 'primo-giocatore') {
+        throw new Error('Questo file non è un\u2019esportazione di Primo Giocatore.')
+      }
+
+      let aggiunte = 0
+      let saltate = 0
+
+      // Cache locali, per non interrogare il database a ogni riga.
+      const giochi = new Map()
+      const luoghi = new Map()
+      const ospiti = new Map()
+
+      async function trovaGioco(g) {
+        if (!g?.nome) return null
+        const k = (g.bgg_id ? `b:${g.bgg_id}` : `n:${g.nome.toLowerCase()}`)
+        if (giochi.has(k)) return giochi.get(k)
+        let query = supabase.from('giochi').select('id')
+        query = g.bgg_id ? query.eq('bgg_id', g.bgg_id) : query.ilike('nome', g.nome)
+        const { data } = await query.maybeSingle()
+        let id = data?.id
+        if (!id) {
+          const { data: creato, error } = await supabase
+            .from('giochi')
+            .insert({
+              nome: g.nome, bgg_id: g.bgg_id ?? null, anno: g.anno ?? null,
+              min_giocatori: g.min_giocatori ?? null, max_giocatori: g.max_giocatori ?? null,
+              tipo_punteggio: g.tipo_punteggio || 'punti',
+              usa_fazioni: Boolean(g.usa_fazioni),
+              creato_da: profilo.id,
+            })
+            .select('id').single()
+          if (error) throw error
+          id = creato.id
+        }
+        giochi.set(k, id)
+        return id
+      }
+
+      async function trovaLuogo(l) {
+        if (!l?.nome) return null
+        const k = l.nome.toLowerCase()
+        if (luoghi.has(k)) return luoghi.get(k)
+        const { data } = await supabase.from('luoghi').select('id').ilike('nome', l.nome).maybeSingle()
+        let id = data?.id
+        if (!id) {
+          const { data: creato, error } = await supabase
+            .from('luoghi')
+            .insert({ nome: l.nome, tipo: l.tipo || 'altro', creato_da: profilo.id })
+            .select('id').single()
+          if (error) throw error
+          id = creato.id
+        }
+        luoghi.set(k, id)
+        return id
+      }
+
+      async function trovaOspite(nome) {
+        const k = nome.toLowerCase()
+        if (ospiti.has(k)) return ospiti.get(k)
+        const { data } = await supabase.from('ospiti').select('id').ilike('nome', nome).maybeSingle()
+        let id = data?.id
+        if (!id) {
+          const { data: creato, error } = await supabase
+            .from('ospiti').insert({ nome, creato_da: profilo.id }).select('id').single()
+          if (error) throw error
+          id = creato.id
+        }
+        ospiti.set(k, id)
+        return id
+      }
+
+      for (const p of doc.partite || []) {
+        // Già importata? Si salta, così reimportare lo stesso file non duplica.
+        if (p.chiave) {
+          const { data: esiste } = await supabase
+            .from('partite').select('id')
+            .eq('registrata_da', profilo.id).eq('chiave_esterna', p.chiave)
+            .maybeSingle()
+          if (esiste) { saltate++; continue }
+        }
+
+        const giocoId = await trovaGioco(p.gioco)
+        if (!giocoId) { saltate++; continue }
+        const luogoId = await trovaLuogo(p.luogo)
+
+        const { data: partita, error } = await supabase
+          .from('partite')
+          .insert({
+            gioco_id: giocoId,
+            luogo_id: luogoId,
+            giocata_il: p.giocata_il || new Date().toISOString(),
+            durata_minuti: p.durata_minuti ?? null,
+            tipo_punteggio: p.tipo_punteggio || 'punti',
+            esito_coop: p.esito_coop ?? null,
+            note: p.note ?? null,
+            chiave_esterna: p.chiave ?? null,
+            registrata_da: profilo.id,
+          })
+          .select('id').single()
+        if (error) throw error
+
+        const righe = []
+        for (const g of p.giocatori || []) {
+          // Chi importa è l'unico riconosciuto come utente vero: gli altri
+          // diventano ospiti, e si collegheranno quando si iscriveranno.
+          const sonoIo = g.nome === profilo.nickname || g.nome === profilo.nome
+          righe.push({
+            partita_id: partita.id,
+            utente_id: sonoIo ? profilo.id : null,
+            ospite_id: sonoIo ? null : await trovaOspite(g.nome || 'Sconosciuto'),
+            punteggio_totale: g.punteggio ?? null,
+            posizione: g.posizione ?? null,
+            vincitore: Boolean(g.vincitore),
+            ruolo: g.fazione ?? null,
+            spareggio: g.spareggio ?? null,
+            ordine_turno: g.ordine_turno ?? null,
+            primo_giocatore: g.ordine_turno === 1,
+          })
+        }
+        if (righe.length) {
+          const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
+          if (e2) throw e2
+        }
+        aggiunte++
+      }
+
+      setMessaggio(
+        `Importate ${aggiunte} partite${saltate ? `, ${saltate} già presenti e saltate` : ''}.`
+      )
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="scheda">
+      <h2>I tuoi dati</h2>
+      <p className="sottotitolo">Portali via, rimettili dentro, tienine una copia.</p>
+
+      {errore && <div className="avviso errore">{errore}</div>}
+      {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      <button className="bottone" onClick={esportaJson} disabled={lavorando}>
+        Esporta tutto (file da reimportare)
+      </button>
+
+      <button className="bottone bottone-secondario" onClick={esportaCsv} disabled={lavorando}>
+        Esporta per foglio di calcolo
+      </button>
+
+      <h3 className="titolo-sezione">Importa</h3>
+      <p className="aiuto">
+        Accetta i file esportati da qui. Le partite già presenti vengono riconosciute e
+        saltate, quindi puoi reimportare lo stesso file senza creare doppioni.
+      </p>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        onChange={importa}
+        disabled={lavorando}
+        className="campo-file"
+        aria-label="Scegli il file da importare"
+      />
+
+      <p className="aiuto">
+        Nelle partite importate solo tu vieni riconosciuto come utente: gli altri entrano
+        come ospiti, e si collegheranno ai loro account quando si iscriveranno.
+      </p>
+    </div>
+  )
+}

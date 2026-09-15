@@ -866,3 +866,27 @@ body {
 
 .riga-ordine { display: flex; align-items: center; gap: 0.8rem; }
 .riga-ordine .bottone { margin-top: 0; }
+
+/* ---------- Scelta del file ---------- */
+.campo-file {
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--inchiostro-tenue);
+  padding: 0.7rem;
+  background: var(--carta);
+  border: 1px dashed var(--bordo);
+  border-radius: 10px;
+}
+
+.campo-file::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  margin-right: 0.7rem;
+  padding: 0.4rem 0.8rem;
+  color: var(--superficie);
+  background: var(--inchiostro);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
