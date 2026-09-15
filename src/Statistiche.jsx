@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.21.0 - 202609161400
+// v1.23.0 - 202609161800
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -17,6 +17,16 @@ function mediana(numeri) {
 }
 
 const durata = (min) => (min >= 60 ? `${Math.round(min / 60)} h` : `${min} min`)
+
+/* Riepilogo dei punteggi: il valore tipico e gli estremi toccati. */
+function riepilogoPunteggi(punteggi) {
+  if (!punteggi || punteggi.length === 0) return null
+  const med = mediana(punteggi)
+  const min = Math.min(...punteggi)
+  const max = Math.max(...punteggi)
+  if (min === max) return `punteggio ${min}`
+  return `tipico ${med} · da ${min} a ${max}`
+}
 
 /* Un ospite collegato a un account è la stessa persona. */
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
@@ -473,7 +483,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco }) {
       <ul className="elenco">
         {d.perGioco.map((g) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
-          const med = mediana(g.punteggi)
+          const rip = riepilogoPunteggi(g.punteggi)
           return (
             <li key={g.nome}>
               <div className="nome-giocatore">
@@ -484,7 +494,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco }) {
                   {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {g.vinte} vinte
                   {r != null ? ` · ${r.toFixed(2)}× atteso` : ''}
                 </span>
-                {med != null && <span className="anno block">punteggio tipico {med}</span>}
+                {rip && <span className="anno block">{rip}</span>}
                 {g.fazioni?.size > 0 && (
                   <span className="anno block fazione-nota">
                     {[...g.fazioni.values()]
@@ -635,8 +645,9 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
 
       <div className="spiegone">
         <p>
-          <strong>Punteggio tipico</strong> è la mediana, non la media: risponde a «quanto serve
-          per essere in partita» meglio di qualunque altro numero.
+          <strong>Punteggio tipico</strong> è la mediana: metà delle volte si è fatto più
+          di così, metà di meno. Non è la media, che una singola partita anomala
+          sposterebbe.
           {d.punteggioMin != null && ` Finora si è andati da ${d.punteggioMin} a ${d.punteggioMax}.`}
           {d.scartoMedio != null && ` Fra primo e ultimo passano in media ${d.scartoMedio} punti.`}
         </p>
@@ -651,7 +662,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
           <ul className="elenco">
             {d.turni.map((t) => {
               const r = t.attese > 0 ? t.vinte / t.attese : null
-              const med = mediana(t.punteggi)
+              const rip = riepilogoPunteggi(t.punteggi)
               return (
                 <li key={t.ordine}>
                   <span className="posto">{t.ordine}°</span>
@@ -659,8 +670,8 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
                     <strong>{t.ordine === 1 ? 'Chi inizia' : `${t.ordine}° di turno`}</strong>
                     <span className="anno block">
                       {t.partite} {t.partite === 1 ? 'volta' : 'volte'} · {t.vinte} vinte
-                      {med != null ? ` · tipico ${med}` : ''}
                     </span>
+                    {rip && <span className="anno block">{rip}</span>}
                   </div>
                   {r != null && (
                     <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
@@ -684,15 +695,15 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
           <ul className="elenco">
             {d.fazioni.map((f) => {
               const r = f.attese > 0 ? f.vinte / f.attese : null
-              const med = mediana(f.punteggi)
+              const rip = riepilogoPunteggi(f.punteggi)
               return (
                 <li key={f.nome}>
                   <div className="nome-giocatore">
                     <strong>{f.nome}</strong>
                     <span className="anno block">
                       {f.partite} {f.partite === 1 ? 'volta' : 'volte'} · {f.vinte} vinte
-                      {med != null ? ` · tipico ${med}` : ''}
                     </span>
+                    {rip && <span className="anno block">{rip}</span>}
                   </div>
                   {r != null && (
                     <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
@@ -712,7 +723,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
       <ul className="elenco">
         {d.giocatori.map((g) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
-          const med = mediana(g.punteggi)
+          const rip = riepilogoPunteggi(g.punteggi)
           return (
             <li key={g.nome}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
@@ -720,8 +731,8 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
                 <strong>{g.nome}</strong>
                 <span className="anno block">
                   {g.partite} giocate · {g.vinte} vinte
-                  {med != null ? ` · tipico ${med}` : ''}
                 </span>
+                {rip && <span className="anno block">{rip}</span>}
               </div>
               {r != null && (
                 <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
