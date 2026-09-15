@@ -1,4 +1,4 @@
-// Primo Giocatore v1.21.0 - 202609161400
+// Primo Giocatore v1.22.0 - 202609161600
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -10,6 +10,7 @@ import Partita from './Partita.jsx'
 import Storico from './Storico.jsx'
 import Statistiche from './Statistiche.jsx'
 import Dati from './Dati.jsx'
+import UnisciOspiti from './UnisciOspiti.jsx'
 
 /* Icone: tracciati semplici, si colorano da sole col testo. */
 const ICONE = {
@@ -381,6 +382,7 @@ export default function App() {
           ) : (
             <>
               <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
+              <UnisciOspiti profilo={profilo} />
               <Dati profilo={profilo} />
             </>
           )}
