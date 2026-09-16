@@ -1,0 +1,481 @@
+// Primo Giocatore - Tavoli
+// v2.0.0 - 202609170900
+
+import { useEffect, useState } from 'react'
+import { supabase, daMostrare } from './supabase'
+
+const quando = (d) =>
+  new Date(d).toLocaleString('it-IT', {
+    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  })
+
+const perCampo = (d) => {
+  const x = new Date(d)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`
+}
+
+const VUOTO = {
+  titolo: '', gioco_id: null, luogo: '', inizio: '', posti_min: '', posti_max: '',
+  descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
+  chiusura_iscrizioni: '', pubblicato: true,
+}
+
+export default function Tavoli({ profilo }) {
+  const [tavoli, setTavoli] = useState([])
+  const [catalogo, setCatalogo] = useState([])
+  const [caricamento, setCaricamento] = useState(true)
+  const [errore, setErrore] = useState('')
+  const [messaggio, setMessaggio] = useState('')
+
+  const [modulo, setModulo] = useState(null)      // null = chiuso
+  const [filtroGioco, setFiltroGioco] = useState('')
+  const [gestito, setGestito] = useState(null)    // tavolo di cui vedo gli iscritti
+  const [iscritti, setIscritti] = useState([])
+
+  useEffect(() => { carica() }, [])
+
+  async function carica() {
+    setCaricamento(true)
+    const [t, g] = await Promise.all([
+      supabase
+        .from('tavoli')
+        .select(`
+          *, giochi ( id, nome, immagine_url ), luoghi ( nome ),
+          iscrizioni_tavolo ( id, stato )
+        `)
+        .order('inizio', { ascending: true }),
+      supabase.from('giochi').select('id, nome, immagine_url').order('nome'),
+    ])
+    if (t.error) setErrore(t.error.message)
+    else setTavoli(t.data || [])
+    if (g.data) setCatalogo(g.data)
+    setCaricamento(false)
+  }
+
+  /* ---------- Creazione e modifica ---------- */
+
+  function apriNuovo() {
+    const fra2ore = new Date(Date.now() + 2 * 60 * 60 * 1000)
+    fra2ore.setMinutes(0, 0, 0)
+    setModulo({ ...VUOTO, inizio: perCampo(fra2ore) })
+    setMessaggio('')
+  }
+
+  function apriModifica(t) {
+    setModulo({
+      id: t.id,
+      titolo: t.titolo || '',
+      gioco_id: t.gioco_id,
+      luogo: t.luoghi?.nome || '',
+      inizio: perCampo(t.inizio),
+      posti_min: t.posti_min || '',
+      posti_max: t.posti_max || '',
+      descrizione: t.descrizione || '',
+      dimostratore_nome: t.dimostratore_nome || '',
+      dimostratore_foto: t.dimostratore_foto || '',
+      chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
+      pubblicato: t.pubblicato,
+    })
+    setMessaggio('')
+  }
+
+  async function caricaFoto(file) {
+    if (!file) return
+    setErrore('')
+    const nome = `${profilo.id}-${Date.now()}-${file.name.replace(/[^\w.-]/g, '')}`
+    const { error } = await supabase.storage.from('dimostratori').upload(nome, file, { upsert: true })
+    if (error) { setErrore(`Foto non caricata: ${error.message}`); return }
+    const { data } = supabase.storage.from('dimostratori').getPublicUrl(nome)
+    setModulo((m) => ({ ...m, dimostratore_foto: data.publicUrl }))
+  }
+
+  async function salva() {
+    setErrore(''); setMessaggio('')
+    if (!modulo.gioco_id) { setErrore('Scegli il gioco.'); return }
+    if (!modulo.inizio) { setErrore('Metti data e ora.'); return }
+
+    try {
+      let luogoId = null
+      if (modulo.luogo.trim()) {
+        const { data: esistente } = await supabase
+          .from('luoghi').select('id').ilike('nome', modulo.luogo.trim()).maybeSingle()
+        if (esistente) luogoId = esistente.id
+        else {
+          const { data, error } = await supabase
+            .from('luoghi')
+            .insert({ nome: modulo.luogo.trim(), tipo: 'sede', creato_da: profilo.id })
+            .select('id').single()
+          if (error) throw error
+          luogoId = data.id
+        }
+      }
+
+      const campi = {
+        titolo: modulo.titolo.trim() || null,
+        gioco_id: modulo.gioco_id,
+        luogo_id: luogoId,
+        inizio: new Date(modulo.inizio).toISOString(),
+        posti_min: modulo.posti_min ? Number(modulo.posti_min) : null,
+        posti_max: modulo.posti_max ? Number(modulo.posti_max) : null,
+        descrizione: modulo.descrizione.trim() || null,
+        dimostratore_nome: modulo.dimostratore_nome.trim() || null,
+        dimostratore_foto: modulo.dimostratore_foto || null,
+        chiusura_iscrizioni: modulo.chiusura_iscrizioni
+          ? new Date(modulo.chiusura_iscrizioni).toISOString() : null,
+        pubblicato: modulo.pubblicato,
+        visibilita: modulo.pubblicato ? 'pubblico' : 'gruppo',
+      }
+
+      if (modulo.id) {
+        const { error } = await supabase.from('tavoli').update(campi).eq('id', modulo.id)
+        if (error) throw error
+        setMessaggio('Tavolo aggiornato.')
+      } else {
+        const { error } = await supabase
+          .from('tavoli').insert({ ...campi, host_id: profilo.id, stato: 'aperto' })
+        if (error) throw error
+        setMessaggio('Tavolo pubblicato.')
+      }
+      setModulo(null)
+      carica()
+    } catch (e) {
+      setErrore(e.message)
+    }
+  }
+
+  async function cambiaStato(t, stato) {
+    const { error } = await supabase.from('tavoli').update({ stato }).eq('id', t.id)
+    if (error) setErrore(error.message)
+    else carica()
+  }
+
+  async function elimina(t) {
+    if (!confirm('Eliminare questo tavolo e tutte le iscrizioni? Non si torna indietro.')) return
+    const { error } = await supabase.from('tavoli').delete().eq('id', t.id)
+    if (error) setErrore(error.message)
+    else { setGestito(null); carica() }
+  }
+
+  /* ---------- Iscritti e contatti ---------- */
+
+  async function apriIscritti(t) {
+    setGestito(t)
+    setIscritti([])
+    const { data, error } = await supabase
+      .from('iscrizioni_tavolo')
+      .select(`
+        id, stato, nome_visibile, presente, creata_il, utente_id,
+        profili:utente_id ( nome, nickname ),
+        iscrizioni_contatti ( email, telefono )
+      `)
+      .eq('tavolo_id', t.id)
+      .order('creata_il')
+    if (error) setErrore(error.message)
+    else setIscritti(data || [])
+  }
+
+  async function cambiaIscrizione(id, campi) {
+    const { error } = await supabase.from('iscrizioni_tavolo').update(campi).eq('id', id)
+    if (error) setErrore(error.message)
+    else apriIscritti(gestito)
+  }
+
+  async function togliIscritto(id) {
+    if (!confirm('Togliere questa persona dal tavolo?')) return
+    const { error } = await supabase.from('iscrizioni_tavolo').delete().eq('id', id)
+    if (error) setErrore(error.message)
+    else { apriIscritti(gestito); carica() }
+  }
+
+  function condividi(t) {
+    const link = `${window.location.origin}/?t=${t.id}`
+    const testo =
+      `${t.titolo || t.giochi?.nome} — ${quando(t.inizio)}` +
+      `${t.luoghi?.nome ? ` presso ${t.luoghi.nome}` : ''}\n${link}`
+    if (navigator.share) navigator.share({ title: t.titolo || t.giochi?.nome, text: testo, url: link })
+    else {
+      navigator.clipboard?.writeText(link)
+      setMessaggio('Link copiato.')
+    }
+  }
+
+  function esportaIscritti() {
+    const righe = [['nome', 'stato', 'email', 'telefono', 'presente']]
+    for (const i of iscritti) {
+      righe.push([
+        i.profili ? daMostrare(i.profili) : i.nome_visibile,
+        i.stato,
+        i.iscrizioni_contatti?.[0]?.email || i.iscrizioni_contatti?.email || '',
+        i.iscrizioni_contatti?.[0]?.telefono || i.iscrizioni_contatti?.telefono || '',
+        i.presente === true ? 'sì' : i.presente === false ? 'no' : '',
+      ])
+    }
+    const csv = righe.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `iscritti-${(gestito.titolo || gestito.giochi?.nome || 'tavolo').replace(/\W+/g, '-')}.csv`
+    a.click()
+  }
+
+  /* ---------- Viste ---------- */
+
+  if (caricamento) return <div className="scheda"><p>Carico i tavoli&hellip;</p></div>
+
+  // --- Pannello iscritti ---
+  if (gestito) {
+    const contatto = (i) => i.iscrizioni_contatti?.[0] || i.iscrizioni_contatti || {}
+    const confermati = iscritti.filter((i) => i.stato === 'confermato')
+    return (
+      <div className="scheda">
+        <button className="bottone-piatto" onClick={() => setGestito(null)}>← torna ai tavoli</button>
+        <h2>{gestito.titolo || gestito.giochi?.nome}</h2>
+        <p className="sottotitolo">{quando(gestito.inizio)} · {confermati.length} confermati</p>
+
+        {errore && <div className="avviso errore">{errore}</div>}
+
+        {iscritti.length === 0 ? (
+          <p className="aiuto">Ancora nessun iscritto.</p>
+        ) : (
+          <ul className="elenco elenco-iscritti">
+            {iscritti.map((i) => {
+              const c = contatto(i)
+              return (
+                <li key={i.id}>
+                  <div className="nome-giocatore">
+                    <strong>{i.profili ? daMostrare(i.profili) : i.nome_visibile}</strong>
+                    <span className="anno block">
+                      {i.stato === 'attesa' ? 'in attesa · ' : i.stato === 'annullato' ? 'annullato · ' : ''}
+                      {c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}
+                    </span>
+                    <span className="azioni-iscritto">
+                      {c.telefono && (
+                        <a className="bottone-piatto" href={`https://wa.me/${c.telefono.replace(/\D/g, '')}`}
+                          target="_blank" rel="noreferrer">WhatsApp</a>
+                      )}
+                      {c.email && <a className="bottone-piatto" href={`mailto:${c.email}`}>Email</a>}
+                      {i.stato === 'attesa' && (
+                        <button className="bottone-piatto"
+                          onClick={() => cambiaIscrizione(i.id, { stato: 'confermato' })}>conferma</button>
+                      )}
+                      <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>togli</button>
+                    </span>
+                  </div>
+                  <label className="vince">
+                    <input type="checkbox" checked={i.presente === true}
+                      onChange={(e) => cambiaIscrizione(i.id, { presente: e.target.checked })} />
+                    c'era
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {iscritti.length > 0 && (
+          <button className="bottone bottone-secondario" onClick={esportaIscritti}>
+            Scarica l'elenco
+          </button>
+        )}
+
+        <p className="aiuto">
+          Email e telefono li vedi perché organizzi questo tavolo. Nessun altro iscritto
+          può leggerli, e vanno usati solo per questa serata.
+        </p>
+      </div>
+    )
+  }
+
+  // --- Modulo ---
+  if (modulo) {
+    const trovati = filtroGioco.trim()
+      ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtroGioco.toLowerCase())).slice(0, 8)
+      : []
+    const giocoScelto = catalogo.find((g) => g.id === modulo.gioco_id)
+
+    return (
+      <div className="scheda">
+        <h2>{modulo.id ? 'Modifica tavolo' : 'Nuovo tavolo'}</h2>
+        {errore && <div className="avviso errore">{errore}</div>}
+
+        <div className="campo">
+          <label htmlFor="t-gioco">Gioco</label>
+          {giocoScelto ? (
+            <div className="gioco-scelto">
+              {giocoScelto.immagine_url && <img src={giocoScelto.immagine_url} alt="" className="copertina" />}
+              <div>
+                <strong>{giocoScelto.nome}</strong>
+                <p className="aiuto">
+                  <button className="bottone-piatto"
+                    onClick={() => setModulo({ ...modulo, gioco_id: null })}>cambia</button>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <input id="t-gioco" value={filtroGioco} onChange={(e) => setFiltroGioco(e.target.value)}
+                placeholder="Scrivi le prime lettere" />
+              {trovati.length > 0 && (
+                <ul className="elenco">
+                  {trovati.map((g) => (
+                    <li key={g.id}>
+                      <span>{g.nome}</span>
+                      <button className="bottone-piatto"
+                        onClick={() => { setModulo({ ...modulo, gioco_id: g.id }); setFiltroGioco('') }}>
+                        Scegli
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-titolo">Titolo</label>
+          <input id="t-titolo" value={modulo.titolo}
+            onChange={(e) => setModulo({ ...modulo, titolo: e.target.value })}
+            placeholder="Lascia vuoto per usare il nome del gioco" />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-inizio">Quando</label>
+          <input id="t-inizio" type="datetime-local" value={modulo.inizio}
+            onChange={(e) => setModulo({ ...modulo, inizio: e.target.value })} />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-luogo">Dove</label>
+          <input id="t-luogo" value={modulo.luogo}
+            onChange={(e) => setModulo({ ...modulo, luogo: e.target.value })}
+            placeholder="Sede, indirizzo o piattaforma" />
+        </div>
+
+        <div className="riga-campi">
+          <div className="campo">
+            <label htmlFor="t-min">Minimo</label>
+            <input id="t-min" type="number" min="1" value={modulo.posti_min}
+              onChange={(e) => setModulo({ ...modulo, posti_min: e.target.value })} />
+          </div>
+          <div className="campo">
+            <label htmlFor="t-max">Posti</label>
+            <input id="t-max" type="number" min="1" value={modulo.posti_max}
+              onChange={(e) => setModulo({ ...modulo, posti_max: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-dim">Chi spiega il gioco</label>
+          <input id="t-dim" value={modulo.dimostratore_nome}
+            onChange={(e) => setModulo({ ...modulo, dimostratore_nome: e.target.value })} />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-foto">Foto del dimostratore</label>
+          {modulo.dimostratore_foto && (
+            <img src={modulo.dimostratore_foto} alt="" className="foto-dimostratore" />
+          )}
+          <input id="t-foto" type="file" accept="image/*" className="campo-file"
+            onChange={(e) => caricaFoto(e.target.files?.[0])} />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-desc">Descrizione</label>
+          <input id="t-desc" value={modulo.descrizione}
+            onChange={(e) => setModulo({ ...modulo, descrizione: e.target.value })}
+            placeholder="Per chi è adatto, cosa portare, quanto dura" />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="t-chiusura">Iscrizioni aperte fino a</label>
+          <input id="t-chiusura" type="datetime-local" value={modulo.chiusura_iscrizioni}
+            onChange={(e) => setModulo({ ...modulo, chiusura_iscrizioni: e.target.value })} />
+          <p className="aiuto">Facoltativo: se vuoto restano aperte fino all'inizio.</p>
+        </div>
+
+        <label className="consenso">
+          <input type="checkbox" checked={modulo.pubblicato}
+            onChange={(e) => setModulo({ ...modulo, pubblicato: e.target.checked })} />
+          <span>Visibile a chiunque abbia il link. Togli la spunta per tenerlo in bozza.</span>
+        </label>
+
+        <button className="bottone" onClick={salva}>
+          {modulo.id ? 'Salva modifiche' : 'Pubblica il tavolo'}
+        </button>
+        <button className="bottone bottone-secondario" onClick={() => setModulo(null)}>Annulla</button>
+      </div>
+    )
+  }
+
+  // --- Vetrina ---
+  const adesso = new Date()
+  const prossimi = tavoli.filter((t) => new Date(t.inizio) >= adesso)
+  const passati = tavoli.filter((t) => new Date(t.inizio) < adesso).reverse()
+
+  const scheda = (t) => {
+    const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
+    const mio = t.host_id === profilo.id || profilo.organizzatore
+    return (
+      <div className="tavolo-scheda" key={t.id}>
+        <div className="tavolo-testa">
+          {t.giochi?.immagine_url && <img src={t.giochi.immagine_url} alt="" className="copertina" />}
+          <div className="nome-giocatore">
+            <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+            <span className="anno block">{quando(t.inizio)}</span>
+            <span className="anno block">
+              {t.luoghi?.nome || 'luogo da definire'} · {conf}
+              {t.posti_max ? `/${t.posti_max}` : ''} iscritti
+              {!t.pubblicato ? ' · bozza' : ''}
+              {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
+            </span>
+          </div>
+        </div>
+        <div className="tavolo-azioni">
+          <button className="bottone-piatto" onClick={() => condividi(t)}>Condividi</button>
+          {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
+          {mio && <button className="bottone-piatto" onClick={() => apriModifica(t)}>Modifica</button>}
+          {mio && t.stato === 'aperto' && (
+            <button className="bottone-piatto" onClick={() => cambiaStato(t, 'annullato')}>Annulla</button>
+          )}
+          {mio && <button className="bottone-piatto pericolo" onClick={() => elimina(t)}>Elimina</button>}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="scheda">
+      <h2>Tavoli</h2>
+      <p className="sottotitolo">Serate aperte a cui ci si può iscrivere.</p>
+
+      {errore && <div className="avviso errore">{errore}</div>}
+      {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      {profilo.organizzatore && (
+        <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
+      )}
+
+      <h3 className="titolo-sezione">
+        In programma <span className="conteggio">{prossimi.length}</span>
+      </h3>
+      {prossimi.length === 0 ? (
+        <p className="aiuto">Nessun tavolo in programma.</p>
+      ) : prossimi.map(scheda)}
+
+      {passati.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Passati</h3>
+          {passati.slice(0, 10).map(scheda)}
+        </>
+      )}
+
+      {!profilo.organizzatore && (
+        <p className="aiuto">
+          Per pubblicare tavoli serve un account da organizzatore.
+        </p>
+      )}
+    </div>
+  )
+}

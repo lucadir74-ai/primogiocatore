@@ -1,4 +1,4 @@
-// Primo Giocatore v1.22.0 - 202609161600
+// Primo Giocatore v2.0.0 - 202609170900
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -11,6 +11,8 @@ import Storico from './Storico.jsx'
 import Statistiche from './Statistiche.jsx'
 import Dati from './Dati.jsx'
 import UnisciOspiti from './UnisciOspiti.jsx'
+import Tavoli from './Tavoli.jsx'
+import TavoloPubblico from './TavoloPubblico.jsx'
 
 /* Icone: tracciati semplici, si colorano da sole col testo. */
 const ICONE = {
@@ -19,6 +21,7 @@ const ICONE = {
   statistiche: 'M5 20V10 M12 20V4 M19 20v-7',
   giochi: 'M4 7l8-4 8 4v10l-8 4-8-4z M4 7l8 4 8-4 M12 11v10',
   profilo: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4 3.6-6 8-6s8 2 8 6',
+  tavoli: 'M3 10h18 M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3 M6 10v9 M18 10v9',
 }
 
 function Icona({ nome }) {
@@ -276,7 +279,16 @@ function Profilo({ sessione, profilo, setProfilo }) {
 
 /* ---------------- Radice ---------------- */
 
+// Il tavolo condiviso arriva come ?t=<id>: così il link funziona
+// senza bisogno di configurare percorsi sul server.
+function tavoloDalLink() {
+  try {
+    return new URLSearchParams(window.location.search).get('t')
+  } catch { return null }
+}
+
 export default function App() {
+  const [tavoloPubblico] = useState(tavoloDalLink())
   const [sessione, setSessione] = useState(null)
   const [profilo, setProfilo] = useState(null)
   const [pronto, setPronto] = useState(false)
@@ -322,7 +334,17 @@ export default function App() {
         <Marchio />
       </header>
 
-      {!configurato ? (
+      {tavoloPubblico ? (
+        <>
+          <TavoloPubblico tavoloId={tavoloPubblico} sessione={sessione} profilo={profilo} />
+          <div className="scheda">
+            <p className="aiuto">
+              Questo è un tavolo di Primo Giocatore.{' '}
+              <a className="bottone-piatto" href={window.location.origin}>Apri l&rsquo;app</a>
+            </p>
+          </div>
+        </>
+      ) : !configurato ? (
         <div className="scheda">
           <h2>Manca il collegamento al database</h2>
           <p className="sottotitolo">
@@ -343,6 +365,7 @@ export default function App() {
           <nav className="barra-basso">
             {[
               ['partita', 'Partita'],
+              ['tavoli', 'Tavoli'],
               ['storico', 'Storico'],
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
@@ -367,6 +390,8 @@ export default function App() {
               partitaId={partitaId}
               finitaModifica={() => { setPartitaId(null); setScheda('storico') }}
             />
+          ) : scheda === 'tavoli' ? (
+            <Tavoli profilo={profilo} />
           ) : scheda === 'storico' ? (
             <Storico
               profilo={profilo}
