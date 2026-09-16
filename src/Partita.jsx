@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.17.0 - 202609152200
+// v1.26.0 - 202609162100
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -7,6 +7,7 @@ import { supabase, COLORI, daMostrare } from './supabase'
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
 // la pagina o cade la linea, la ritrovi com'era.
 const BOZZA = 'primo-giocatore:bozza'
+const LIMITE_NOMI = 12
 
 function leggiBozza() {
   try {
@@ -132,14 +133,26 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }, [secondi])
 
   async function caricaElenchi() {
-    const [g, p, o] = await Promise.all([
+    const [g, p, o, f] = await Promise.all([
       supabase.from('giochi').select('*').order('nome'),
       supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
       supabase.from('ospiti').select('id, nome').order('nome'),
+      supabase.from('partecipazioni').select('utente_id, ospite_id'),
     ])
     if (g.data) setCatalogo(g.data)
     if (p.data) setPersone(p.data)
     if (o.data) setOspiti(o.data)
+
+    // Quante partite ha ciascuno: i soliti compagni vanno davanti,
+    // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
+    if (f.data) {
+      const c = new Map()
+      for (const r of f.data) {
+        const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
+        c.set(k, (c.get(k) || 0) + 1)
+      }
+      setFrequenza(c)
+    }
   }
 
   async function caricaPartita(id) {
@@ -201,6 +214,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   const [nuovoOspite, setNuovoOspite] = useState('')
+  const [frequenza, setFrequenza] = useState(new Map())
+  const [cercaGiocatore, setCercaGiocatore] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
   const [segnandoOrdine, setSegnandoOrdine] = useState(false)
 
@@ -317,6 +332,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setRipresa(false)
+    setCercaGiocatore('')
     azzeraTimer()
     cancellaBozza()
   }
@@ -402,6 +418,24 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const trovati = filtro.trim().length > 0
     ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase())).slice(0, 8)
     : []
+
+  // Un elenco solo, utenti e ospiti insieme, ordinato per quanto
+  // spesso giocano. Senza filtro se ne mostrano pochi.
+  const tuttiDisponibili = [
+    ...persone
+      .filter((p) => !righe.some((r) => r.utente_id === p.id))
+      .map((p) => ({ chiave: `u-${p.id}`, nome: daMostrare(p), tipo: 'utente', dato: p })),
+    ...ospiti
+      .filter((o) => !righe.some((r) => r.ospite_id === o.id))
+      .map((o) => ({ chiave: `o-${o.id}`, nome: o.nome, tipo: 'ospite', dato: o })),
+  ].sort((a, b) => (frequenza.get(b.chiave) || 0) - (frequenza.get(a.chiave) || 0))
+
+  const filtroNomi = cercaGiocatore.trim().toLowerCase()
+  const trovatiNomi = filtroNomi
+    ? tuttiDisponibili.filter((x) => x.nome.toLowerCase().includes(filtroNomi))
+    : tuttiDisponibili
+  const disponibili = filtroNomi ? trovatiNomi.slice(0, 30) : trovatiNomi.slice(0, LIMITE_NOMI)
+  const restanti = Math.max(0, tuttiDisponibili.length - LIMITE_NOMI)
 
   const coloreDi = (r) => {
     const p = persone.find((x) => x.id === r.utente_id)
@@ -613,19 +647,39 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           )}
 
           <div className="campo">
-            <label>Aggiungi giocatori</label>
+            <label htmlFor="cerca-giocatore">Aggiungi giocatori</label>
+            <input
+              id="cerca-giocatore"
+              className="campo-cerca"
+              value={cercaGiocatore}
+              onChange={(e) => setCercaGiocatore(e.target.value)}
+              placeholder="Cerca un nome"
+            />
+
             <div className="pastiglie-persone">
-              {persone.filter((p) => !righe.some((r) => r.utente_id === p.id)).map((p) => (
-                <button key={p.id} className="pastiglia-nome" onClick={() => aggiungiPersona(p)}>
-                  {daMostrare(p)}
-                </button>
-              ))}
-              {ospiti.filter((o) => !righe.some((r) => r.ospite_id === o.id)).map((o) => (
-                <button key={o.id} className="pastiglia-nome ospite" onClick={() => aggiungiOspite(o)}>
-                  {o.nome}
-                </button>
-              ))}
+              {disponibili.map((x) =>
+                x.tipo === 'utente' ? (
+                  <button key={x.chiave} className="pastiglia-nome" onClick={() => aggiungiPersona(x.dato)}>
+                    {x.nome}
+                  </button>
+                ) : (
+                  <button key={x.chiave} className="pastiglia-nome ospite" onClick={() => aggiungiOspite(x.dato)}>
+                    {x.nome}
+                  </button>
+                )
+              )}
             </div>
+
+            {!cercaGiocatore.trim() && restanti > 0 && (
+              <p className="aiuto">
+                Mostrati i {LIMITE_NOMI} con cui giochi più spesso. Gli altri {restanti} si
+                trovano scrivendo il nome qui sopra.
+              </p>
+            )}
+            {cercaGiocatore.trim() && disponibili.length === 0 && (
+              <p className="aiuto">Nessuno con questo nome. Puoi aggiungerlo come ospite qui sotto.</p>
+            )}
+
             <div className="riga-ricerca riga-ospite">
               <input value={nuovoOspite} onChange={(e) => setNuovoOspite(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && creaOspite()}

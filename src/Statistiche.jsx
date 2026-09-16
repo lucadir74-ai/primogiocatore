@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.23.0 - 202609161800
+// v1.26.0 - 202609162100
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -144,7 +144,7 @@ export default function Statistiche({ profilo, onModifica }) {
       for (const x of p.partecipazioni || []) {
         if (identita(x) === chiave) continue
         const k = identita(x)
-        const v = contro.get(k) || { nome: nomeDi(x), colore: coloreDi(x), insieme: 0, sue: 0, altrui: 0 }
+        const v = contro.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), insieme: 0, sue: 0, altrui: 0 }
         v.insieme++
         if (r.vincitore) v.sue++
         if (x.vincitore) v.altrui++
@@ -152,8 +152,16 @@ export default function Statistiche({ profilo, onModifica }) {
       }
     }
 
+    const tuttiMiei = []
+    for (const p of competitive) {
+      const r = suaRiga(p)
+      if (r?.punteggio_totale != null) tuttiMiei.push(r.punteggio_totale)
+    }
+
     return {
       sue, competitive, cooperative,
+      migliore: tuttiMiei.length ? Math.max(...tuttiMiei) : null,
+      peggiore: tuttiMiei.length ? Math.min(...tuttiMiei) : null,
       coopVinte: cooperative.filter((p) => p.esito_coop === 'vinta').length,
       vinte, attese,
       rendimento: attese > 0 ? vinte / attese : null,
@@ -172,6 +180,14 @@ export default function Statistiche({ profilo, onModifica }) {
     const sue = partite.filter((p) => p.giochi?.id === idGioco)
     const competitive = sue.filter((p) => p.tipo_punteggio !== 'coop')
 
+    // I punteggi di chi sta guardando, tenuti separati da quelli del tavolo.
+    const mieiPunteggi = []
+    for (const p of sue) {
+      for (const x of p.partecipazioni || []) {
+        if (x.utente_id === profilo.id && x.punteggio_totale != null) mieiPunteggi.push(x.punteggio_totale)
+      }
+    }
+
     const giocatori = new Map()
     const tuttiPunteggi = []
     let scarti = []
@@ -183,7 +199,7 @@ export default function Statistiche({ profilo, onModifica }) {
 
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
-        const v = giocatori.get(k) || { nome: nomeDi(x), colore: coloreDi(x), partite: 0, vinte: 0, attese: 0, punteggi: [] }
+        const v = giocatori.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), partite: 0, vinte: 0, attese: 0, punteggi: [] }
         v.partite++
         if (x.vincitore) v.vinte++
         if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
@@ -230,6 +246,10 @@ export default function Statistiche({ profilo, onModifica }) {
       punteggioTipico: mediana(tuttiPunteggi),
       punteggioMax: tuttiPunteggi.length ? Math.max(...tuttiPunteggi) : null,
       punteggioMin: tuttiPunteggi.length ? Math.min(...tuttiPunteggi) : null,
+      mioMax: mieiPunteggi.length ? Math.max(...mieiPunteggi) : null,
+      mioMin: mieiPunteggi.length ? Math.min(...mieiPunteggi) : null,
+      mioTipico: mediana(mieiPunteggi),
+      miePartite: mieiPunteggi.length,
       scartoMedio: scarti.length ? Math.round(scarti.reduce((a, b) => a + b, 0) / scarti.length) : null,
       durataMedia: conDurata.length
         ? Math.round(conDurata.reduce((t, p) => t + p.durata_minuti, 0) / conDurata.length)
@@ -248,7 +268,7 @@ export default function Statistiche({ profilo, onModifica }) {
       if (p.giochi) giochi.set(p.giochi.id, { nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
-        persone.set(k, { nome: nomeDi(x), colore: coloreDi(x), n: (persone.get(k)?.n || 0) + 1 })
+        persone.set(k, { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: (persone.get(k)?.n || 0) + 1 })
       }
     }
     const conDurata = sue.filter((p) => p.durata_minuti)
@@ -270,7 +290,7 @@ export default function Statistiche({ profilo, onModifica }) {
       if (p.giochi) giochi.set(p.giochi.id, { nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
-        const v = persone.get(k) || { nome: nomeDi(x), colore: coloreDi(x), n: 0, vinte: 0, attese: 0 }
+        const v = persone.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: 0, vinte: 0, attese: 0 }
         v.n++
         if (x.vincitore) v.vinte++
         if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
@@ -306,6 +326,9 @@ export default function Statistiche({ profilo, onModifica }) {
   // Se la ricerca esclude ciò che stavi guardando, mostro il primo risultato.
   // Calcolato, non impostato: cambiare stato qui romperebbe il disegno.
   const attivo = opzioni.some(([id]) => id === scelto) ? scelto : opzioni[0]?.[0] ?? null
+
+  const vaiAlGiocatore = (chiave) => { setTipo('persona'); setCerca(''); setScelto(chiave) }
+  const vaiAlGioco = (id) => { setTipo('gioco'); setCerca(''); setScelto(id) }
 
   function cambiaTipo(nuovo) {
     setTipo(nuovo)
@@ -364,7 +387,8 @@ export default function Statistiche({ profilo, onModifica }) {
         <SchedaPersona
           d={dellaPersona(attivo)}
           istogramma={istogramma}
-          vaiAlGioco={(id) => { setTipo('gioco'); setCerca(''); setScelto(id) }}
+          vaiAlGioco={vaiAlGioco}
+          vaiAlGiocatore={vaiAlGiocatore}
         />
       ) : tipo === 'gioco' ? (
         <SchedaGioco
@@ -373,11 +397,12 @@ export default function Statistiche({ profilo, onModifica }) {
           istogramma={istogramma}
           profilo={profilo}
           onModifica={onModifica}
+          vaiAlGiocatore={vaiAlGiocatore}
         />
       ) : tipo === 'luogo' ? (
-        <SchedaLuogo d={delLuogo(attivo)} istogramma={istogramma} />
+        <SchedaLuogo d={delLuogo(attivo)} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
       ) : (
-        <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} />
+        <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
       )}
     </div>
   )
@@ -414,7 +439,7 @@ function Istogramma({ dati }) {
 
 /* ---------- Giocatore ---------- */
 
-function SchedaPersona({ d, istogramma, vaiAlGioco }) {
+function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita per questo giocatore.</p>
   return (
     <>
@@ -515,7 +540,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco }) {
           <li key={a.nome}>
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
-              <strong>{a.nome}</strong>
+              <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(a.chiave)}>{a.nome}</button>
               <span className="anno block">{a.insieme} partite insieme</span>
             </div>
             <span className={`bilancio${a.sue > a.altrui ? ' avanti' : a.sue < a.altrui ? ' indietro' : ''}`}>
@@ -632,14 +657,19 @@ function PartiteDelGioco({ partite, profilo, onModifica }) {
   )
 }
 
-function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
+function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
     <>
       <div className="numeroni">
         <Numerone cifra={d.sue.length} testo="partite" />
         <Numerone cifra={d.giocatori.length} testo="giocatori" />
-        {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="punteggio tipico" />}
+        {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="tipico al tavolo" />}
+        {d.mioTipico != null && <Numerone cifra={d.mioTipico} testo="il tuo tipico" />}
+        {d.mioMax != null && <Numerone cifra={d.mioMax} testo="il tuo migliore" tono="sopra" />}
+        {d.mioMin != null && d.mioMin !== d.mioMax && (
+          <Numerone cifra={d.mioMin} testo="il tuo peggiore" tono="sotto" />
+        )}
         {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" />}
       </div>
 
@@ -648,7 +678,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
           <strong>Punteggio tipico</strong> è la mediana: metà delle volte si è fatto più
           di così, metà di meno. Non è la media, che una singola partita anomala
           sposterebbe.
-          {d.punteggioMin != null && ` Finora si è andati da ${d.punteggioMin} a ${d.punteggioMax}.`}
+          {d.punteggioMax != null && ` Il massimo mai visto a questo gioco è ${d.punteggioMax}, il minimo ${d.punteggioMin}.`}
           {d.scartoMedio != null && ` Fra primo e ultimo passano in media ${d.scartoMedio} punti.`}
         </p>
         {d.ultima && <p>Ultima volta: {giorno(d.ultima)}.</p>}
@@ -728,7 +758,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
             <li key={g.nome}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
-                <strong>{g.nome}</strong>
+                <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
                 <span className="anno block">
                   {g.partite} giocate · {g.vinte} vinte
                 </span>
@@ -749,7 +779,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica }) {
 
 /* ---------- Luogo ---------- */
 
-function SchedaLuogo({ d, istogramma }) {
+function SchedaLuogo({ d, istogramma, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita in questo luogo.</p>
   return (
     <>
@@ -779,7 +809,9 @@ function SchedaLuogo({ d, istogramma }) {
         {d.persone.map((p) => (
           <li key={p.nome}>
             <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
-            <div className="nome-giocatore"><strong>{p.nome}</strong></div>
+            <div className="nome-giocatore">
+              <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
+            </div>
             <span className="anno">{p.n}</span>
           </li>
         ))}
@@ -790,7 +822,7 @@ function SchedaLuogo({ d, istogramma }) {
 
 /* ---------- Tutti ---------- */
 
-function SchedaGruppo({ d, partite, istogramma }) {
+function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore }) {
   return (
     <>
       <div className="numeroni">
@@ -823,7 +855,7 @@ function SchedaGruppo({ d, partite, istogramma }) {
               <li key={p.nome}>
                 <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
                 <div className="nome-giocatore">
-                  <strong>{p.nome}</strong>
+                  <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
                   <span className="anno block">{p.n} partite · {p.vinte} vinte</span>
                 </div>
                 <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
