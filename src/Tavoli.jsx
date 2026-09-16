@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.0.0 - 202609170900
+// v2.0.1 - 202609171000
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -41,7 +41,7 @@ export default function Tavoli({ profilo }) {
       supabase
         .from('tavoli')
         .select(`
-          *, giochi ( id, nome, immagine_url ), luoghi ( nome ),
+          *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ), luoghi ( nome ),
           iscrizioni_tavolo ( id, stato )
         `)
         .order('inizio', { ascending: true }),

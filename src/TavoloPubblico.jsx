@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v2.0.0 - 202609170900
+// v2.0.1 - 202609171000
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -43,7 +43,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       .select(`
         id, titolo, descrizione, inizio, posti_min, posti_max, stato, pubblicato,
         dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
-        giochi ( nome, immagine_url, min_giocatori, max_giocatori, durata_minuti ),
+        giochi:tavoli_gioco_id_fkey ( nome, immagine_url, min_giocatori, max_giocatori, durata_minuti ),
         luoghi ( nome, tipo, indirizzo, piattaforma )
       `)
       .eq('id', tavoloId)
