@@ -1,4 +1,4 @@
-// Primo Giocatore v2.0.0 - 202609170900
+// Primo Giocatore v2.0.2 - 202609171200
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -13,6 +13,7 @@ import Dati from './Dati.jsx'
 import UnisciOspiti from './UnisciOspiti.jsx'
 import Tavoli from './Tavoli.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
+import Organizzatori from './Organizzatori.jsx'
 
 /* Icone: tracciati semplici, si colorano da sole col testo. */
 const ICONE = {
@@ -213,7 +214,10 @@ function Profilo({ sessione, profilo, setProfilo }) {
   return (
     <div className="scheda">
       <h2>{daMostrare(profilo)}</h2>
-      <p className="sottotitolo">{sessione.user.email}</p>
+      <p className="sottotitolo">
+        {sessione.user.email}
+        {profilo.organizzatore && <span className="distintivo">Organizzatore</span>}
+      </p>
 
       <Avviso tipo="errore" testo={errore} />
       <Avviso tipo="ok" testo={ok} />
@@ -407,6 +411,7 @@ export default function App() {
           ) : (
             <>
               <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
+              <Organizzatori profilo={profilo} />
               <UnisciOspiti profilo={profilo} />
               <Dati profilo={profilo} />
             </>
