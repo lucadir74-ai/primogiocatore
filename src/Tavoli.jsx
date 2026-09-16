@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.0.1 - 202609171000
+// v2.1.0 - 202609171400
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -21,7 +21,7 @@ const VUOTO = {
   chiusura_iscrizioni: '', pubblicato: true,
 }
 
-export default function Tavoli({ profilo }) {
+export default function Tavoli({ profilo, onRegistraPartita }) {
   const [tavoli, setTavoli] = useState([])
   const [catalogo, setCatalogo] = useState([])
   const [caricamento, setCaricamento] = useState(true)
@@ -188,6 +188,84 @@ export default function Tavoli({ profilo }) {
     else { apriIscritti(gestito); carica() }
   }
 
+  // A fine serata il tavolo diventa una partita: gioco, luogo e
+  // giocatori sono già noti, restano da mettere solo i punteggi.
+  async function registraPartita(t) {
+    setErrore(''); setMessaggio('')
+
+    const { data: is, error: e0 } = await supabase
+      .from('iscrizioni_tavolo')
+      .select('id, stato, presente, nome_visibile, utente_id')
+      .eq('tavolo_id', t.id)
+      .neq('stato', 'annullato')
+    if (e0) { setErrore(e0.message); return }
+
+    // Se il check-in è stato fatto valgono i presenti, altrimenti i confermati.
+    const conCheckIn = (is || []).some((i) => i.presente != null)
+    const partecipanti = conCheckIn
+      ? (is || []).filter((i) => i.presente === true)
+      : (is || []).filter((i) => i.stato === 'confermato')
+
+    if (partecipanti.length === 0) {
+      setErrore('Nessun partecipante da registrare: segna chi c\u2019era, oppure conferma gli iscritti.')
+      return
+    }
+    if (!confirm(`Creare la partita con ${partecipanti.length} giocatori? Poi inserisci i punteggi.`)) return
+
+    try {
+      const { data: gioco } = await supabase
+        .from('giochi').select('tipo_punteggio').eq('id', t.gioco_id).maybeSingle()
+
+      const { data: partita, error: e1 } = await supabase
+        .from('partite')
+        .insert({
+          gioco_id: t.gioco_id,
+          luogo_id: t.luogo_id,
+          tavolo_id: t.id,
+          giocata_il: t.inizio,
+          tipo_punteggio: gioco?.tipo_punteggio || 'punti',
+          registrata_da: profilo.id,
+        })
+        .select('id').single()
+      if (e1) throw e1
+
+      // Gli iscritti senza account diventano ospiti, riusando quelli
+      // già esistenti quando il nome coincide.
+      const { data: ospitiEsistenti } = await supabase.from('ospiti').select('id, nome')
+      const mappa = new Map((ospitiEsistenti || []).map((o) => [o.nome.toLowerCase(), o.id]))
+
+      const righe = []
+      for (const i of partecipanti) {
+        if (i.utente_id) {
+          righe.push({ partita_id: partita.id, utente_id: i.utente_id })
+          continue
+        }
+        const nome = (i.nome_visibile || 'Ospite').trim()
+        let ospiteId = mappa.get(nome.toLowerCase())
+        if (!ospiteId) {
+          const { data: creato, error } = await supabase
+            .from('ospiti').insert({ nome, creato_da: profilo.id }).select('id').single()
+          if (error) throw error
+          ospiteId = creato.id
+          mappa.set(nome.toLowerCase(), ospiteId)
+        }
+        righe.push({ partita_id: partita.id, ospite_id: ospiteId })
+      }
+
+      const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
+      if (e2) throw e2
+
+      await supabase.from('tavoli')
+        .update({ partita_id: partita.id, stato: 'giocato' }).eq('id', t.id)
+
+      setGestito(null)
+      carica()
+      onRegistraPartita?.(partita.id)
+    } catch (e) {
+      setErrore(e.message)
+    }
+  }
+
   function condividi(t) {
     const link = `${window.location.origin}/?t=${t.id}`
     const testo =
@@ -273,10 +351,29 @@ export default function Tavoli({ profilo }) {
           </ul>
         )}
 
+        {iscritti.length > 0 && !gestito.partita_id && (
+          <button className="bottone" onClick={() => registraPartita(gestito)}>
+            Registra la partita
+          </button>
+        )}
+
+        {gestito.partita_id && (
+          <button className="bottone" onClick={() => onRegistraPartita?.(gestito.partita_id)}>
+            Apri la partita
+          </button>
+        )}
+
         {iscritti.length > 0 && (
           <button className="bottone bottone-secondario" onClick={esportaIscritti}>
             Scarica l'elenco
           </button>
+        )}
+
+        {!gestito.partita_id && (
+          <p className="aiuto">
+            Prima di registrare, segna chi c&rsquo;era davvero con la casella accanto a ogni
+            nome: se nessuno è segnato vengono presi tutti i confermati.
+          </p>
         )}
 
         <p className="aiuto">
@@ -436,6 +533,14 @@ export default function Tavoli({ profilo }) {
           <button className="bottone-piatto" onClick={() => condividi(t)}>Condividi</button>
           {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
           {mio && <button className="bottone-piatto" onClick={() => apriModifica(t)}>Modifica</button>}
+          {mio && !t.partita_id && new Date(t.inizio) < new Date() && (
+            <button className="bottone-piatto" onClick={() => registraPartita(t)}>Registra partita</button>
+          )}
+          {t.partita_id && (
+            <button className="bottone-piatto" onClick={() => onRegistraPartita?.(t.partita_id)}>
+              Vedi partita
+            </button>
+          )}
           {mio && t.stato === 'aperto' && (
             <button className="bottone-piatto" onClick={() => cambiaStato(t, 'annullato')}>Annulla</button>
           )}
