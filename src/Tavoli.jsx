@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.1.0 - 202609171400
+// v2.2.0 - 202609171600
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -18,6 +18,7 @@ const perCampo = (d) => {
 const VUOTO = {
   titolo: '', gioco_id: null, luogo: '', inizio: '', posti_min: '', posti_max: '',
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
+  dimostratore_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
 }
 
@@ -32,12 +33,14 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [filtroGioco, setFiltroGioco] = useState('')
   const [gestito, setGestito] = useState(null)    // tavolo di cui vedo gli iscritti
   const [iscritti, setIscritti] = useState([])
+  const [persone, setPersone] = useState([])
+  const [cercaDim, setCercaDim] = useState('')
 
   useEffect(() => { carica() }, [])
 
   async function carica() {
     setCaricamento(true)
-    const [t, g] = await Promise.all([
+    const [t, g, pr] = await Promise.all([
       supabase
         .from('tavoli')
         .select(`
@@ -46,10 +49,12 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         `)
         .order('inizio', { ascending: true }),
       supabase.from('giochi').select('id, nome, immagine_url').order('nome'),
+      supabase.from('profili').select('id, nome, nickname').order('nome'),
     ])
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
     if (g.data) setCatalogo(g.data)
+    if (pr.data) setPersone(pr.data)
     setCaricamento(false)
   }
 
@@ -74,6 +79,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       descrizione: t.descrizione || '',
       dimostratore_nome: t.dimostratore_nome || '',
       dimostratore_foto: t.dimostratore_foto || '',
+      dimostratore_id: t.dimostratore_id || null,
+      dimostratore_gioca: t.dimostratore_gioca !== false,
       chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
       pubblicato: t.pubblicato,
     })
@@ -121,27 +128,60 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         descrizione: modulo.descrizione.trim() || null,
         dimostratore_nome: modulo.dimostratore_nome.trim() || null,
         dimostratore_foto: modulo.dimostratore_foto || null,
+        dimostratore_id: modulo.dimostratore_id,
+        dimostratore_gioca: modulo.dimostratore_gioca,
         chiusura_iscrizioni: modulo.chiusura_iscrizioni
           ? new Date(modulo.chiusura_iscrizioni).toISOString() : null,
         pubblicato: modulo.pubblicato,
         visibilita: modulo.pubblicato ? 'pubblico' : 'gruppo',
       }
 
+      let tavoloId = modulo.id
       if (modulo.id) {
         const { error } = await supabase.from('tavoli').update(campi).eq('id', modulo.id)
         if (error) throw error
         setMessaggio('Tavolo aggiornato.')
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tavoli').insert({ ...campi, host_id: profilo.id, stato: 'aperto' })
+          .select('id').single()
         if (error) throw error
+        tavoloId = data.id
         setMessaggio('Tavolo pubblicato.')
       }
+
+      await sistemaDimostratore(tavoloId, campi)
       setModulo(null)
       carica()
     } catch (e) {
       setErrore(e.message)
     }
+  }
+
+  // L'iscrizione del dimostratore si crea, si aggiorna o si toglie
+  // secondo quanto scelto nel modulo. È marcata come tale, così una
+  // modifica al tavolo non ne crea una seconda.
+  async function sistemaDimostratore(tavoloId, campi) {
+    const { data: esistente } = await supabase
+      .from('iscrizioni_tavolo').select('id')
+      .eq('tavolo_id', tavoloId).eq('ruolo', 'dimostratore').maybeSingle()
+
+    const serve = campi.dimostratore_gioca && (campi.dimostratore_nome || campi.dimostratore_id)
+
+    if (!serve) {
+      if (esistente) await supabase.from('iscrizioni_tavolo').delete().eq('id', esistente.id)
+      return
+    }
+
+    const riga = {
+      tavolo_id: tavoloId,
+      utente_id: campi.dimostratore_id,
+      nome_visibile: campi.dimostratore_nome,
+      stato: 'confermato',
+      ruolo: 'dimostratore',
+    }
+    if (esistente) await supabase.from('iscrizioni_tavolo').update(riga).eq('id', esistente.id)
+    else await supabase.from('iscrizioni_tavolo').insert(riga)
   }
 
   async function cambiaStato(t, stato) {
@@ -165,7 +205,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     const { data, error } = await supabase
       .from('iscrizioni_tavolo')
       .select(`
-        id, stato, nome_visibile, presente, creata_il, utente_id,
+        id, stato, nome_visibile, presente, creata_il, utente_id, ruolo,
         profili:utente_id ( nome, nickname ),
         iscrizioni_contatti ( email, telefono )
       `)
@@ -323,6 +363,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
                 <li key={i.id}>
                   <div className="nome-giocatore">
                     <strong>{i.profili ? daMostrare(i.profili) : i.nome_visibile}</strong>
+                    {i.ruolo === 'dimostratore' && <span className="distintivo">Spiega</span>}
                     <span className="anno block">
                       {i.stato === 'attesa' ? 'in attesa · ' : i.stato === 'annullato' ? 'annullato · ' : ''}
                       {c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}
@@ -466,7 +507,43 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         <div className="campo">
           <label htmlFor="t-dim">Chi spiega il gioco</label>
           <input id="t-dim" value={modulo.dimostratore_nome}
-            onChange={(e) => setModulo({ ...modulo, dimostratore_nome: e.target.value })} />
+            onChange={(e) => setModulo({ ...modulo, dimostratore_nome: e.target.value, dimostratore_id: null })}
+            placeholder="Nome del dimostratore" />
+
+          <input className="campo-cerca" value={cercaDim}
+            onChange={(e) => setCercaDim(e.target.value)}
+            placeholder="…oppure cercalo fra chi ha un account" />
+
+          {cercaDim.trim() && (
+            <div className="pastiglie-persone">
+              {persone
+                .filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(cercaDim.toLowerCase()))
+                .slice(0, 8)
+                .map((p) => (
+                  <button key={p.id} className="pastiglia-nome"
+                    onClick={() => {
+                      setModulo({ ...modulo, dimostratore_id: p.id, dimostratore_nome: daMostrare(p) })
+                      setCercaDim('')
+                    }}>
+                    {daMostrare(p)}
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {modulo.dimostratore_id && (
+            <p className="aiuto">
+              Collegato a un account: la partita entrerà nelle sue statistiche.{' '}
+              <button className="bottone-piatto"
+                onClick={() => setModulo({ ...modulo, dimostratore_id: null })}>scollega</button>
+            </p>
+          )}
+
+          <label className="consenso">
+            <input type="checkbox" checked={modulo.dimostratore_gioca}
+              onChange={(e) => setModulo({ ...modulo, dimostratore_gioca: e.target.checked })} />
+            <span>Gioca anche lui, quindi occupa un posto e va iscritto al tavolo.</span>
+          </label>
         </div>
 
         <div className="campo">

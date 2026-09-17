@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v2.0.1 - 202609171000
+// v2.2.0 - 202609171600
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -55,7 +55,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       setTavolo(data)
       const { data: is } = await supabase
         .from('iscrizioni_tavolo')
-        .select('id, stato, nome_visibile, utente_id, profili:utente_id ( nome, nickname )')
+        .select('id, stato, nome_visibile, utente_id, ruolo, profili:utente_id ( nome, nickname )')
         .eq('tavolo_id', tavoloId)
         .neq('stato', 'annullato')
         .order('creata_il')
@@ -176,7 +176,10 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       ) : (
         <ul className="elenco">
           {confermati.map((i) => (
-            <li key={i.id}><strong>{nomeIscritto(i)}</strong></li>
+            <li key={i.id}>
+              <strong>{nomeIscritto(i)}</strong>
+              {i.ruolo === 'dimostratore' && <span className="distintivo">Spiega</span>}
+            </li>
           ))}
         </ul>
       )}
