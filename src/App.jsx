@@ -1,4 +1,4 @@
-// Primo Giocatore v2.1.0 - 202609171400
+// Primo Giocatore v2.4.0 - 202609180900
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -217,6 +217,7 @@ function Profilo({ sessione, profilo, setProfilo }) {
       <p className="sottotitolo">
         {sessione.user.email}
         {profilo.organizzatore && <span className="distintivo">Organizzatore</span>}
+        {profilo.dimostratore && <span className="distintivo verde">Dimostratore</span>}
       </p>
 
       <Avviso tipo="errore" testo={errore} />

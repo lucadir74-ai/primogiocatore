@@ -1069,3 +1069,50 @@ body {
   border-radius: 999px;
   vertical-align: middle;
 }
+
+/* ---------- Calendario interno ---------- */
+
+.serata {
+  border: 1px solid color-mix(in srgb, var(--bordo) 55%, transparent);
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.7rem;
+  background: var(--carta);
+}
+
+.serata.annullata { opacity: 0.6; }
+.serata .testa-partita { padding: 0.35rem 0; }
+
+.scelte-disponibilita {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.pastiglia-stato {
+  flex: 1;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--inchiostro-tenue);
+  cursor: pointer;
+}
+
+.pastiglia-stato.scelto { font-weight: 700; color: var(--superficie); }
+.pastiglia-stato.si.scelto { background: var(--verde); border-color: var(--verde); }
+.pastiglia-stato.forse.scelto { background: var(--giallo); border-color: var(--giallo); color: #131C26; }
+.pastiglia-stato.no.scelto { background: var(--rosso); border-color: var(--rosso); }
+.pastiglia-stato:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+.pastiglia-stato.piccola { flex: none; cursor: default; font-size: 0.75rem; padding: 0.15rem 0.6rem; }
+.pastiglia-stato.piccola.si { color: var(--verde); border-color: var(--verde); }
+.pastiglia-stato.piccola.forse { color: var(--giallo); border-color: var(--giallo); }
+.pastiglia-stato.piccola.no { color: var(--rosso); border-color: var(--rosso); }
+
+.distintivo.verde { background: var(--verde); color: var(--superficie); }
+.distintivo.rosso { background: var(--rosso); color: var(--superficie); }
+.stellina { color: var(--giallo); }

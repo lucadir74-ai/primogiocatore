@@ -1,8 +1,9 @@
 // Primo Giocatore - Tavoli
-// v2.3.0 - 202609171800
+// v2.4.0 - 202609180900
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
+import Serate from './Serate.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -36,6 +37,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [persone, setPersone] = useState([])
   const [cercaDim, setCercaDim] = useState('')
   const [aMano, setAMano] = useState(null)   // { nome, email, telefono, utente_id }
+  const [sezione, setSezione] = useState('tavoli')
+  const [disponibili, setDisponibili] = useState([])
 
   useEffect(() => { carica() }, [])
 
@@ -50,7 +53,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         `)
         .order('inizio', { ascending: true }),
       supabase.from('giochi').select('id, nome, immagine_url').order('nome'),
-      supabase.from('profili').select('id, nome, nickname').order('nome'),
+      supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
     ])
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
@@ -64,7 +67,9 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   function apriNuovo() {
     const fra2ore = new Date(Date.now() + 2 * 60 * 60 * 1000)
     fra2ore.setMinutes(0, 0, 0)
-    setModulo({ ...VUOTO, inizio: perCampo(fra2ore) })
+    const inizio = perCampo(fra2ore)
+    setModulo({ ...VUOTO, inizio })
+    caricaDisponibili(inizio)
     setMessaggio('')
   }
 
@@ -85,7 +90,24 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
       pubblicato: t.pubblicato,
     })
+    caricaDisponibili(perCampo(t.inizio))
     setMessaggio('')
+  }
+
+  // Quando il tavolo ha una data, cerco se quel giorno c'è una serata
+  // e chi si è dato disponibile: sono i primi nomi da proporre.
+  async function caricaDisponibili(inizio) {
+    if (!inizio) { setDisponibili([]); return }
+    const giorno = inizio.slice(0, 10)
+    const { data: serata } = await supabase
+      .from('serate').select('id').eq('data', giorno).maybeSingle()
+    if (!serata) { setDisponibili([]); return }
+    const { data } = await supabase
+      .from('disponibilita')
+      .select('profilo_id, stato, profili ( id, nome, nickname )')
+      .eq('serata_id', serata.id)
+      .in('stato', ['si', 'forse'])
+    setDisponibili(data || [])
   }
 
   async function caricaFoto(file) {
@@ -577,7 +599,10 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         <div className="campo">
           <label htmlFor="t-inizio">Quando</label>
           <input id="t-inizio" type="datetime-local" value={modulo.inizio}
-            onChange={(e) => setModulo({ ...modulo, inizio: e.target.value })} />
+            onChange={(e) => {
+              setModulo({ ...modulo, inizio: e.target.value })
+              caricaDisponibili(e.target.value)
+            }} />
         </div>
 
         <div className="campo">
@@ -606,6 +631,23 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
             onChange={(e) => setModulo({ ...modulo, dimostratore_nome: e.target.value, dimostratore_id: null })}
             placeholder="Nome del dimostratore" />
 
+          {disponibili.length > 0 && !modulo.dimostratore_id && (
+            <>
+              <p className="aiuto">Si sono dati disponibili per questa serata:</p>
+              <div className="pastiglie-persone">
+                {disponibili.map((d) => (
+                  <button key={d.profilo_id}
+                    className={`pastiglia-nome${d.stato === 'forse' ? ' ospite' : ''}`}
+                    onClick={() => setModulo({
+                      ...modulo, dimostratore_id: d.profilo_id, dimostratore_nome: daMostrare(d.profili),
+                    })}>
+                    {daMostrare(d.profili)}{d.stato === 'forse' ? ' (forse)' : ''}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           <input className="campo-cerca" value={cercaDim}
             onChange={(e) => setCercaDim(e.target.value)}
             placeholder="…oppure cercalo fra chi ha un account" />
@@ -614,6 +656,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
             <div className="pastiglie-persone">
               {persone
                 .filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(cercaDim.toLowerCase()))
+                .sort((a, b) => Number(b.dimostratore) - Number(a.dimostratore))
                 .slice(0, 8)
                 .map((p) => (
                   <button key={p.id} className="pastiglia-nome"
@@ -622,6 +665,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
                       setCercaDim('')
                     }}>
                     {daMostrare(p)}
+                    {p.dimostratore && <span className="stellina" aria-label="dimostratore"> ★</span>}
                   </button>
                 ))}
             </div>
@@ -726,6 +770,20 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   return (
     <div className="scheda">
       <h2>Tavoli</h2>
+
+      {(profilo.dimostratore || profilo.organizzatore) && (
+        <div className="sottoschede">
+          <button className={sezione === 'tavoli' ? 'attiva' : ''} onClick={() => setSezione('tavoli')}>
+            Tavoli
+          </button>
+          <button className={sezione === 'calendario' ? 'attiva' : ''} onClick={() => setSezione('calendario')}>
+            Calendario interno
+          </button>
+        </div>
+      )}
+
+      {sezione === 'calendario' ? <Serate profilo={profilo} /> : <>
+
       <p className="sottotitolo">Serate aperte a cui ci si può iscrivere.</p>
 
       {errore && <div className="avviso errore">{errore}</div>}
@@ -754,6 +812,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           Per pubblicare tavoli serve un account da organizzatore.
         </p>
       )}
+
+      </>}
     </div>
   )
 }

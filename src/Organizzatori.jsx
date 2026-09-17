@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli organizzatori
-// v2.0.2 - 202609171200
+// v2.4.0 - 202609180900
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -15,18 +15,18 @@ export default function Organizzatori({ profilo }) {
   async function carica() {
     const { data, error } = await supabase
       .from('profili')
-      .select('id, nome, nickname, citta, organizzatore')
+      .select('id, nome, nickname, citta, organizzatore, dimostratore')
       .order('nome')
     if (error) setErrore(error.message)
     else setPersone(data || [])
   }
 
-  async function cambia(id, valore) {
+  async function cambia(id, campo, valore) {
     setErrore(''); setMessaggio('')
     const { error } = await supabase
-      .from('profili').update({ organizzatore: valore }).eq('id', id)
+      .from('profili').update({ [campo]: valore }).eq('id', id)
     if (error) { setErrore(error.message); return }
-    setPersone((p) => p.map((x) => (x.id === id ? { ...x, organizzatore: valore } : x)))
+    setPersone((p) => p.map((x) => (x.id === id ? { ...x, [campo]: valore } : x)))
     setMessaggio(valore ? 'Permesso assegnato.' : 'Permesso revocato.')
   }
 
@@ -37,30 +37,31 @@ export default function Organizzatori({ profilo }) {
     ? persone.filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(q))
     : persone
   const attuali = persone.filter((p) => p.organizzatore)
+  const dimostratori = persone.filter((p) => p.dimostratore)
 
   return (
     <div className="scheda">
-      <h2>Organizzatori</h2>
+      <h2>Ruoli</h2>
       <p className="sottotitolo">
-        Chi può pubblicare tavoli e vedere i contatti degli iscritti.
+        Gli organizzatori pubblicano tavoli e vedono i contatti degli iscritti.
+        I dimostratori spiegano i giochi e usano il calendario interno.
       </p>
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
       <h3 className="titolo-sezione">
-        In carica <span className="conteggio">{attuali.length}</span>
+        Organizzatori <span className="conteggio">{attuali.length}</span>
       </h3>
       <ul className="elenco">
         {attuali.map((p) => (
           <li key={p.id}>
             <div className="nome-giocatore">
               <strong>{daMostrare(p)}</strong>
-              <span className="distintivo">Organizzatore</span>
               {p.id === profilo.id && <span className="anno"> · tu</span>}
             </div>
             {p.id !== profilo.id && (
-              <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, false)}>
+              <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'organizzatore', false)}>
                 revoca
               </button>
             )}
@@ -68,7 +69,25 @@ export default function Organizzatori({ profilo }) {
         ))}
       </ul>
 
-      <h3 className="titolo-sezione">Nomina qualcuno</h3>
+      <h3 className="titolo-sezione">
+        Dimostratori <span className="conteggio">{dimostratori.length}</span>
+      </h3>
+      {dimostratori.length === 0 ? (
+        <p className="aiuto">Nessun dimostratore ufficiale.</p>
+      ) : (
+        <ul className="elenco">
+          {dimostratori.map((p) => (
+            <li key={p.id}>
+              <div className="nome-giocatore"><strong>{daMostrare(p)}</strong></div>
+              <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'dimostratore', false)}>
+                revoca
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 className="titolo-sezione">Assegna i ruoli</h3>
       {persone.length > 8 && (
         <input
           className="campo-cerca"
@@ -79,22 +98,31 @@ export default function Organizzatori({ profilo }) {
         />
       )}
       <ul className="elenco">
-        {elenco.filter((p) => !p.organizzatore).slice(0, 20).map((p) => (
+        {elenco.slice(0, 25).map((p) => (
           <li key={p.id}>
             <div className="nome-giocatore">
               <strong>{daMostrare(p)}</strong>
               {p.citta && <span className="anno block">{p.citta}</span>}
             </div>
-            <button className="bottone-piatto" onClick={() => cambia(p.id, true)}>
-              nomina
-            </button>
+            <span className="azioni-iscritto">
+              {!p.dimostratore && (
+                <button className="bottone-piatto" onClick={() => cambia(p.id, 'dimostratore', true)}>
+                  dimostratore
+                </button>
+              )}
+              {!p.organizzatore && (
+                <button className="bottone-piatto" onClick={() => cambia(p.id, 'organizzatore', true)}>
+                  organizzatore
+                </button>
+              )}
+            </span>
           </li>
         ))}
       </ul>
 
       <p className="aiuto">
-        Compaiono solo le persone con un account. Il permesso dà accesso ai dati di
-        contatto di chi si iscrive ai tavoli: assegnalo a chi ha davvero bisogno di
+        Compaiono solo le persone con un account. Il ruolo di organizzatore dà accesso
+        ai contatti di chi si iscrive ai tavoli: assegnalo a chi ha davvero bisogno di
         telefonare o scrivere ai partecipanti. Il tuo non puoi revocartelo da solo.
       </p>
     </div>
