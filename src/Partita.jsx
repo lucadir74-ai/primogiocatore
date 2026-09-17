@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v1.26.0 - 202609162100
+// v2.6.0 - 202609181600
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -133,15 +133,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }, [secondi])
 
   async function caricaElenchi() {
-    const [g, p, o, f] = await Promise.all([
+    const [g, p, o, f, l] = await Promise.all([
       supabase.from('giochi').select('*').order('nome'),
       supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
       supabase.from('ospiti').select('id, nome').order('nome'),
       supabase.from('partecipazioni').select('utente_id, ospite_id'),
+      supabase.from('luoghi').select('nome').order('nome'),
     ])
     if (g.data) setCatalogo(g.data)
     if (p.data) setPersone(p.data)
     if (o.data) setOspiti(o.data)
+    if (l.data) setLuoghiNoti(l.data.map((x) => x.nome))
 
     // Quante partite ha ciascuno: i soliti compagni vanno davanti,
     // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
@@ -215,6 +217,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   const [nuovoOspite, setNuovoOspite] = useState('')
   const [frequenza, setFrequenza] = useState(new Map())
+  const [luoghiNoti, setLuoghiNoti] = useState([])
   const [cercaGiocatore, setCercaGiocatore] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
   const [segnandoOrdine, setSegnandoOrdine] = useState(false)
@@ -692,7 +695,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           <div className="campo">
             <label htmlFor="luogo">Dove</label>
             <input id="luogo" value={luogo} onChange={(e) => setLuogo(e.target.value)}
-              placeholder="Casa mia, sede, online…" />
+              list="luoghi-noti" placeholder="Casa mia, sede, online…" />
+            <datalist id="luoghi-noti">
+              {luoghiNoti.map((n) => <option key={n} value={n} />)}
+            </datalist>
+            <p className="aiuto">
+              Scrivi le prime lettere: se il posto c'è già te lo propone, così non
+              nascono doppioni.
+            </p>
           </div>
 
           <div className="campo">

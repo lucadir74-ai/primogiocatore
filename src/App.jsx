@@ -1,4 +1,4 @@
-// Primo Giocatore v2.4.0 - 202609180900
+// Primo Giocatore v2.6.0 - 202609181600
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -12,6 +12,7 @@ import Statistiche from './Statistiche.jsx'
 import Dati from './Dati.jsx'
 import UnisciOspiti from './UnisciOspiti.jsx'
 import Tavoli from './Tavoli.jsx'
+import Luoghi from './Luoghi.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import Organizzatori from './Organizzatori.jsx'
 
@@ -417,6 +418,7 @@ export default function App() {
               <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
               <Organizzatori profilo={profilo} />
               <UnisciOspiti profilo={profilo} />
+              <Luoghi profilo={profilo} />
               <Dati profilo={profilo} />
             </>
           )}

@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.4.0 - 202609180900
+// v2.6.0 - 202609181600
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -39,12 +39,13 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [aMano, setAMano] = useState(null)   // { nome, email, telefono, utente_id }
   const [sezione, setSezione] = useState('tavoli')
   const [disponibili, setDisponibili] = useState([])
+  const [luoghiNoti, setLuoghiNoti] = useState([])
 
   useEffect(() => { carica() }, [])
 
   async function carica() {
     setCaricamento(true)
-    const [t, g, pr] = await Promise.all([
+    const [t, g, pr, lu] = await Promise.all([
       supabase
         .from('tavoli')
         .select(`
@@ -54,11 +55,13 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         .order('inizio', { ascending: true }),
       supabase.from('giochi').select('id, nome, immagine_url').order('nome'),
       supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
+      supabase.from('luoghi').select('nome').order('nome'),
     ])
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
     if (g.data) setCatalogo(g.data)
     if (pr.data) setPersone(pr.data)
+    if (lu.data) setLuoghiNoti(lu.data.map((x) => x.nome))
     setCaricamento(false)
   }
 
@@ -609,7 +612,10 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           <label htmlFor="t-luogo">Dove</label>
           <input id="t-luogo" value={modulo.luogo}
             onChange={(e) => setModulo({ ...modulo, luogo: e.target.value })}
-            placeholder="Sede, indirizzo o piattaforma" />
+            list="luoghi-noti-tavolo" placeholder="Sede, indirizzo o piattaforma" />
+          <datalist id="luoghi-noti-tavolo">
+            {luoghiNoti.map((n) => <option key={n} value={n} />)}
+          </datalist>
         </div>
 
         <div className="riga-campi">
