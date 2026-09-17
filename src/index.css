@@ -1116,3 +1116,111 @@ body {
 .distintivo.verde { background: var(--verde); color: var(--superficie); }
 .distintivo.rosso { background: var(--rosso); color: var(--superficie); }
 .stellina { color: var(--giallo); }
+
+/* ---------- Calendario a griglia ---------- */
+
+.testa-mese {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.freccia-mese {
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.freccia-mese:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+.griglia-giorni {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+}
+
+.intestazione-giorno {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--inchiostro-tenue);
+  padding-bottom: 0.2rem;
+}
+
+.cella {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  font: inherit;
+  padding: 0;
+  color: var(--inchiostro-tenue);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cella.vuota { cursor: default; }
+
+.cella .numero { font-size: 0.9rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.cella .ora { font-size: 0.6rem; line-height: 1; }
+
+.cella .conta {
+  position: absolute;
+  bottom: 0.15rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--superficie);
+  background: var(--inchiostro-tenue);
+  border-radius: 999px;
+  min-width: 0.9rem;
+  text-align: center;
+}
+
+.cella.aperta {
+  border-color: var(--bordo-forte);
+  background: var(--carta);
+  color: var(--inchiostro);
+  font-weight: 600;
+}
+
+.cella.saltata { opacity: 0.45; text-decoration: line-through; }
+.cella.oggi .numero { color: var(--blu); font-weight: 800; }
+.cella.scelta { outline: 2px solid var(--blu); outline-offset: -2px; }
+
+/* la striscia in alto è la risposta di chi guarda */
+.cella.mia-si::before,
+.cella.mia-forse::before,
+.cella.mia-no::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+}
+
+.cella.mia-si::before { background: var(--verde); }
+.cella.mia-forse::before { background: var(--giallo); }
+.cella.mia-no::before { background: var(--rosso); }
+
+.cella:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+
+.legenda { margin: 0.6rem 0 0; }

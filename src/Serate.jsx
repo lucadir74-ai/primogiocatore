@@ -1,379 +1,369 @@
 // Primo Giocatore - calendario interno delle serate
-// v2.4.0 - 202609180900
+// v2.5.0 - 202609181100
 //
-// Visibile solo a dimostratori e organizzatori. I dimostratori danno
-// la disponibilità, gli organizzatori creano e spostano le serate.
+// Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
+// I dimostratori danno la disponibilità, gli organizzatori decidono
+// quali giorni la sede è aperta e con quale orario.
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 
-const GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato']
+const GIORNI_CORTI = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
+const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
 
-const dataLunga = (d) =>
-  new Date(d + 'T12:00').toLocaleDateString('it-IT', {
+const iso = (d) => {
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+const dataLunga = (s) =>
+  new Date(s + 'T12:00').toLocaleDateString('it-IT', {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
-const oggi = () => new Date().toISOString().slice(0, 10)
+// Preimpostazioni: la serata classica e la domenica in giornata.
+const ORARI = [
+  { id: 'sera', etichetta: 'Serata', inizio: '21:00', fine: '01:00' },
+  { id: 'giornata', etichetta: 'Giornata', inizio: '10:00', fine: '20:00' },
+  { id: 'pomeriggio', etichetta: 'Pomeriggio', inizio: '15:00', fine: '20:00' },
+]
 
 const STATI = [
-  { id: 'si', etichetta: 'Ci sono', classe: 'si' },
-  { id: 'forse', etichetta: 'Forse', classe: 'forse' },
-  { id: 'no', etichetta: 'Non posso', classe: 'no' },
+  { id: 'si', etichetta: 'Ci sono' },
+  { id: 'forse', etichetta: 'Forse' },
+  { id: 'no', etichetta: 'Non posso' },
 ]
 
 export default function Serate({ profilo }) {
+  const [mese, setMese] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
   const [serate, setSerate] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
+  const [scelto, setScelto] = useState(null)      // data in formato ISO
+  const [modifica, setModifica] = useState(null)  // serata in modifica
 
-  const [modifica, setModifica] = useState(null)   // serata singola
-  const [generatore, setGeneratore] = useState(null)
-  const [aperta, setAperta] = useState(null)
+  useEffect(() => { carica() }, [mese])
 
-  useEffect(() => { carica() }, [])
+  const primoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth(), 1))
+  const ultimoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth() + 1, 0))
 
   async function carica() {
     setCaricamento(true)
     const { data, error } = await supabase
       .from('serate')
       .select(`
-        *, luoghi ( nome ),
-        disponibilita ( profilo_id, stato, note, profili ( nome, nickname ) )
+        *, disponibilita ( profilo_id, stato, note, profili ( nome, nickname ) )
       `)
-      .gte('data', oggi())
+      .gte('data', primoDelMese)
+      .lte('data', ultimoDelMese)
       .order('data')
-      .order('ora_inizio')
     if (error) setErrore(error.message)
     else setSerate(data || [])
     setCaricamento(false)
   }
 
-  async function dai(serataId, stato) {
+  const serataDi = (giorno) => serate.find((s) => s.data === giorno)
+
+  /* ---------- Griglia del mese ---------- */
+
+  function celle() {
+    const primo = new Date(mese.getFullYear(), mese.getMonth(), 1)
+    // La settimana comincia di lunedì: domenica vale 7, non 0.
+    const spostamento = (primo.getDay() + 6) % 7
+    const giorniNelMese = new Date(mese.getFullYear(), mese.getMonth() + 1, 0).getDate()
+
+    const out = []
+    for (let i = 0; i < spostamento; i++) out.push(null)
+    for (let g = 1; g <= giorniNelMese; g++) {
+      out.push(iso(new Date(mese.getFullYear(), mese.getMonth(), g)))
+    }
+    return out
+  }
+
+  /* ---------- Azioni ---------- */
+
+  async function creaSerata(giorno, preset) {
+    setErrore(''); setMessaggio('')
+    const { error } = await supabase.from('serate').insert({
+      data: giorno,
+      ora_inizio: preset.inizio,
+      ora_fine: preset.fine,
+      creata_da: profilo.id,
+    })
+    if (error) setErrore(error.message)
+    else carica()
+  }
+
+  // Aggiunge lo stesso giorno della settimana per tutto il mese: utile
+  // per i martedì fissi, e le eccezioni si tolgono una per una.
+  async function ripetiNelMese(giorno, serata) {
+    const riferimento = new Date(giorno + 'T12:00')
+    const settimana = riferimento.getDay()
+    const giorniNelMese = new Date(mese.getFullYear(), mese.getMonth() + 1, 0).getDate()
+
+    const righe = []
+    for (let g = 1; g <= giorniNelMese; g++) {
+      const d = new Date(mese.getFullYear(), mese.getMonth(), g)
+      if (d.getDay() !== settimana) continue
+      const data = iso(d)
+      if (serataDi(data)) continue
+      righe.push({
+        data,
+        ora_inizio: serata.ora_inizio,
+        ora_fine: serata.ora_fine,
+        titolo: serata.titolo,
+        creata_da: profilo.id,
+      })
+    }
+    if (righe.length === 0) { setMessaggio('Sono già tutti in calendario.'); return }
+
+    const { error } = await supabase.from('serate').insert(righe)
+    if (error) setErrore(error.message)
+    else { setMessaggio(`Aggiunti altri ${righe.length} giorni.`); carica() }
+  }
+
+  async function salvaModifica() {
     setErrore('')
+    const { error } = await supabase.from('serate').update({
+      ora_inizio: modifica.ora_inizio,
+      ora_fine: modifica.ora_fine || null,
+      titolo: modifica.titolo?.trim() || null,
+      note: modifica.note?.trim() || null,
+      annullata: Boolean(modifica.annullata),
+    }).eq('id', modifica.id)
+    if (error) setErrore(error.message)
+    else { setModifica(null); carica() }
+  }
+
+  async function elimina(s) {
+    if (!confirm(`Togliere ${dataLunga(s.data)} dal calendario? Spariscono anche le disponibilità.`)) return
+    const { error } = await supabase.from('serate').delete().eq('id', s.id)
+    if (error) setErrore(error.message)
+    else { setScelto(null); carica() }
+  }
+
+  async function dai(serataId, stato) {
     const { error } = await supabase.from('disponibilita').upsert({
-      serata_id: serataId,
-      profilo_id: profilo.id,
-      stato,
+      serata_id: serataId, profilo_id: profilo.id, stato,
       aggiornata_il: new Date().toISOString(),
     })
     if (error) setErrore(error.message)
     else carica()
   }
 
-  async function togliDisponibilita(serataId) {
-    const { error } = await supabase
-      .from('disponibilita').delete()
+  async function ritira(serataId) {
+    const { error } = await supabase.from('disponibilita').delete()
       .eq('serata_id', serataId).eq('profilo_id', profilo.id)
     if (error) setErrore(error.message)
     else carica()
   }
 
-  /* ---------- Creazione e modifica ---------- */
+  /* ---------- Vista ---------- */
 
-  async function salvaSerata() {
-    setErrore(''); setMessaggio('')
-    if (!modifica.data) { setErrore('Serve la data.'); return }
-
-    const campi = {
-      data: modifica.data,
-      ora_inizio: modifica.ora_inizio || '21:00',
-      ora_fine: modifica.ora_fine || null,
-      titolo: modifica.titolo?.trim() || null,
-      note: modifica.note?.trim() || null,
-      annullata: Boolean(modifica.annullata),
-    }
-
-    const { error } = modifica.id
-      ? await supabase.from('serate').update(campi).eq('id', modifica.id)
-      : await supabase.from('serate').insert({ ...campi, creata_da: profilo.id })
-
-    if (error) { setErrore(error.message); return }
-    setMessaggio(modifica.id ? 'Serata aggiornata.' : 'Serata aggiunta.')
-    setModifica(null)
-    carica()
-  }
-
-  async function eliminaSerata(s) {
-    if (!confirm(`Eliminare la serata di ${dataLunga(s.data)}? Spariscono anche le disponibilità.`)) return
-    const { error } = await supabase.from('serate').delete().eq('id', s.id)
-    if (error) setErrore(error.message)
-    else { setModifica(null); carica() }
-  }
-
-  // Genera le occorrenze dei giorni scelti in un periodo. Chi ha bisogno
-  // di due domeniche al mese genera tutte le domeniche e cancella le altre:
-  // più semplice da capire di una regola di ricorrenza.
-  async function generaSerate() {
-    setErrore(''); setMessaggio('')
-    const { dal, al, giorni, ora_inizio, ora_fine } = generatore
-    if (!dal || !al) { setErrore('Metti le due date.'); return }
-    if (giorni.length === 0) { setErrore('Scegli almeno un giorno.'); return }
-
-    const righe = []
-    const cursore = new Date(dal + 'T12:00')
-    const fine = new Date(al + 'T12:00')
-    while (cursore <= fine) {
-      if (giorni.includes(cursore.getDay())) {
-        righe.push({
-          data: cursore.toISOString().slice(0, 10),
-          ora_inizio: ora_inizio || '21:00',
-          ora_fine: ora_fine || null,
-          creata_da: profilo.id,
-        })
-      }
-      cursore.setDate(cursore.getDate() + 1)
-    }
-
-    if (righe.length === 0) { setErrore('Nessuna data in questo periodo.'); return }
-    if (righe.length > 200) { setErrore('Troppe serate in una volta: accorcia il periodo.'); return }
-
-    // Le serate già presenti non vengono toccate.
-    const { error } = await supabase
-      .from('serate').upsert(righe, { onConflict: 'data,ora_inizio', ignoreDuplicates: true })
-    if (error) { setErrore(error.message); return }
-
-    setMessaggio(`Generate ${righe.length} serate. Cancella quelle che non servono.`)
-    setGeneratore(null)
-    carica()
-  }
-
-  if (caricamento) return <p className="aiuto">Carico il calendario&hellip;</p>
-
-  /* ---------- Modulo serata ---------- */
-
-  if (modifica) {
-    return (
-      <div className="riquadro-manuale">
-        <h3 className="titolo-sezione">{modifica.id ? 'Modifica serata' : 'Nuova serata'}</h3>
-        {errore && <div className="avviso errore">{errore}</div>}
-
-        <div className="campo">
-          <label htmlFor="s-data">Giorno</label>
-          <input id="s-data" type="date" value={modifica.data}
-            onChange={(e) => setModifica({ ...modifica, data: e.target.value })} />
-        </div>
-
-        <div className="riga-campi">
-          <div className="campo">
-            <label htmlFor="s-inizio">Dalle</label>
-            <input id="s-inizio" type="time" value={modifica.ora_inizio}
-              onChange={(e) => setModifica({ ...modifica, ora_inizio: e.target.value })} />
-          </div>
-          <div className="campo">
-            <label htmlFor="s-fine">Alle</label>
-            <input id="s-fine" type="time" value={modifica.ora_fine || ''}
-              onChange={(e) => setModifica({ ...modifica, ora_fine: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="campo">
-          <label htmlFor="s-titolo">Titolo</label>
-          <input id="s-titolo" value={modifica.titolo || ''}
-            onChange={(e) => setModifica({ ...modifica, titolo: e.target.value })}
-            placeholder="Serata libera, torneo, demo…" />
-        </div>
-
-        <div className="campo">
-          <label htmlFor="s-note">Note per i dimostratori</label>
-          <input id="s-note" value={modifica.note || ''}
-            onChange={(e) => setModifica({ ...modifica, note: e.target.value })} />
-        </div>
-
-        <label className="consenso">
-          <input type="checkbox" checked={Boolean(modifica.annullata)}
-            onChange={(e) => setModifica({ ...modifica, annullata: e.target.checked })} />
-          <span>Serata annullata. Resta nel calendario ma segnata come saltata.</span>
-        </label>
-
-        <div className="riga-bottoni">
-          <button className="bottone" onClick={salvaSerata}>Salva</button>
-          <button className="bottone bottone-secondario" onClick={() => setModifica(null)}>Annulla</button>
-        </div>
-
-        {modifica.id && (
-          <button className="bottone-piatto pericolo" onClick={() => eliminaSerata(modifica)}>
-            Elimina la serata
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  /* ---------- Generatore ---------- */
-
-  if (generatore) {
-    return (
-      <div className="riquadro-manuale">
-        <h3 className="titolo-sezione">Genera le serate fisse</h3>
-        <p className="aiuto">
-          Crea tutte le ricorrenze dei giorni scelti. Per le domeniche alterne genera
-          tutte le domeniche e cancella quelle che non servono.
-        </p>
-        {errore && <div className="avviso errore">{errore}</div>}
-
-        <div className="riga-campi">
-          <div className="campo">
-            <label htmlFor="g-dal">Dal</label>
-            <input id="g-dal" type="date" value={generatore.dal}
-              onChange={(e) => setGeneratore({ ...generatore, dal: e.target.value })} />
-          </div>
-          <div className="campo">
-            <label htmlFor="g-al">Al</label>
-            <input id="g-al" type="date" value={generatore.al}
-              onChange={(e) => setGeneratore({ ...generatore, al: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="campo">
-          <label>Giorni</label>
-          <div className="pastiglie-persone">
-            {GIORNI.map((g, i) => (
-              <button
-                key={g}
-                className={`pastiglia-nome${generatore.giorni.includes(i) ? ' nuovo' : ''}`}
-                onClick={() =>
-                  setGeneratore({
-                    ...generatore,
-                    giorni: generatore.giorni.includes(i)
-                      ? generatore.giorni.filter((x) => x !== i)
-                      : [...generatore.giorni, i],
-                  })
-                }
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="riga-campi">
-          <div className="campo">
-            <label htmlFor="g-inizio">Dalle</label>
-            <input id="g-inizio" type="time" value={generatore.ora_inizio}
-              onChange={(e) => setGeneratore({ ...generatore, ora_inizio: e.target.value })} />
-          </div>
-          <div className="campo">
-            <label htmlFor="g-fine">Alle</label>
-            <input id="g-fine" type="time" value={generatore.ora_fine}
-              onChange={(e) => setGeneratore({ ...generatore, ora_fine: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="riga-bottoni">
-          <button className="bottone" onClick={generaSerate}>Genera</button>
-          <button className="bottone bottone-secondario" onClick={() => setGeneratore(null)}>Annulla</button>
-        </div>
-      </div>
-    )
-  }
-
-  /* ---------- Calendario ---------- */
+  const oggiIso = iso(new Date())
+  const serataScelta = scelto ? serataDi(scelto) : null
 
   return (
     <>
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      {profilo.organizzatore && (
-        <div className="riga-bottoni">
-          <button className="bottone"
-            onClick={() => setModifica({ data: oggi(), ora_inizio: '21:00', ora_fine: '' })}>
-            Aggiungi una serata
-          </button>
-          <button className="bottone bottone-secondario"
-            onClick={() => setGeneratore({
-              dal: oggi(), al: '', giorni: [2, 5], ora_inizio: '21:00', ora_fine: '',
-            })}>
-            Genera le fisse
-          </button>
-        </div>
-      )}
+      <div className="testa-mese">
+        <button className="freccia-mese"
+          onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() - 1, 1))}
+          aria-label="Mese precedente">‹</button>
+        <strong>{MESI[mese.getMonth()]} {mese.getFullYear()}</strong>
+        <button className="freccia-mese"
+          onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() + 1, 1))}
+          aria-label="Mese successivo">›</button>
+      </div>
 
-      {serate.length === 0 ? (
-        <p className="aiuto">Nessuna serata in calendario.</p>
-      ) : serate.map((s) => {
-        const mia = (s.disponibilita || []).find((d) => d.profilo_id === profilo.id)
-        const presenti = (s.disponibilita || []).filter((d) => d.stato === 'si')
-        const forse = (s.disponibilita || []).filter((d) => d.stato === 'forse')
-        const apertaQui = aperta === s.id
+      <div className="griglia-giorni">
+        {GIORNI_CORTI.map((g) => <span className="intestazione-giorno" key={g}>{g}</span>)}
 
-        return (
-          <div className={`serata${s.annullata ? ' annullata' : ''}`} key={s.id}>
-            <button className="testa-partita" onClick={() => setAperta(apertaQui ? null : s.id)}>
-              <div className="dati-partita">
-                <strong>
-                  {dataLunga(s.data)}
-                  {s.annullata && <span className="distintivo rosso">Annullata</span>}
-                </strong>
-                <span className="anno">
-                  {s.ora_inizio?.slice(0, 5)}
-                  {s.ora_fine ? `–${s.ora_fine.slice(0, 5)}` : ''}
-                  {s.titolo ? ` · ${s.titolo}` : ''}
-                </span>
-                <span className="anno">
-                  {presenti.length} disponibili
-                  {forse.length ? ` · ${forse.length} forse` : ''}
-                </span>
-              </div>
-              <span className="freccia" aria-hidden="true">{apertaQui ? '−' : '+'}</span>
+        {celle().map((giorno, i) => {
+          if (!giorno) return <span className="cella vuota" key={`v${i}`} />
+          const s = serataDi(giorno)
+          const numero = Number(giorno.slice(8))
+          const disponibili = s ? (s.disponibilita || []).filter((d) => d.stato === 'si').length : 0
+          const mia = s ? (s.disponibilita || []).find((d) => d.profilo_id === profilo.id) : null
+
+          return (
+            <button
+              key={giorno}
+              className={[
+                'cella',
+                s ? 'aperta' : '',
+                s?.annullata ? 'saltata' : '',
+                giorno === oggiIso ? 'oggi' : '',
+                giorno === scelto ? 'scelta' : '',
+                mia ? `mia-${mia.stato}` : '',
+              ].join(' ').trim()}
+              onClick={() => setScelto(giorno === scelto ? null : giorno)}
+            >
+              <span className="numero">{numero}</span>
+              {s && !s.annullata && (
+                <span className="ora">{s.ora_inizio.slice(0, 5)}</span>
+              )}
+              {s && disponibili > 0 && <span className="conta">{disponibili}</span>}
             </button>
+          )
+        })}
+      </div>
 
-            {!s.annullata && (
-              <div className="scelte-disponibilita">
-                {STATI.map((st) => (
-                  <button
-                    key={st.id}
-                    className={`pastiglia-stato ${st.classe}${mia?.stato === st.id ? ' scelto' : ''}`}
-                    onClick={() => (mia?.stato === st.id ? togliDisponibilita(s.id) : dai(s.id, st.id))}
-                  >
-                    {st.etichetta}
-                  </button>
-                ))}
+      {caricamento && <p className="aiuto">Carico&hellip;</p>}
+
+      <p className="aiuto legenda">
+        I giorni con il bordo sono aperti. Il numero in basso è quanti dimostratori
+        ci sono. La striscia colorata è la tua risposta.
+      </p>
+
+      {/* ---------- Giorno scelto ---------- */}
+
+      {scelto && (
+        <div className="riquadro-manuale">
+          <h3 className="titolo-sezione">{dataLunga(scelto)}</h3>
+
+          {!serataScelta ? (
+            profilo.organizzatore ? (
+              <>
+                <p className="aiuto">Sede chiusa. Aprila scegliendo l&rsquo;orario:</p>
+                <div className="pastiglie-persone">
+                  {ORARI.map((o) => (
+                    <button key={o.id} className="pastiglia-nome nuovo"
+                      onClick={() => creaSerata(scelto, o)}>
+                      {o.etichetta} {o.inizio}–{o.fine}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="aiuto">Sede chiusa in questo giorno.</p>
+            )
+          ) : modifica ? (
+            <>
+              <div className="riga-campi">
+                <div className="campo">
+                  <label htmlFor="m-inizio">Dalle</label>
+                  <input id="m-inizio" type="time" value={modifica.ora_inizio}
+                    onChange={(e) => setModifica({ ...modifica, ora_inizio: e.target.value })} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="m-fine">Alle</label>
+                  <input id="m-fine" type="time" value={modifica.ora_fine || ''}
+                    onChange={(e) => setModifica({ ...modifica, ora_fine: e.target.value })} />
+                </div>
               </div>
-            )}
 
-            {apertaQui && (
-              <div className="dettaglio">
-                {s.note && <p className="aiuto note-partita">{s.note}</p>}
+              <div className="campo">
+                <label htmlFor="m-titolo">Titolo</label>
+                <input id="m-titolo" value={modifica.titolo || ''}
+                  onChange={(e) => setModifica({ ...modifica, titolo: e.target.value })}
+                  placeholder="Serata libera, torneo, demo…" />
+              </div>
 
-                {(s.disponibilita || []).length === 0 ? (
-                  <p className="aiuto">Nessuno si è ancora espresso.</p>
-                ) : (
-                  <ul className="elenco">
-                    {[...(s.disponibilita || [])]
-                      .sort((a, b) => a.stato.localeCompare(b.stato))
-                      .map((d) => (
-                        <li key={d.profilo_id}>
-                          <div className="nome-giocatore">
-                            <strong>{d.profili ? daMostrare(d.profili) : 'Dimostratore'}</strong>
-                            {d.note && <span className="anno block">{d.note}</span>}
-                          </div>
-                          <span className={`pastiglia-stato piccola ${d.stato}`}>
-                            {STATI.find((x) => x.id === d.stato)?.etichetta}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                )}
+              <div className="campo">
+                <label htmlFor="m-note">Note per i dimostratori</label>
+                <input id="m-note" value={modifica.note || ''}
+                  onChange={(e) => setModifica({ ...modifica, note: e.target.value })} />
+              </div>
 
-                {profilo.organizzatore && (
+              <label className="consenso">
+                <input type="checkbox" checked={Boolean(modifica.annullata)}
+                  onChange={(e) => setModifica({ ...modifica, annullata: e.target.checked })} />
+                <span>Saltata. Resta in calendario ma segnata come chiusa.</span>
+              </label>
+
+              <div className="riga-bottoni">
+                <button className="bottone" onClick={salvaModifica}>Salva</button>
+                <button className="bottone bottone-secondario" onClick={() => setModifica(null)}>Annulla</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="sottotitolo">
+                {serataScelta.annullata ? 'Saltata · ' : ''}
+                {serataScelta.ora_inizio.slice(0, 5)}
+                {serataScelta.ora_fine ? `–${serataScelta.ora_fine.slice(0, 5)}` : ''}
+                {serataScelta.titolo ? ` · ${serataScelta.titolo}` : ''}
+              </p>
+
+              {serataScelta.note && <p className="aiuto note-partita">{serataScelta.note}</p>}
+
+              {!serataScelta.annullata && (
+                <>
+                  <label>La tua disponibilità</label>
+                  <div className="scelte-disponibilita">
+                    {STATI.map((st) => {
+                      const mia = (serataScelta.disponibilita || [])
+                        .find((d) => d.profilo_id === profilo.id)
+                      return (
+                        <button key={st.id}
+                          className={`pastiglia-stato ${st.id}${mia?.stato === st.id ? ' scelto' : ''}`}
+                          onClick={() => (mia?.stato === st.id
+                            ? ritira(serataScelta.id)
+                            : dai(serataScelta.id, st.id))}>
+                          {st.etichetta}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              <h4 className="titolo-sezione">
+                Chi c&rsquo;è <span className="conteggio">{(serataScelta.disponibilita || []).length}</span>
+              </h4>
+              {(serataScelta.disponibilita || []).length === 0 ? (
+                <p className="aiuto">Nessuno si è ancora espresso.</p>
+              ) : (
+                <ul className="elenco">
+                  {[...(serataScelta.disponibilita || [])]
+                    .sort((a, b) => a.stato.localeCompare(b.stato))
+                    .map((d) => (
+                      <li key={d.profilo_id}>
+                        <div className="nome-giocatore">
+                          <strong>{d.profili ? daMostrare(d.profili) : 'Dimostratore'}</strong>
+                        </div>
+                        <span className={`pastiglia-stato piccola ${d.stato}`}>
+                          {STATI.find((x) => x.id === d.stato)?.etichetta}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
+
+              {profilo.organizzatore && (
+                <div className="azioni-iscritto">
                   <button className="bottone-piatto"
                     onClick={() => setModifica({
-                      id: s.id, data: s.data,
-                      ora_inizio: s.ora_inizio?.slice(0, 5) || '21:00',
-                      ora_fine: s.ora_fine?.slice(0, 5) || '',
-                      titolo: s.titolo, note: s.note, annullata: s.annullata,
+                      id: serataScelta.id,
+                      ora_inizio: serataScelta.ora_inizio.slice(0, 5),
+                      ora_fine: serataScelta.ora_fine?.slice(0, 5) || '',
+                      titolo: serataScelta.titolo,
+                      note: serataScelta.note,
+                      annullata: serataScelta.annullata,
                     })}>
-                    Modifica serata
+                    Cambia orario
                   </button>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })}
+                  <button className="bottone-piatto"
+                    onClick={() => ripetiNelMese(scelto, serataScelta)}>
+                    Ripeti ogni {GIORNI_CORTI[(new Date(scelto + 'T12:00').getDay() + 6) % 7]} del mese
+                  </button>
+                  <button className="bottone-piatto pericolo" onClick={() => elimina(serataScelta)}>
+                    Chiudi il giorno
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </>
   )
 }
