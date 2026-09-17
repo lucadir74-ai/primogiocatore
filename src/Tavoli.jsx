@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.2.0 - 202609171600
+// v2.3.0 - 202609171800
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -35,6 +35,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [iscritti, setIscritti] = useState([])
   const [persone, setPersone] = useState([])
   const [cercaDim, setCercaDim] = useState('')
+  const [aMano, setAMano] = useState(null)   // { nome, email, telefono, utente_id }
 
   useEffect(() => { carica() }, [])
 
@@ -215,6 +216,43 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     else setIscritti(data || [])
   }
 
+  // Iscrizione aggiunta da chi organizza: per chi si presenta senza
+  // essersi iscritto, o chi ha telefonato invece di usare il link.
+  async function aggiungiAMano() {
+    setErrore(''); setMessaggio('')
+    if (!aMano.nome.trim()) { setErrore('Serve il nome.'); return }
+
+    try {
+      const { data: iscrizione, error } = await supabase
+        .from('iscrizioni_tavolo')
+        .insert({
+          tavolo_id: gestito.id,
+          utente_id: aMano.utente_id || null,
+          nome_visibile: aMano.nome.trim(),
+          stato: 'confermato',
+          ruolo: 'giocatore',
+        })
+        .select('id').single()
+      if (error) throw error
+
+      if (aMano.email.trim() || aMano.telefono.trim()) {
+        const { error: e2 } = await supabase.from('iscrizioni_contatti').insert({
+          iscrizione_id: iscrizione.id,
+          email: aMano.email.trim() || null,
+          telefono: aMano.telefono.trim() || null,
+        })
+        if (e2) throw e2
+      }
+
+      setAMano(null)
+      setMessaggio('Iscritto aggiunto.')
+      apriIscritti(gestito)
+      carica()
+    } catch (e) {
+      setErrore(e.message)
+    }
+  }
+
   async function cambiaIscrizione(id, campi) {
     const { error } = await supabase.from('iscrizioni_tavolo').update(campi).eq('id', id)
     if (error) setErrore(error.message)
@@ -390,6 +428,64 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
               )
             })}
           </ul>
+        )}
+
+        {aMano ? (
+          <div className="riquadro-manuale">
+            <h3 className="titolo-sezione">Aggiungi un iscritto</h3>
+
+            <div className="campo">
+              <label htmlFor="m-nome-isc">Nome</label>
+              <input id="m-nome-isc" value={aMano.nome}
+                onChange={(e) => setAMano({ ...aMano, nome: e.target.value, utente_id: null })} />
+              <input className="campo-cerca" value={aMano.cerca || ''}
+                onChange={(e) => setAMano({ ...aMano, cerca: e.target.value })}
+                placeholder="…oppure cercalo fra chi ha un account" />
+              {(aMano.cerca || '').trim() && (
+                <div className="pastiglie-persone">
+                  {persone
+                    .filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(aMano.cerca.toLowerCase()))
+                    .slice(0, 8)
+                    .map((p) => (
+                      <button key={p.id} className="pastiglia-nome"
+                        onClick={() => setAMano({ ...aMano, utente_id: p.id, nome: daMostrare(p), cerca: '' })}>
+                        {daMostrare(p)}
+                      </button>
+                    ))}
+                </div>
+              )}
+              {aMano.utente_id && (
+                <p className="aiuto">Collegato a un account: la partita entrerà nelle sue statistiche.</p>
+              )}
+            </div>
+
+            <div className="campo">
+              <label htmlFor="m-email-isc">Email</label>
+              <input id="m-email-isc" type="email" value={aMano.email}
+                onChange={(e) => setAMano({ ...aMano, email: e.target.value })} />
+            </div>
+
+            <div className="campo">
+              <label htmlFor="m-tel-isc">Telefono</label>
+              <input id="m-tel-isc" type="tel" value={aMano.telefono}
+                onChange={(e) => setAMano({ ...aMano, telefono: e.target.value })} />
+            </div>
+
+            <p className="aiuto">
+              I contatti sono facoltativi qui: li stai inserendo tu, non la persona. Mettili
+              solo se ti servono davvero e se chi li fornisce sa a cosa servono.
+            </p>
+
+            <div className="riga-bottoni">
+              <button className="bottone" onClick={aggiungiAMano}>Aggiungi</button>
+              <button className="bottone bottone-secondario" onClick={() => setAMano(null)}>Annulla</button>
+            </div>
+          </div>
+        ) : (
+          <button className="bottone bottone-secondario"
+            onClick={() => setAMano({ nome: '', email: '', telefono: '', utente_id: null, cerca: '' })}>
+            Aggiungi un iscritto a mano
+          </button>
         )}
 
         {iscritti.length > 0 && !gestito.partita_id && (
