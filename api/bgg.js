@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.2.0 - 202609141700
+// v1.3.0 - 202609181400
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -92,11 +92,16 @@ async function chiamaBGG(percorso) {
 
 const elenco = (x) => (x == null ? [] : Array.isArray(x) ? x : [x])
 
-// Il nome principale: BGG ne restituisce diversi, quello buono ha type "primary".
+// Il nome principale. BGG lo restituisce in tre forme diverse a seconda
+// della chiamata: testo puro, oggetto con "value", oppure oggetto con
+// attributi e il testo dentro "#text" (è il caso della collezione).
 function nomePrincipale(nome) {
   const nomi = elenco(nome)
   const primario = nomi.find((n) => n?.type === 'primary') || nomi[0]
-  return primario?.value ?? (typeof primario === 'string' ? primario : null)
+  if (primario == null) return null
+  if (typeof primario === 'string') return primario
+  if (typeof primario === 'number') return String(primario)
+  return primario.value ?? primario['#text'] ?? null
 }
 
 function semplificaGioco(item) {
@@ -124,11 +129,13 @@ export default async function handler(req, res) {
         `/search?query=${encodeURIComponent(q.trim())}&type=boardgame`
       )
       const dati = parser.parse(xml)
-      const risultati = elenco(dati?.items?.item).map((i) => ({
-        bgg_id: Number(i.id),
-        nome: nomePrincipale(i.name),
-        anno: i.yearpublished?.value ?? null,
-      }))
+      const risultati = elenco(dati?.items?.item)
+        .map((i) => ({
+          bgg_id: Number(i.id),
+          nome: nomePrincipale(i.name),
+          anno: i.yearpublished?.value ?? i.yearpublished ?? null,
+        }))
+        .filter((g) => g.nome)
       return res.status(200).json({ risultati })
     }
 
@@ -138,7 +145,7 @@ export default async function handler(req, res) {
       const ids = String(id).split(',').slice(0, 20).join(',')
       const xml = await chiamaBGG(`/thing?id=${ids}&type=boardgame`)
       const dati = parser.parse(xml)
-      const giochi = elenco(dati?.items?.item).map(semplificaGioco)
+      const giochi = elenco(dati?.items?.item).map(semplificaGioco).filter((g) => g.nome)
       return res.status(200).json({ giochi })
     }
 
@@ -154,11 +161,14 @@ export default async function handler(req, res) {
       if (dati?.errors) {
         return res.status(404).json({ errore: 'Utente BGG non trovato.' })
       }
-      const giochi = elenco(dati?.items?.item).map((i) => ({
-        bgg_id: Number(i.objectid),
-        nome: nomePrincipale(i.name),
-        anno: i.yearpublished ?? null,
-      }))
+      const giochi = elenco(dati?.items?.item)
+        .map((i) => ({
+          bgg_id: Number(i.objectid),
+          nome: nomePrincipale(i.name),
+          anno: i.yearpublished ?? null,
+        }))
+        // Senza nome la riga è inutile e il database la rifiuterebbe.
+        .filter((g) => g.nome && Number.isFinite(g.bgg_id))
       return res.status(200).json({ giochi, totale: giochi.length })
     }
 
