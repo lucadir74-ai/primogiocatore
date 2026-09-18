@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v1.26.0 - 202609162100
+// v2.9.1 - 202609190930
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -684,6 +684,32 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
         {d.ultima && <p>Ultima volta: {giorno(d.ultima)}.</p>}
       </div>
 
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} />
+
+      <h3 className="titolo-sezione">Chi lo domina</h3>
+      <ul className="elenco">
+        {d.giocatori.map((g) => {
+          const r = g.attese > 0 ? g.vinte / g.attese : null
+          const rip = riepilogoPunteggi(g.punteggi)
+          return (
+            <li key={g.nome}>
+              <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
+              <div className="nome-giocatore">
+                <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
+                <span className="anno block">
+                  {g.partite} giocate · {g.vinte} vinte
+                </span>
+                {rip && <span className="anno block">{rip}</span>}
+              </div>
+              {r != null && (
+                <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+
       <Istogramma dati={istogramma(d.sue)} />
 
       {d.turni.length > 1 && (
@@ -749,30 +775,6 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
         </>
       )}
 
-      <h3 className="titolo-sezione">Chi lo domina</h3>
-      <ul className="elenco">
-        {d.giocatori.map((g) => {
-          const r = g.attese > 0 ? g.vinte / g.attese : null
-          const rip = riepilogoPunteggi(g.punteggi)
-          return (
-            <li key={g.nome}>
-              <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
-              <div className="nome-giocatore">
-                <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
-                <span className="anno block">
-                  {g.partite} giocate · {g.vinte} vinte
-                </span>
-                {rip && <span className="anno block">{rip}</span>}
-              </div>
-              {r != null && (
-                <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-
-      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} />
     </>
   )
 }
