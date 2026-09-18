@@ -1,10 +1,10 @@
 // Primo Giocatore - Esporta e importa
-// v3.0.2 - 202609191800
+// v3.3.0 - 202609201400
 
 import { useRef, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
-import { impronta, improntePresenti, giaPresente, improntaDebole } from './impronta'
+import { impronta, improntePresenti, giaPresente } from './impronta'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
@@ -32,7 +32,7 @@ export default function Dati({ profilo }) {
   const [anteprimaBgg, setAnteprimaBgg] = useState(null)
 
   async function leggiTutto() {
-    const { data, error } = await supabase
+    return tutteLeRighe(() => supabase
       .from('partite')
       .select(`
         id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, chiave_esterna,
@@ -44,9 +44,7 @@ export default function Dati({ profilo }) {
           ospiti:ospite_id ( nome )
         )
       `)
-      .order('giocata_il', { ascending: true })
-    if (error) throw error
-    return data || []
+      .order('giocata_il', { ascending: true }))
   }
 
   async function esportaJson() {
@@ -177,8 +175,8 @@ export default function Dati({ profilo }) {
               punteggi: p.giocatori.map((g) => g.punteggio),
             })
           : null
-        const sospetta = giaPresente(presenti, imp)
-        return { ...p, impronta: imp, sospetta, debole: sospetta && improntaDebole(imp) }
+        const esito = giaPresente(presenti, imp)
+        return { ...p, impronta: imp, sospetta: esito.presente, debole: esito.modo === 'debole' }
       })
 
       setAnteprimaBgg({
@@ -408,7 +406,7 @@ export default function Dati({ profilo }) {
           giocoId, giocataIl: p.giocata_il,
           punteggi: (p.giocatori || []).map((g) => g.punteggio),
         })
-        if (giaPresente(presenti, imp)) { saltate++; continue }
+        if (giaPresente(presenti, imp).presente) { saltate++; continue }
 
         const { data: partita, error } = await supabase
           .from('partite')
@@ -549,10 +547,11 @@ export default function Dati({ profilo }) {
         </ul>
 
         {anteprimaBgg.deboli > 0 && (
-          <p className="aiuto avviso-pareggio">
-            Attenzione: {anteprimaBgg.deboli} di quelle già presenti non hanno punteggi,
-            quindi sono riconosciute solo da gioco, giorno e numero di giocatori. Se quel
-            giorno avete fatto più partite allo stesso gioco, controlla prima di importare.
+          <p className="aiuto">
+            {anteprimaBgg.deboli} sono state riconosciute senza poter confrontare i
+            punteggi, perché mancano da una delle due parti: per quelle coincidono gioco,
+            giorno e numero di giocatori. Se in una serata avete fatto più partite allo
+            stesso gioco, dai un'occhiata prima di importare.
           </p>
         )}
 

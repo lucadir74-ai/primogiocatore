@@ -1,9 +1,9 @@
 // Primo Giocatore - Statistiche
-// v2.11.1 - 202609191300
+// v3.3.0 - 202609201400
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, COLORI, daMostrare } from './supabase'
+import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -53,7 +53,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   }, [mira?.tipo, mira?.id, mira?.quando])
 
   async function carica() {
-    const { data, error } = await supabase
+    try {
+      const righe = await tutteLeRighe(() => supabase
       .from('partite')
       .select(`
         id, giocata_il, durata_minuti, tipo_punteggio, esito_coop, note, registrata_da,
@@ -65,11 +66,13 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           ospiti:ospite_id ( nome, utente_collegato )
         )
       `)
-      .order('giocata_il', { ascending: true })
-
-    if (error) setErrore(error.message)
-    else setPartite(data || [])
-    setCaricamento(false)
+      .order('giocata_il', { ascending: true }))
+      setPartite(righe)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setCaricamento(false)
+    }
   }
 
   /* ---------- Elenchi per le tendine ---------- */

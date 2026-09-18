@@ -1,8 +1,8 @@
 // Primo Giocatore - registrazione e modifica partita
-// v3.0.0 - 202609191500
+// v3.3.0 - 202609201400
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare } from './supabase'
+import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { impronta } from './impronta'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
@@ -135,24 +135,24 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   async function caricaElenchi() {
     const [g, p, o, f, l, c] = await Promise.all([
-      supabase.from('giochi').select('*').order('nome'),
-      supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
-      supabase.from('ospiti').select('id, nome').order('nome'),
-      supabase.from('partecipazioni').select('utente_id, ospite_id'),
-      supabase.from('luoghi').select('nome').order('nome'),
-      supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id),
+      tutteLeRighe(() => supabase.from('giochi').select('*').order('nome')),
+      tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname, colore').order('nome')),
+      tutteLeRighe(() => supabase.from('ospiti').select('id, nome').order('nome')),
+      tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
+      tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
+      tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id)),
     ])
-    if (g.data) setCatalogo(g.data)
-    if (p.data) setPersone(p.data)
-    if (o.data) setOspiti(o.data)
-    if (l.data) setLuoghiNoti(l.data.map((x) => x.nome))
-    if (c.data) setMiaCollezione(new Set(c.data.map((x) => x.gioco_id)))
+    setCatalogo(g)
+    setPersone(p)
+    setOspiti(o)
+    setLuoghiNoti(l.map((x) => x.nome))
+    setMiaCollezione(new Set(c.map((x) => x.gioco_id)))
 
     // Quante partite ha ciascuno: i soliti compagni vanno davanti,
     // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
-    if (f.data) {
+    {
       const c = new Map()
-      for (const r of f.data) {
+      for (const r of f) {
         const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
         c.set(k, (c.get(k) || 0) + 1)
       }

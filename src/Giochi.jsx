@@ -1,8 +1,8 @@
 // Primo Giocatore - schermata Giochi
-// v1.15.0 - 202609152000
+// v3.3.0 - 202609201400
 
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -25,12 +25,15 @@ export default function Giochi({ profilo }) {
   useEffect(() => { caricaCatalogo() }, [])
 
   async function caricaCatalogo() {
-    const { data, error } = await supabase
-      .from('giochi')
-      .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni')
-      .order('nome')
-    if (error) setErrore(error.message)
-    else setCatalogo(data || [])
+    try {
+      const righe = await tutteLeRighe(() => supabase
+        .from('giochi')
+        .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni')
+        .order('nome'))
+      setCatalogo(righe)
+    } catch (e) {
+      setErrore(e.message)
+    }
   }
 
   async function cerca() {

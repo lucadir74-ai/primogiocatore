@@ -1,8 +1,8 @@
 // Primo Giocatore - Storico
-// v2.11.0 - 202609191200
+// v3.3.0 - 202609201400
 
 import { useEffect, useState } from 'react'
-import { supabase, COLORI, daMostrare } from './supabase'
+import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -25,7 +25,8 @@ export default function Storico({ profilo, onModifica, onApri }) {
 
   async function carica() {
     setCaricamento(true)
-    const { data: righe, error } = await supabase
+    try {
+      const righe = await tutteLeRighe(() => supabase
       .from('partite')
       .select(`
         id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, registrata_da,
@@ -37,11 +38,13 @@ export default function Storico({ profilo, onModifica, onApri }) {
           ospiti:ospite_id ( nome, utente_collegato )
         )
       `)
-      .order('giocata_il', { ascending: false })
-
-    if (error) setErrore(error.message)
-    else setPartite(righe || [])
-    setCaricamento(false)
+      .order('giocata_il', { ascending: false }))
+      setPartite(righe)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setCaricamento(false)
+    }
   }
 
   async function cancella(id) {

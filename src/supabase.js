@@ -23,3 +23,19 @@ export const COLORI = [
 // altrimenti nome e cognome. Un posto solo, per non doverlo ricordare.
 export const daMostrare = (p) =>
   (p?.nickname && p.nickname.trim()) || p?.nome || 'Sconosciuto'
+
+// Supabase restituisce al massimo mille righe per interrogazione.
+// Questa funzione le chiede a blocchi finché non finiscono: senza,
+// oltre le mille partite le statistiche sarebbero semplicemente
+// sbagliate, senza dare nessun errore.
+export async function tutteLeRighe(costruisciQuery, blocco = 1000) {
+  const righe = []
+  for (let da = 0; ; da += blocco) {
+    const { data, error } = await costruisciQuery().range(da, da + blocco - 1)
+    if (error) throw error
+    righe.push(...(data || []))
+    if (!data || data.length < blocco) break
+    if (righe.length > 50000) break   // rete di sicurezza
+  }
+  return righe
+}

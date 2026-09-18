@@ -1,11 +1,11 @@
 // Primo Giocatore - gestione degli ospiti
-// v2.10.0 - 202609191000
+// v3.3.0 - 202609201400
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
 
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
 
 export default function UnisciOspiti({ profilo }) {
   const [ospiti, setOspiti] = useState([])
@@ -22,16 +22,19 @@ export default function UnisciOspiti({ profilo }) {
   useEffect(() => { carica() }, [])
 
   async function carica() {
-    const [o, p, pr] = await Promise.all([
-      supabase.from('ospiti').select('id, nome, utente_collegato').order('nome'),
-      supabase.from('partecipazioni').select('ospite_id').not('ospite_id', 'is', null),
-      supabase.from('profili').select('id, nome, nickname').order('nome'),
-    ])
-    if (o.error) { setErrore(o.error.message); return }
-    if (pr.data) setPersone(pr.data)
-    const conteggio = new Map()
-    for (const r of p.data || []) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
-    setOspiti((o.data || []).map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
+    try {
+      const [o, p, pr] = await Promise.all([
+        tutteLeRighe(() => supabase.from('ospiti').select('id, nome, utente_collegato').order('nome')),
+        tutteLeRighe(() => supabase.from('partecipazioni').select('ospite_id').not('ospite_id', 'is', null)),
+        tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname').order('nome')),
+      ])
+      setPersone(pr)
+      const conteggio = new Map()
+      for (const r of p) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
+      setOspiti(o.map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
+    } catch (e) {
+      setErrore(e.message)
+    }
   }
 
   async function salvaNome() {

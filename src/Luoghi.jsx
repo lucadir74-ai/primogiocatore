@@ -1,8 +1,8 @@
 // Primo Giocatore - gestione dei luoghi
-// v2.6.0 - 202609181600
+// v3.3.0 - 202609201400
 
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
 
 export default function Luoghi({ profilo }) {
   const [luoghi, setLuoghi] = useState([])
@@ -17,17 +17,18 @@ export default function Luoghi({ profilo }) {
   useEffect(() => { carica() }, [])
 
   async function carica() {
-    const [l, p, t] = await Promise.all([
-      supabase.from('luoghi').select('id, nome, tipo').order('nome'),
-      supabase.from('partite').select('luogo_id').not('luogo_id', 'is', null),
-      supabase.from('tavoli').select('luogo_id').not('luogo_id', 'is', null),
-    ])
-    if (l.error) { setErrore(l.error.message); return }
-    const conta = new Map()
-    for (const r of [...(p.data || []), ...(t.data || [])]) {
-      conta.set(r.luogo_id, (conta.get(r.luogo_id) || 0) + 1)
+    try {
+      const [l, p, t] = await Promise.all([
+        tutteLeRighe(() => supabase.from('luoghi').select('id, nome, tipo').order('nome')),
+        tutteLeRighe(() => supabase.from('partite').select('luogo_id').not('luogo_id', 'is', null)),
+        tutteLeRighe(() => supabase.from('tavoli').select('luogo_id').not('luogo_id', 'is', null)),
+      ])
+      const conta = new Map()
+      for (const r of [...p, ...t]) conta.set(r.luogo_id, (conta.get(r.luogo_id) || 0) + 1)
+      setLuoghi(l.map((x) => ({ ...x, usi: conta.get(x.id) || 0 })))
+    } catch (e) {
+      setErrore(e.message)
     }
-    setLuoghi((l.data || []).map((x) => ({ ...x, usi: conta.get(x.id) || 0 })))
   }
 
   async function salvaNome() {

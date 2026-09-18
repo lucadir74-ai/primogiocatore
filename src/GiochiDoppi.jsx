@@ -1,12 +1,12 @@
 // Primo Giocatore - giochi doppi
-// v2.7.0 - 202609181800
+// v3.3.0 - 202609201400
 //
 // Capita quando lo stesso gioco entra due volte: una aggiunto a mano,
 // una arrivato da BGG o da un'importazione. L'aggancio avviene per
 // identificativo BGG, quindi le voci scritte a mano restano separate.
 
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
 
 export default function GiochiDoppi({ profilo }) {
   const [giochi, setGiochi] = useState([])
@@ -20,14 +20,17 @@ export default function GiochiDoppi({ profilo }) {
   useEffect(() => { carica() }, [])
 
   async function carica() {
-    const [g, p] = await Promise.all([
-      supabase.from('giochi').select('id, nome, anno, bgg_id, immagine_url').order('nome'),
-      supabase.from('partite').select('gioco_id'),
-    ])
-    if (g.error) { setErrore(g.error.message); return }
-    const conta = new Map()
-    for (const r of p.data || []) conta.set(r.gioco_id, (conta.get(r.gioco_id) || 0) + 1)
-    setGiochi((g.data || []).map((x) => ({ ...x, partite: conta.get(x.id) || 0 })))
+    try {
+      const [g, p] = await Promise.all([
+        tutteLeRighe(() => supabase.from('giochi').select('id, nome, anno, bgg_id, immagine_url').order('nome')),
+        tutteLeRighe(() => supabase.from('partite').select('gioco_id')),
+      ])
+      const conta = new Map()
+      for (const r of p) conta.set(r.gioco_id, (conta.get(r.gioco_id) || 0) + 1)
+      setGiochi(g.map((x) => ({ ...x, partite: conta.get(x.id) || 0 })))
+    } catch (e) {
+      setErrore(e.message)
+    }
   }
 
   // Stesso nome, ripulito da maiuscole e spazi: sono quasi sempre doppioni.
