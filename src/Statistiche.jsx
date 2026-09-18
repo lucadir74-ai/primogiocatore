@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.5.0 - 202609201900
+// v3.7.0 - 202609202200
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -51,7 +51,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     setTipo(mira.tipo)
     setScelto(mira.id)
     setCerca('')
-  }, [mira?.tipo, mira?.id, mira?.quando])
+    if (mira.dove) setDove(mira.dove)
+  }, [mira?.tipo, mira?.id, mira?.dove, mira?.quando])
 
   async function carica() {
     try {
@@ -354,6 +355,19 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   const vaiAlGiocatore = (chiave) => { setTipo('persona'); setCerca(''); setScelto(chiave) }
   const vaiAlGioco = (id) => { setTipo('gioco'); setCerca(''); setScelto(id) }
 
+  // Passa ad App anche il punto in cui siamo: al ritorno dalla modifica
+  // si riapre qui, invece di ricominciare dalla prima schermata.
+  const apriPartita = (idPartita) =>
+    onModifica?.(idPartita, { tipo, id: attivo, dove })
+
+  async function cancellaPartita(p) {
+    const nome = p.giochi?.nome || 'questa partita'
+    if (!confirm(`Cancellare ${nome} del ${giorno(p.giocata_il)}? Non si torna indietro.`)) return
+    const { error } = await supabase.from('partite').delete().eq('id', p.id)
+    if (error) setErrore(error.message)
+    else setPartite((righe) => righe.filter((x) => x.id !== p.id))
+  }
+
   function cambiaTipo(nuovo) {
     setTipo(nuovo)
     setCerca('')
@@ -424,7 +438,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           vaiAlGioco={vaiAlGioco}
           vaiAlGiocatore={vaiAlGiocatore}
           profilo={profilo}
-          onModifica={onModifica}
+          onModifica={apriPartita}
+          onCancella={cancellaPartita}
         />
       ) : tipo === 'gioco' ? (
         <SchedaGioco
@@ -432,7 +447,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]}
           istogramma={istogramma}
           profilo={profilo}
-          onModifica={onModifica}
+          onModifica={apriPartita}
+          onCancella={cancellaPartita}
           vaiAlGiocatore={vaiAlGiocatore}
         />
       ) : tipo === 'luogo' ? (
@@ -442,7 +458,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           vaiAlGiocatore={vaiAlGiocatore}
           vaiAlGioco={vaiAlGioco}
           profilo={profilo}
-          onModifica={onModifica}
+          onModifica={apriPartita}
+          onCancella={cancellaPartita}
         />
       ) : (
         <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
@@ -482,7 +499,7 @@ function Istogramma({ dati }) {
 
 /* ---------- Giocatore ---------- */
 
-function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onModifica }) {
+function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onModifica, onCancella }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita per questo giocatore.</p>
   return (
     <>
@@ -545,7 +562,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
         )}
       </ul>
 
-      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} mostraGioco />
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} mostraGioco />
 
       <Istogramma dati={istogramma(d.sue)} />
 
@@ -600,7 +617,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
 
 /* ---------- Gioco ---------- */
 
-function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco }) {
+function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella }) {
   const [aperta, setAperta] = useState(null)
 
   // Raggruppate per giorno: le serate di gioco stanno insieme.
@@ -691,10 +708,19 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco }) {
 
                     {p.note && <p className="aiuto note-partita">{p.note}</p>}
 
-                    {p.registrata_da === profilo.id && onModifica && (
-                      <button className="bottone-piatto" onClick={() => onModifica(p.id)}>
-                        Modifica
-                      </button>
+                    {p.registrata_da === profilo.id && (
+                      <div className="azioni-partita">
+                        {onModifica && (
+                          <button className="bottone-piatto" onClick={() => onModifica(p.id)}>
+                            Modifica
+                          </button>
+                        )}
+                        {onCancella && (
+                          <button className="bottone-piatto pericolo" onClick={() => onCancella(p)}>
+                            Cancella
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -707,7 +733,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco }) {
   )
 }
 
-function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore }) {
+function SchedaGioco({ d, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
     <>
@@ -734,7 +760,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
         {d.ultima && <p>Ultima volta: {giorno(d.ultima)}.</p>}
       </div>
 
-      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} />
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} />
 
       <h3 className="titolo-sezione">Chi lo domina</h3>
       <ul className="elenco">
@@ -831,7 +857,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
 
 /* ---------- Luogo ---------- */
 
-function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onModifica }) {
+function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onModifica, onCancella }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita in questo luogo.</p>
   return (
     <>
@@ -844,7 +870,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
 
       {d.ultima && <p className="aiuto">Ultima volta: {giorno(d.ultima)}.</p>}
 
-      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} mostraGioco />
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} mostraGioco />
 
       <Istogramma dati={istogramma(d.sue)} />
 
