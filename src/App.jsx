@@ -1,4 +1,4 @@
-// Primo Giocatore v2.11.0 - 202609191200
+// Primo Giocatore v3.6.1 - 202609202100
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -303,6 +303,8 @@ export default function App() {
   const [erroreProfilo, setErroreProfilo] = useState('')
   const [partitaId, setPartitaId] = useState(null)
   const [mira, setMira] = useState(null)
+  const [ritorno, setRitorno] = useState(null)
+  const [ritornoStorico, setRitornoStorico] = useState(null)
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -396,7 +398,20 @@ export default function App() {
               key={partitaId || 'nuova'}
               profilo={profilo}
               partitaId={partitaId}
-              finitaModifica={() => { setPartitaId(null); setScheda('storico') }}
+              finitaModifica={() => {
+                setPartitaId(null)
+                // Si torna da dove si era arrivati, com'era.
+                if (ritorno) {
+                  setMira({ ...ritorno, quando: Date.now() })
+                  setScheda('statistiche')
+                  setRitorno(null)
+                } else {
+                  if (ritornoStorico) {
+                    setRitornoStorico({ ...ritornoStorico, quando: Date.now() })
+                  }
+                  setScheda('storico')
+                }
+              }}
             />
           ) : scheda === 'tavoli' ? (
             <Tavoli
@@ -406,7 +421,13 @@ export default function App() {
           ) : scheda === 'storico' ? (
             <Storico
               profilo={profilo}
-              onModifica={(id) => { setPartitaId(id); setScheda('partita') }}
+              ripristina={ritornoStorico}
+              onModifica={(id, posizione) => {
+                setRitorno(null)
+                setRitornoStorico(posizione || null)
+                setPartitaId(id)
+                setScheda('partita')
+              }}
               onApri={(tipo, id) => {
                 setMira({ tipo, id, quando: Date.now() })
                 setScheda('statistiche')
@@ -416,7 +437,11 @@ export default function App() {
             <Statistiche
               profilo={profilo}
               mira={mira}
-              onModifica={(id) => { setPartitaId(id); setScheda('partita') }}
+              onModifica={(id, dove) => {
+                setRitorno(dove || null)
+                setPartitaId(id)
+                setScheda('partita')
+              }}
             />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />

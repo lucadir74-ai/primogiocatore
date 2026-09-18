@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v3.3.0 - 202609201400
+// v3.6.1 - 202609202100
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -13,7 +13,7 @@ const SEZIONI = [
 
 const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
-export default function Storico({ profilo, onModifica, onApri }) {
+export default function Storico({ profilo, onModifica, onApri, ripristina }) {
   const [sezione, setSezione] = useState('partite')
   const [partite, setPartite] = useState([])
   const [aperta, setAperta] = useState(null)
@@ -22,6 +22,15 @@ export default function Storico({ profilo, onModifica, onApri }) {
   const [errore, setErrore] = useState('')
 
   useEffect(() => { carica() }, [])
+
+  // Al ritorno da una modifica si riprende da dove si era: stessa
+  // sezione, stessa ricerca, stessa partita aperta.
+  useEffect(() => {
+    if (!ripristina) return
+    if (ripristina.sezione) setSezione(ripristina.sezione)
+    if (ripristina.cerca != null) setCerca(ripristina.cerca)
+    if (ripristina.aperta) setAperta(ripristina.aperta)
+  }, [ripristina?.quando])
 
   async function carica() {
     setCaricamento(true)
@@ -240,7 +249,10 @@ export default function Storico({ profilo, onModifica, onApri }) {
 
                 {p.registrata_da === profilo.id && (
                   <div className="azioni-partita">
-                    <button className="bottone-piatto" onClick={() => onModifica?.(p.id)}>
+                    <button
+                      className="bottone-piatto"
+                      onClick={() => onModifica?.(p.id, { sezione, cerca, aperta: p.id })}
+                    >
                       Modifica
                     </button>
                     <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
