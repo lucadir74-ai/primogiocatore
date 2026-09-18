@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.4.0 - 202609201600
+// v3.4.1 - 202609201700
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -76,6 +76,18 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     }
   }
 
+  /* ---------- Il filtro, prima di ogni calcolo ---------- */
+
+  // Dal vivo e a distanza sono due cose diverse: mescolarle nei numeri
+  // significa non poter leggere né le une né le altre.
+  const partite = dove === 'tutte'
+    ? tuttePartite
+    : dove === 'online'
+      ? tuttePartite.filter((p) => p.luoghi?.tipo === 'online')
+      : tuttePartite.filter((p) => p.luoghi?.tipo !== 'online')
+
+  const quanteOnline = tuttePartite.filter((p) => p.luoghi?.tipo === 'online').length
+
   /* ---------- Elenchi per le tendine ---------- */
 
   const elenchi = useMemo(() => {
@@ -97,16 +109,6 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   /* ---------- Motore di calcolo ---------- */
 
   const quanti = (p) => (p.partecipazioni || []).length
-
-  // Dal vivo e a distanza sono due cose diverse: mescolarle nei numeri
-  // significa non poter leggere né le une né le altre.
-  const partite = dove === 'tutte'
-    ? tuttePartite
-    : dove === 'online'
-      ? tuttePartite.filter((p) => p.luoghi?.tipo === 'online')
-      : tuttePartite.filter((p) => p.luoghi?.tipo !== 'online')
-
-  const quanteOnline = tuttePartite.filter((p) => p.luoghi?.tipo === 'online').length
 
   // Statistiche di una persona, chiunque essa sia.
   function dellaPersona(chiave) {
