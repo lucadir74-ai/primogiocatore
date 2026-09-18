@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v2.9.1 - 202609190930
+// v2.11.0 - 202609191200
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -33,7 +33,7 @@ const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x
 const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
-export default function Statistiche({ profilo, onModifica }) {
+export default function Statistiche({ profilo, onModifica, mira }) {
   const [partite, setPartite] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -43,6 +43,14 @@ export default function Statistiche({ profilo, onModifica }) {
   const [cerca, setCerca] = useState('')
 
   useEffect(() => { carica() }, [])
+
+  // Arrivo da un'altra scheda: apro direttamente su quel soggetto.
+  useEffect(() => {
+    if (!mira?.tipo || !mira?.id) return
+    setTipo(mira.tipo)
+    setScelto(mira.id)
+    setCerca('')
+  }, [mira?.tipo, mira?.id, mira?.quando])
 
   async function carica() {
     const { data, error } = await supabase

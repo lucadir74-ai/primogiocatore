@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v1.17.0 - 202609152200
+// v2.11.0 - 202609191200
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -13,7 +13,7 @@ const SEZIONI = [
 
 const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
-export default function Storico({ profilo, onModifica }) {
+export default function Storico({ profilo, onModifica, onApri }) {
   const [sezione, setSezione] = useState('partite')
   const [partite, setPartite] = useState([])
   const [aperta, setAperta] = useState(null)
@@ -72,7 +72,7 @@ export default function Storico({ profilo, onModifica }) {
     for (const p of partite) {
       if (!p.giochi) continue
       const k = p.giochi.id
-      const v = m.get(k) || { nome: p.giochi.nome, immagine: p.giochi.immagine_url, partite: 0, vittorie: 0, ultima: null }
+      const v = m.get(k) || { id: k, nome: p.giochi.nome, immagine: p.giochi.immagine_url, partite: 0, vittorie: 0, ultima: null }
       v.partite++
       const mia = p.partecipazioni?.find((x) => mieiId.has(x.utente_id))
       if (mia?.vincitore) v.vittorie++
@@ -88,7 +88,7 @@ export default function Storico({ profilo, onModifica }) {
       for (const par of p.partecipazioni || []) {
         const c = chi(par)
         if (mieiId.has(par.utente_id)) continue // non conto me stesso
-        const v = m.get(c.identita) || { nome: c.nome, colore: c.colore, ospite: c.ospite, partite: 0, vittorie: 0 }
+        const v = m.get(c.identita) || { chiave: c.identita, nome: c.nome, colore: c.colore, ospite: c.ospite, partite: 0, vittorie: 0 }
         v.partite++
         if (par.vincitore) v.vittorie++
         m.set(c.identita, v)
@@ -101,7 +101,7 @@ export default function Storico({ profilo, onModifica }) {
     const m = new Map()
     for (const p of partite) {
       const k = p.luoghi?.id || 'ignoto'
-      const v = m.get(k) || { nome: p.luoghi?.nome || 'Non indicato', partite: 0, ultima: null }
+      const v = m.get(k) || { id: k, nome: p.luoghi?.nome || 'Non indicato', partite: 0, ultima: null }
       v.partite++
       if (!v.ultima || p.giocata_il > v.ultima) v.ultima = p.giocata_il
       m.set(k, v)
@@ -121,6 +121,8 @@ export default function Storico({ profilo, onModifica }) {
     ]
     return pezzi.filter(Boolean).some((t) => t.toLowerCase().includes(q))
   })
+
+  const filtraNome = (righe) => (!q ? righe : righe.filter((r) => r.nome.toLowerCase().includes(q)))
 
   if (caricamento) return <div className="scheda"><p>Carico lo storico&hellip;</p></div>
 
@@ -142,19 +144,24 @@ export default function Storico({ profilo, onModifica }) {
         ))}
       </div>
 
-      {sezione === 'partite' && partite.length > 1 && (
+      {partite.length > 1 && (
         <input
           className="campo-cerca"
           value={cerca}
           onChange={(e) => setCerca(e.target.value)}
-          placeholder="Cerca per gioco, giocatore, luogo o nota"
-          aria-label="Cerca fra le partite"
+          placeholder={
+            sezione === 'partite' ? 'Cerca per gioco, giocatore, luogo o nota'
+            : sezione === 'giochi' ? 'Cerca un gioco'
+            : sezione === 'giocatori' ? 'Cerca un giocatore'
+            : 'Cerca un luogo'
+          }
+          aria-label="Cerca"
         />
       )}
 
       {partite.length === 0 && <p className="aiuto">Ancora nessuna partita registrata.</p>}
 
-      {sezione === 'partite' && cerca.trim() && filtrate.length === 0 && (
+      {cerca.trim() && sezione === 'partite' && filtrate.length === 0 && (
         <p className="aiuto">Nessuna partita per «{cerca}».</p>
       )}
 
@@ -247,12 +254,14 @@ export default function Storico({ profilo, onModifica }) {
       {/* --- Giochi --- */}
       {sezione === 'giochi' && (
         <ul className="elenco">
-          {perGioco().map((g) => (
+          {filtraNome(perGioco()).map((g) => (
             <li key={g.nome}>
               <div className="gioco">
                 {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
                 <div>
-                  <strong>{g.nome}</strong>
+                  <button className="nome-cliccabile" onClick={() => onApri?.('gioco', g.id)}>
+                    {g.nome}
+                  </button>
                   <span className="anno block">
                     {g.partite} {g.partite === 1 ? 'partita' : 'partite'}
                     {g.vittorie > 0 ? ` · ${g.vittorie} tue vittorie` : ''}
@@ -268,11 +277,13 @@ export default function Storico({ profilo, onModifica }) {
       {/* --- Giocatori --- */}
       {sezione === 'giocatori' && (
         <ul className="elenco">
-          {perGiocatore().map((g) => (
+          {filtraNome(perGiocatore()).map((g) => (
             <li key={g.nome}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
-                <strong>{g.nome}</strong>
+                <button className="nome-cliccabile" onClick={() => onApri?.('persona', g.chiave)}>
+                  {g.nome}
+                </button>
                 {g.ospite && <span className="anno"> ospite</span>}
               </div>
               <span className="anno">
@@ -289,10 +300,12 @@ export default function Storico({ profilo, onModifica }) {
       {/* --- Luoghi --- */}
       {sezione === 'luoghi' && (
         <ul className="elenco">
-          {perLuogo().map((l) => (
+          {filtraNome(perLuogo()).map((l) => (
             <li key={l.nome}>
               <div className="nome-giocatore">
-                <strong>{l.nome}</strong>
+                <button className="nome-cliccabile" onClick={() => onApri?.('luogo', l.id)}>
+                  {l.nome}
+                </button>
                 <span className="anno block">ultima: {data(l.ultima)}</span>
               </div>
               <span className="anno">{l.partite}</span>
