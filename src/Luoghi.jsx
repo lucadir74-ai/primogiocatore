@@ -1,8 +1,9 @@
 // Primo Giocatore - gestione dei luoghi
-// v3.4.0 - 202609201600
+// v4.1.0 - 202609221100
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import { chiediPosizione } from './posizione'
 
 const TIPI = [
   { id: 'sede', etichetta: 'Sede' },
@@ -31,7 +32,8 @@ export default function Luoghi({ profilo }) {
   async function carica() {
     try {
       const [l, p, t] = await Promise.all([
-        tutteLeRighe(() => supabase.from('luoghi').select('id, nome, tipo').order('nome')),
+        tutteLeRighe(() => supabase.from('luoghi')
+          .select('id, nome, tipo, latitudine, longitudine, posizione_pubblica').order('nome')),
         tutteLeRighe(() => supabase.from('partite').select('luogo_id').not('luogo_id', 'is', null)),
         tutteLeRighe(() => supabase.from('tavoli').select('luogo_id').not('luogo_id', 'is', null)),
       ])
@@ -65,6 +67,39 @@ export default function Luoghi({ profilo }) {
     }
     setMessaggio(`${candidati.length} luoghi marcati come online.`)
     carica()
+  }
+
+  // Si registra stando sul posto: nessun servizio esterno, nessun
+  // indirizzo da cercare, e la precisione è quella del telefono.
+  async function segnaPosizione(l) {
+    setErrore(''); setMessaggio('')
+    try {
+      const p = await chiediPosizione()
+      const { error } = await supabase.from('luoghi').update({
+        latitudine: p.lat,
+        longitudine: p.lon,
+        // Una sede si può mostrare a tutti, una casa no.
+        posizione_pubblica: l.tipo === 'sede',
+      }).eq('id', l.id)
+      if (error) throw error
+      setMessaggio(`Posizione di «${l.nome}» registrata, precisa a circa ${Math.round(p.precisione)} metri.`)
+      carica()
+    } catch (e) {
+      setErrore(e.message)
+    }
+  }
+
+  async function togliPosizione(l) {
+    const { error } = await supabase.from('luoghi')
+      .update({ latitudine: null, longitudine: null, posizione_pubblica: false }).eq('id', l.id)
+    if (error) setErrore(error.message)
+    else carica()
+  }
+
+  async function cambiaVisibilita(l, pubblica) {
+    const { error } = await supabase.from('luoghi').update({ posizione_pubblica: pubblica }).eq('id', l.id)
+    if (error) setErrore(error.message)
+    else setLuoghi((righe) => righe.map((x) => (x.id === l.id ? { ...x, posizione_pubblica: pubblica } : x)))
   }
 
   async function salvaNome() {
@@ -129,6 +164,12 @@ export default function Luoghi({ profilo }) {
         Marca come online le piattaforme
       </button>
       <p className="aiuto">
+        «Sono qui» registra la posizione del luogo usando il telefono: vai sul posto e
+        premilo. Serve a mostrare i tavoli vicini a chi cerca dove giocare. Per le sedi
+        la posizione è visibile a tutti; per le case resta nascosta, e chi non è iscritto
+        al tavolo vede solo la distanza approssimativa.
+      </p>
+      <p className="aiuto">
         Il tipo serve alle statistiche: separa le partite giocate al tavolo da quelle
         a distanza, che sono esperienze diverse e non vanno confuse nei numeri.
       </p>
@@ -161,10 +202,30 @@ export default function Luoghi({ profilo }) {
                     aria-label={`Tipo di ${l.nome}`}>
                     {TIPI.map((t) => <option key={t.id} value={t.id}>{t.etichetta}</option>)}
                   </select>
+                  {l.latitudine != null && (
+                    <label className="spunta-fazioni">
+                      <input type="checkbox" checked={Boolean(l.posizione_pubblica)}
+                        onChange={(e) => cambiaVisibilita(l, e.target.checked)} />
+                      posizione visibile a tutti
+                    </label>
+                  )}
                 </div>
                 <span className="azioni-iscritto">
                   <button className="bottone-piatto"
                     onClick={() => setRinomina({ id: l.id, nome: l.nome })}>rinomina</button>
+                  {l.tipo !== 'online' && (
+                    l.latitudine != null ? (
+                      <>
+                        <span className="anno">posizione registrata</span>
+                        <button className="bottone-piatto" onClick={() => segnaPosizione(l)}>aggiorna</button>
+                        <button className="bottone-piatto pericolo" onClick={() => togliPosizione(l)}>togli</button>
+                      </>
+                    ) : (
+                      <button className="bottone-piatto" onClick={() => segnaPosizione(l)}>
+                        sono qui
+                      </button>
+                    )
+                  )}
                   {l.usi === 0 && (
                     <button className="bottone-piatto pericolo" onClick={() => elimina(l)}>elimina</button>
                   )}

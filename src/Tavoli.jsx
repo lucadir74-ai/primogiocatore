@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import Serate from './Serate.jsx'
+import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -40,6 +41,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [sezione, setSezione] = useState('tavoli')
   const [disponibili, setDisponibili] = useState([])
   const [luoghiNoti, setLuoghiNoti] = useState([])
+  const [miaPosizione, setMiaPosizione] = useState(null)
+  const [cercandoPosizione, setCercandoPosizione] = useState(false)
 
   useEffect(() => { carica() }, [])
 
@@ -49,7 +52,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       supabase
         .from('tavoli')
         .select(`
-          *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ), luoghi ( nome ),
+          *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
+          luoghi ( nome, tipo, latitudine, longitudine, posizione_pubblica ),
           iscrizioni_tavolo ( id, stato )
         `)
         .order('inizio', { ascending: true }),
@@ -367,6 +371,25 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     } catch (e) {
       setErrore(e.message)
     }
+  }
+
+  // La posizione resta sul telefono: serve solo a ordinare l'elenco,
+  // e non viene mai spedita da nessuna parte.
+  async function trovaminiVicini() {
+    setErrore('')
+    setCercandoPosizione(true)
+    try {
+      setMiaPosizione(await chiediPosizione())
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setCercandoPosizione(false)
+    }
+  }
+
+  const distanzaDi = (t) => {
+    if (!miaPosizione || !t.luoghi?.latitudine) return null
+    return distanza(miaPosizione.lat, miaPosizione.lon, t.luoghi.latitudine, t.luoghi.longitudine)
   }
 
   function condividi(t) {
@@ -731,7 +754,17 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   // --- Vetrina ---
   const adesso = new Date()
-  const prossimi = tavoli.filter((t) => new Date(t.inizio) >= adesso)
+  const prossimi = tavoli
+    .filter((t) => new Date(t.inizio) >= adesso)
+    .sort((a, b) => {
+      if (!miaPosizione) return 0   // senza posizione resta l'ordine per data
+      const da = distanzaDi(a)
+      const db = distanzaDi(b)
+      if (da == null && db == null) return 0
+      if (da == null) return 1
+      if (db == null) return -1
+      return da - db
+    })
   const passati = tavoli.filter((t) => new Date(t.inizio) < adesso).reverse()
 
   const scheda = (t) => {
@@ -745,7 +778,12 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
             <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
             <span className="anno block">{quando(t.inizio)}</span>
             <span className="anno block">
-              {t.luoghi?.nome || 'luogo da definire'} · {conf}
+              {t.luoghi?.nome || 'luogo da definire'}
+              {(() => {
+                const d = distanzaDi(t)
+                return d != null ? ` · a ${scriviDistanza(d)}` : ''
+              })()}
+              {' · '}{conf}
               {t.posti_max ? `/${t.posti_max}` : ''} iscritti
               {!t.pubblicato ? ' · bozza' : ''}
               {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
@@ -797,6 +835,19 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
       {profilo.organizzatore && (
         <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
+      )}
+
+      {!miaPosizione ? (
+        <button className="bottone bottone-secondario" onClick={trovaminiVicini} disabled={cercandoPosizione}>
+          {cercandoPosizione ? 'Cerco dove sei…' : 'Mostra prima i tavoli vicini'}
+        </button>
+      ) : (
+        <p className="aiuto">
+          Tavoli ordinati per distanza da dove sei.{' '}
+          <button className="bottone-piatto" onClick={() => setMiaPosizione(null)}>
+            torna all'ordine per data
+          </button>
+        </p>
       )}
 
       <h3 className="titolo-sezione">
