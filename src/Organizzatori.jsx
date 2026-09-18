@@ -1,8 +1,8 @@
 // Primo Giocatore - gestione degli organizzatori
-// v2.4.0 - 202609180900
+// v3.10.0 - 202609211400
 
 import { useEffect, useState } from 'react'
-import { supabase, daMostrare } from './supabase'
+import { supabase, daMostrare, tutteLeRighe } from './supabase'
 
 export default function Organizzatori({ profilo }) {
   const [persone, setPersone] = useState([])
@@ -13,12 +13,15 @@ export default function Organizzatori({ profilo }) {
   useEffect(() => { carica() }, [])
 
   async function carica() {
-    const { data, error } = await supabase
-      .from('profili')
-      .select('id, nome, nickname, citta, organizzatore, dimostratore')
-      .order('nome')
-    if (error) setErrore(error.message)
-    else setPersone(data || [])
+    try {
+      const righe = await tutteLeRighe(() => supabase
+        .from('profili')
+        .select('id, nome, nickname, citta, organizzatore, dimostratore, creato_il')
+        .order('nome'))
+      setPersone(righe)
+    } catch (e) {
+      setErrore(e.message)
+    }
   }
 
   async function cambia(id, campo, valore) {
@@ -39,6 +42,17 @@ export default function Organizzatori({ profilo }) {
   const attuali = persone.filter((p) => p.organizzatore)
   const dimostratori = persone.filter((p) => p.dimostratore)
 
+  // Chi si è iscritto di recente: non arriva nessuna notifica, quindi
+  // è qui che ci si accorge di una persona nuova.
+  const settimanaFa = Date.now() - 7 * 86400000
+  const recenti = [...persone]
+    .filter((p) => p.creato_il)
+    .sort((a, b) => new Date(b.creato_il) - new Date(a.creato_il))
+    .slice(0, 10)
+  const nuoviQuestaSettimana = recenti.filter(
+    (p) => new Date(p.creato_il).getTime() > settimanaFa
+  ).length
+
   return (
     <div className="scheda">
       <h2>Ruoli</h2>
@@ -49,6 +63,38 @@ export default function Organizzatori({ profilo }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      <h3 className="titolo-sezione">
+        Ultimi iscritti <span className="conteggio">{persone.length} in tutto</span>
+      </h3>
+
+      {nuoviQuestaSettimana > 0 && (
+        <div className="avviso ok">
+          {nuoviQuestaSettimana === 1
+            ? 'Una persona si è iscritta negli ultimi sette giorni.'
+            : `${nuoviQuestaSettimana} persone si sono iscritte negli ultimi sette giorni.`}
+        </div>
+      )}
+
+      <ul className="elenco">
+        {recenti.map((p) => {
+          const nuovo = new Date(p.creato_il).getTime() > settimanaFa
+          return (
+            <li key={p.id}>
+              <div className="nome-giocatore">
+                <strong>{daMostrare(p)}</strong>
+                {nuovo && <span className="distintivo verde">Nuovo</span>}
+                <span className="anno block">
+                  {new Date(p.creato_il).toLocaleDateString('it-IT', {
+                    day: 'numeric', month: 'long', year: 'numeric',
+                  })}
+                  {p.citta ? ` · ${p.citta}` : ''}
+                </span>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
 
       <h3 className="titolo-sezione">
         Organizzatori <span className="conteggio">{attuali.length}</span>
