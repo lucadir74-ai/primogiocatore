@@ -1224,3 +1224,9 @@ body {
 .cella:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
 
 .legenda { margin: 0.6rem 0 0; }
+
+.distintivo.grigio {
+  background: none;
+  color: var(--inchiostro-tenue);
+  border: 1px solid var(--bordo);
+}

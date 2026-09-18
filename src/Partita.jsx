@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v2.6.0 - 202609181600
+// v2.8.0 - 202609182000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -133,17 +133,19 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }, [secondi])
 
   async function caricaElenchi() {
-    const [g, p, o, f, l] = await Promise.all([
+    const [g, p, o, f, l, c] = await Promise.all([
       supabase.from('giochi').select('*').order('nome'),
       supabase.from('profili').select('id, nome, nickname, colore').order('nome'),
       supabase.from('ospiti').select('id, nome').order('nome'),
       supabase.from('partecipazioni').select('utente_id, ospite_id'),
       supabase.from('luoghi').select('nome').order('nome'),
+      supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id),
     ])
     if (g.data) setCatalogo(g.data)
     if (p.data) setPersone(p.data)
     if (o.data) setOspiti(o.data)
     if (l.data) setLuoghiNoti(l.data.map((x) => x.nome))
+    if (c.data) setMiaCollezione(new Set(c.data.map((x) => x.gioco_id)))
 
     // Quante partite ha ciascuno: i soliti compagni vanno davanti,
     // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
@@ -196,6 +198,64 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setCaricamento(false)
   }
 
+  // Il gioco non è in catalogo: lo si cerca su BGG e si aggiunge senza
+  // uscire da qui. Prima si guarda sempre in catalogo, che è immediato.
+  async function cercaSuBgg() {
+    if (filtro.trim().length < 2) return
+    setErrore(''); setCercandoBgg(true); setSuBgg(null)
+    try {
+      const r = await fetch(`/api/bgg?azione=cerca&q=${encodeURIComponent(filtro.trim())}`)
+      const dati = await r.json()
+      if (!r.ok) throw new Error(dati.errore || 'Ricerca non riuscita.')
+      setSuBgg(dati.risultati.slice(0, 10))
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setCercandoBgg(false)
+    }
+  }
+
+  async function aggiungiDaBgg(bggId) {
+    setErrore('')
+    try {
+      const r = await fetch(`/api/bgg?azione=dettagli&id=${bggId}`)
+      const dati = await r.json()
+      if (!r.ok) throw new Error(dati.errore || 'Non sono riuscito a leggere il gioco.')
+      const g = dati.giochi[0]
+      if (!g) throw new Error('BGG non ha restituito il gioco.')
+
+      const { data, error } = await supabase.from('giochi').upsert({
+        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
+        min_giocatori: g.min_giocatori, max_giocatori: g.max_giocatori,
+        durata_minuti: g.durata_minuti, immagine_url: g.immagine_url,
+        creato_da: profilo.id,
+      }, { onConflict: 'bgg_id' }).select().single()
+      if (error) throw error
+
+      setCatalogo((c) => [...c.filter((x) => x.id !== data.id), data])
+      setSuBgg(null)
+      scegliGioco(data)
+    } catch (e) {
+      setErrore(e.message)
+    }
+  }
+
+  // Posseduto o no: si segna da qui, senza passare dal catalogo.
+  async function cambiaPossesso(giocoId, posseduto) {
+    setErrore('')
+    if (posseduto) {
+      const { error } = await supabase.from('collezioni')
+        .upsert({ utente_id: profilo.id, gioco_id: giocoId, origine: 'manuale' })
+      if (error) { setErrore(error.message); return }
+      setMiaCollezione((s) => new Set([...s, giocoId]))
+    } else {
+      const { error } = await supabase.from('collezioni').delete()
+        .eq('utente_id', profilo.id).eq('gioco_id', giocoId)
+      if (error) { setErrore(error.message); return }
+      setMiaCollezione((s) => new Set([...s].filter((x) => x !== giocoId)))
+    }
+  }
+
   function scegliGioco(g) {
     setGioco(g)
     setFiltro('')
@@ -218,6 +278,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [nuovoOspite, setNuovoOspite] = useState('')
   const [frequenza, setFrequenza] = useState(new Map())
   const [luoghiNoti, setLuoghiNoti] = useState([])
+  const [miaCollezione, setMiaCollezione] = useState(new Set())
+  const [suBgg, setSuBgg] = useState(null)      // risultati della ricerca su BGG
+  const [cercandoBgg, setCercandoBgg] = useState(false)
   const [cercaGiocatore, setCercaGiocatore] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
   const [segnandoOrdine, setSegnandoOrdine] = useState(false)
@@ -478,8 +541,40 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               ))}
             </ul>
           )}
-          {catalogo.length === 0 && (
-            <p className="aiuto">Il catalogo è vuoto: aggiungi prima un gioco dalla scheda Giochi.</p>
+          {filtro.trim().length >= 2 && (
+            <>
+              <button className="bottone bottone-secondario" onClick={cercaSuBgg} disabled={cercandoBgg}>
+                {cercandoBgg ? 'Cerco su BGG…' : trovati.length
+                  ? 'Non è questo? Cerca su BoardGameGeek'
+                  : 'Cerca su BoardGameGeek'}
+              </button>
+              {trovati.length === 0 && !suBgg && !cercandoBgg && (
+                <p className="aiuto">Nessun gioco con questo nome fra quelli già registrati.</p>
+              )}
+            </>
+          )}
+
+          {suBgg && (
+            <>
+              <h3 className="titolo-sezione">Su BoardGameGeek</h3>
+              {suBgg.length === 0 ? (
+                <p className="aiuto">Nessun risultato.</p>
+              ) : (
+                <ul className="elenco">
+                  {suBgg.map((r) => (
+                    <li key={r.bgg_id}>
+                      <div className="nome-giocatore">
+                        <strong>{r.nome}</strong>
+                        {r.anno && <span className="anno"> {r.anno}</span>}
+                      </div>
+                      <button className="bottone-piatto" onClick={() => aggiungiDaBgg(r.bgg_id)}>
+                        Aggiungi e usa
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -488,9 +583,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             {gioco.immagine_url && <img src={gioco.immagine_url} alt="" className="copertina" />}
             <div>
               <strong>{gioco.nome}</strong>
+              {!miaCollezione.has(gioco.id) && (
+                <span className="distintivo grigio">Non posseduto</span>
+              )}
               <p className="aiuto">
                 {TIPO_ETICHETTA[tipo]}{' '}
                 <button className="bottone-piatto" onClick={() => setGioco(null)}>cambia</button>
+                {' · '}
+                <button className="bottone-piatto"
+                  onClick={() => cambiaPossesso(gioco.id, !miaCollezione.has(gioco.id))}>
+                  {miaCollezione.has(gioco.id) ? 'togli dalla collezione' : 'è mio'}
+                </button>
               </p>
             </div>
           </div>
