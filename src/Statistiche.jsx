@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v2.11.0 - 202609191200
+// v2.11.1 - 202609191300
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -273,7 +273,7 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     const giochi = new Map()
     const persone = new Map()
     for (const p of sue) {
-      if (p.giochi) giochi.set(p.giochi.id, { nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
+      if (p.giochi) giochi.set(p.giochi.id, { id: p.giochi.id, nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
         persone.set(k, { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: (persone.get(k)?.n || 0) + 1 })
@@ -295,7 +295,7 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     const giochi = new Map()
     const persone = new Map()
     for (const p of partite) {
-      if (p.giochi) giochi.set(p.giochi.id, { nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
+      if (p.giochi) giochi.set(p.giochi.id, { id: p.giochi.id, nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
         const v = persone.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: 0, vinte: 0, attese: 0 }
@@ -789,7 +789,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
 
 /* ---------- Luogo ---------- */
 
-function SchedaLuogo({ d, istogramma, vaiAlGiocatore }) {
+function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita in questo luogo.</p>
   return (
     <>
@@ -808,7 +808,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore }) {
       <ul className="elenco">
         {d.giochi.map((g) => (
           <li key={g.nome}>
-            <strong>{g.nome}</strong>
+            <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
         ))}
@@ -832,7 +832,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore }) {
 
 /* ---------- Tutti ---------- */
 
-function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore }) {
+function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
   return (
     <>
       <div className="numeroni">
@@ -846,9 +846,9 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore }) {
 
       <h3 className="titolo-sezione">Giochi più giocati</h3>
       <ul className="elenco">
-        {d.giochi.slice(0, 15).map((g) => (
+        {d.giochi.slice(0, 25).map((g) => (
           <li key={g.nome}>
-            <strong>{g.nome}</strong>
+            <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
         ))}
