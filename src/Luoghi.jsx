@@ -1,8 +1,20 @@
 // Primo Giocatore - gestione dei luoghi
-// v3.3.0 - 202609201400
+// v3.4.0 - 202609201600
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+
+const TIPI = [
+  { id: 'sede', etichetta: 'Sede' },
+  { id: 'casa', etichetta: 'Casa' },
+  { id: 'online', etichetta: 'Online' },
+  { id: 'altro', etichetta: 'Altro' },
+]
+
+// Nomi che quasi sempre indicano una piattaforma online: servono solo
+// a proporre il tipo, la scelta resta di chi guarda.
+const PAROLE_ONLINE = ['board game arena', 'bga', 'tabletopia', 'tabletop simulator',
+  'yucata', 'boiteajeux', 'online', 'discord', 'zoom', 'steam']
 
 export default function Luoghi({ profilo }) {
   const [luoghi, setLuoghi] = useState([])
@@ -29,6 +41,30 @@ export default function Luoghi({ profilo }) {
     } catch (e) {
       setErrore(e.message)
     }
+  }
+
+  async function cambiaTipo(id, tipo) {
+    setErrore(''); setMessaggio('')
+    const { error } = await supabase.from('luoghi').update({ tipo }).eq('id', id)
+    if (error) setErrore(error.message)
+    else setLuoghi((l) => l.map((x) => (x.id === id ? { ...x, tipo } : x)))
+  }
+
+  // Marca in un colpo solo tutti i luoghi che sembrano piattaforme.
+  async function marcaOnline() {
+    setErrore(''); setMessaggio('')
+    const candidati = luoghi.filter(
+      (l) => l.tipo !== 'online' && PAROLE_ONLINE.some((w) => l.nome.toLowerCase().includes(w))
+    )
+    if (candidati.length === 0) { setMessaggio('Nessun luogo da marcare.'); return }
+    if (!confirm(`Marcare come online: ${candidati.map((l) => l.nome).join(', ')}?`)) return
+
+    for (const l of candidati) {
+      const { error } = await supabase.from('luoghi').update({ tipo: 'online' }).eq('id', l.id)
+      if (error) { setErrore(error.message); return }
+    }
+    setMessaggio(`${candidati.length} luoghi marcati come online.`)
+    carica()
   }
 
   async function salvaNome() {
@@ -89,6 +125,14 @@ export default function Luoghi({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
+      <button className="bottone bottone-secondario" onClick={marcaOnline}>
+        Marca come online le piattaforme
+      </button>
+      <p className="aiuto">
+        Il tipo serve alle statistiche: separa le partite giocate al tavolo da quelle
+        a distanza, che sono esperienze diverse e non vanno confuse nei numeri.
+      </p>
+
       {luoghi.length > 8 && (
         <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}
           placeholder="Cerca un luogo" aria-label="Cerca fra i luoghi" />
@@ -111,10 +155,12 @@ export default function Luoghi({ profilo }) {
               <>
                 <div className="nome-giocatore">
                   <strong>{l.nome}</strong>
-                  <span className="anno block">
-                    {l.usi} {l.usi === 1 ? 'volta' : 'volte'}
-                    {l.tipo !== 'altro' ? ` · ${l.tipo}` : ''}
-                  </span>
+                  <span className="anno block">{l.usi} {l.usi === 1 ? 'volta' : 'volte'}</span>
+                  <select className="scelta-punteggio" value={l.tipo || 'altro'}
+                    onChange={(e) => cambiaTipo(l.id, e.target.value)}
+                    aria-label={`Tipo di ${l.nome}`}>
+                    {TIPI.map((t) => <option key={t.id} value={t.id}>{t.etichetta}</option>)}
+                  </select>
                 </div>
                 <span className="azioni-iscritto">
                   <button className="bottone-piatto"

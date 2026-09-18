@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.3.0 - 202609201400
+// v3.4.0 - 202609201600
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -34,13 +34,14 @@ const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sc
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
 export default function Statistiche({ profilo, onModifica, mira }) {
-  const [partite, setPartite] = useState([])
+  const [tuttePartite, setPartite] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
 
   const [tipo, setTipo] = useState('persona')
   const [scelto, setScelto] = useState(profilo.id)
   const [cerca, setCerca] = useState('')
+  const [dove, setDove] = useState('tutte')   // tutte | vivo | online
 
   useEffect(() => { carica() }, [])
 
@@ -59,7 +60,7 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       .select(`
         id, giocata_il, durata_minuti, tipo_punteggio, esito_coop, note, registrata_da,
         giochi ( id, nome ),
-        luoghi ( id, nome ),
+        luoghi ( id, nome, tipo ),
         partecipazioni (
           utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, ordine_turno,
           profili:utente_id ( nome, nickname, colore ),
@@ -96,6 +97,16 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   /* ---------- Motore di calcolo ---------- */
 
   const quanti = (p) => (p.partecipazioni || []).length
+
+  // Dal vivo e a distanza sono due cose diverse: mescolarle nei numeri
+  // significa non poter leggere né le une né le altre.
+  const partite = dove === 'tutte'
+    ? tuttePartite
+    : dove === 'online'
+      ? tuttePartite.filter((p) => p.luoghi?.tipo === 'online')
+      : tuttePartite.filter((p) => p.luoghi?.tipo !== 'online')
+
+  const quanteOnline = tuttePartite.filter((p) => p.luoghi?.tipo === 'online').length
 
   // Statistiche di una persona, chiunque essa sia.
   function dellaPersona(chiave) {
@@ -363,6 +374,16 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           </button>
         ))}
       </div>
+
+      {quanteOnline > 0 && (
+        <div className="sottoschede sottoschede-dove">
+          {[['tutte', 'Tutte'], ['vivo', 'Dal vivo'], ['online', 'Online']].map(([id, et]) => (
+            <button key={id} className={dove === id ? 'attiva' : ''} onClick={() => setDove(id)}>
+              {et}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tipo !== 'gruppo' && (
         <div className="campo">
