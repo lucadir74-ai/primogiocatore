@@ -1250,3 +1250,35 @@ body {
 .elenco-scorrevole li { padding: 0.55rem 0; }
 
 .sottoschede-dove { margin-bottom: 0.8rem; }
+
+/* ---------- Installata sul telefono ---------- */
+
+html {
+  /* niente rimbalzo elastico oltre il fondo: su iPhone fa sembrare
+     l'app una pagina web invece di un'applicazione */
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* La barra di stato di iPhone copre la testata quando l'app è
+   installata: lo spazio si aggiunge lì, che è già scura, invece che
+   al corpo della pagina — altrimenti il tema chiaro si rompe. */
+.testata {
+  padding-top: calc(1.1rem + env(safe-area-inset-top));
+}
+
+/* Safari ingrandisce la pagina quando si tocca un campo con carattere
+   sotto i 16 pixel. Meglio il campo un filo più grande dello zoom
+   che parte da solo. */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea { font-size: 16px; }
+  .mini, .campo-fazione, .scelta-punteggio { font-size: 16px; }
+}
+
+/* Il tocco non deve lasciare il riquadro grigio di Safari */
+button, a, .cella, .pastiglia-nome, .pastiglia-stato {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Testi non selezionabili dove il tocco serve ad altro */
+.barra-basso button, .cella, .sottoschede button { user-select: none; }
