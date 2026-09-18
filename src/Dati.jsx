@@ -1,9 +1,10 @@
 // Primo Giocatore - Esporta e importa
-// v1.20.0 - 202609161100
+// v3.0.1 - 202609191700
 
 import { useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
+import { impronta, improntePresenti, giaPresente, improntaDebole } from './impronta'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
@@ -27,6 +28,8 @@ export default function Dati({ profilo }) {
   const [anteprima, setAnteprima] = useState(null)   // { doc, analisi }
   const [miei, setMiei] = useState([])               // id dei profili che sono io
   const [cercaGiocatore, setCercaGiocatore] = useState('')
+  const [utenteBgg, setUtenteBgg] = useState(profilo.bgg_username || '')
+  const [anteprimaBgg, setAnteprimaBgg] = useState(null)
 
   async function leggiTutto() {
     const { data, error } = await supabase
@@ -132,6 +135,169 @@ export default function Dati({ profilo }) {
     }
   }
 
+  // Legge tutte le pagine delle partite da BGG e prepara l'anteprima,
+  // segnalando quelle che sembrano già presenti.
+  async function leggiDaBgg() {
+    setErrore(''); setMessaggio('')
+    const utente = utenteBgg.trim()
+    if (!utente) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
+
+    setLavorando(true)
+    try {
+      const tutte = []
+      let pagina = 1
+      let totale = 0
+      while (pagina <= 30) {
+        setAvanzamento({ fase: 'Leggo da BGG', fatto: tutte.length, totale: totale || 100 })
+        const r = await fetch(`/api/bgg?azione=partite&utente=${encodeURIComponent(utente)}&pagina=${pagina}`)
+        const dati = await r.json()
+        if (!r.ok) throw new Error(dati.errore || 'Lettura non riuscita.')
+        totale = dati.totale
+        tutte.push(...dati.partite)
+        if (tutte.length >= totale || dati.partite.length === 0) break
+        pagina++
+      }
+
+      const presenti = await improntePresenti(supabase, profilo.id)
+
+      // Per confrontare le impronte serve sapere a quale gioco del
+      // catalogo corrisponde ognuna: si cercano per identificativo BGG.
+      const bggIds = [...new Set(tutte.map((p) => p.gioco?.bgg_id).filter(Boolean))]
+      const { data: giochiNoti } = await supabase
+        .from('giochi').select('id, bgg_id').in('bgg_id', bggIds)
+      const perBgg = new Map((giochiNoti || []).map((g) => [g.bgg_id, g.id]))
+
+      // Si scorre dalla più vecchia, così il conteggio viene consumato
+      // nell'ordine giusto quando ci sono più partite uguali.
+      const conStato = [...tutte].reverse().map((p) => {
+        const giocoId = perBgg.get(p.gioco?.bgg_id)
+        const imp = giocoId
+          ? impronta({
+              giocoId, giocataIl: p.data,
+              punteggi: p.giocatori.map((g) => g.punteggio),
+            })
+          : null
+        const sospetta = giaPresente(presenti, imp)
+        return { ...p, impronta: imp, sospetta, debole: sospetta && improntaDebole(imp) }
+      })
+
+      setAnteprimaBgg({
+        partite: conStato,
+        sospette: conStato.filter((p) => p.sospetta).length,
+        deboli: conStato.filter((p) => p.debole).length,
+        utente,
+      })
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+      setAvanzamento(null)
+    }
+  }
+
+  async function confermaBgg(includiSospette) {
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    try {
+      const daFare = anteprimaBgg.partite.filter((p) => includiSospette || !p.sospetta)
+      let fatte = 0
+      let saltate = anteprimaBgg.partite.length - daFare.length
+
+      // Cache dei giochi e degli ospiti, per non interrogare ogni volta.
+      const giochi = new Map()
+      const ospiti = new Map()
+      const { data: ospitiEsistenti } = await supabase.from('ospiti').select('id, nome')
+      for (const o of ospitiEsistenti || []) ospiti.set(o.nome.toLowerCase(), o.id)
+
+      for (const p of daFare) {
+        setAvanzamento({ fase: 'Importo', fatto: fatte, totale: daFare.length })
+        if (!p.gioco?.bgg_id) { saltate++; continue }
+
+        let giocoId = giochi.get(p.gioco.bgg_id)
+        if (!giocoId) {
+          const { data: esistente } = await supabase
+            .from('giochi').select('id').eq('bgg_id', p.gioco.bgg_id).maybeSingle()
+          if (esistente) giocoId = esistente.id
+          else {
+            const { data: creato, error } = await supabase.from('giochi').insert({
+              bgg_id: p.gioco.bgg_id, nome: p.gioco.nome || 'Senza nome', creato_da: profilo.id,
+            }).select('id').single()
+            if (error) throw error
+            giocoId = creato.id
+          }
+          giochi.set(p.gioco.bgg_id, giocoId)
+        }
+
+        let luogoId = null
+        if (p.luogo) {
+          const { data: l } = await supabase.from('luoghi').select('id').ilike('nome', p.luogo).maybeSingle()
+          if (l) luogoId = l.id
+          else {
+            const { data: creato } = await supabase.from('luoghi')
+              .insert({ nome: p.luogo, tipo: 'altro', creato_da: profilo.id }).select('id').single()
+            luogoId = creato?.id || null
+          }
+        }
+
+        const punteggi = p.giocatori.map((g) => g.punteggio)
+        const { data: partita, error: e1 } = await supabase.from('partite').insert({
+          gioco_id: giocoId,
+          luogo_id: luogoId,
+          giocata_il: `${p.data}T20:00:00`,
+          durata_minuti: p.durata_minuti,
+          tipo_punteggio: 'punti',
+          note: p.note,
+          chiave_esterna: `bgg:${p.bgg_play_id}`,
+          impronta: impronta({ giocoId, giocataIl: p.data, punteggi }),
+          registrata_da: profilo.id,
+        }).select('id').single()
+        if (e1) throw e1
+
+        // Il proprietario dell'archivio si riconosce dal nome utente BGG.
+        const righe = []
+        for (const g of p.giocatori) {
+          const sonoIo = g.username && g.username.toLowerCase() === anteprimaBgg.utente.toLowerCase()
+          let ospiteId = null
+          if (!sonoIo) {
+            const nome = (g.nome || 'Sconosciuto').trim()
+            ospiteId = ospiti.get(nome.toLowerCase())
+            if (!ospiteId) {
+              const { data: creato, error } = await supabase.from('ospiti')
+                .insert({ nome, creato_da: profilo.id }).select('id').single()
+              if (error) throw error
+              ospiteId = creato.id
+              ospiti.set(nome.toLowerCase(), ospiteId)
+            }
+          }
+          righe.push({
+            partita_id: partita.id,
+            utente_id: sonoIo ? profilo.id : null,
+            ospite_id: ospiteId,
+            punteggio_totale: g.punteggio,
+            vincitore: g.vincitore,
+            ordine_turno: g.posizione,
+            primo_giocatore: g.posizione === 1,
+          })
+        }
+        if (righe.length) {
+          const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
+          if (e2) throw e2
+        }
+        fatte++
+      }
+
+      setMessaggio(
+        `Da BGG: importate ${fatte} partite` +
+        (saltate ? `, ${saltate} saltate perché già presenti` : '') + '.'
+      )
+      setAnteprimaBgg(null)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setLavorando(false)
+      setAvanzamento(null)
+    }
+  }
+
   async function importa(evento) {
     const file = evento.target.files?.[0]
     if (!file) return
@@ -155,6 +321,7 @@ export default function Dati({ profilo }) {
 
       let aggiunte = 0
       let saltate = 0
+      const presenti = await improntePresenti(supabase, profilo.id)
 
       // Cache locali, per non interrogare il database a ogni riga.
       const giochi = new Map()
@@ -234,9 +401,16 @@ export default function Dati({ profilo }) {
         if (!giocoId) { saltate++; continue }
         const luogoId = await trovaLuogo(p.luogo)
 
+        const imp = impronta({
+          giocoId, giocataIl: p.giocata_il,
+          punteggi: (p.giocatori || []).map((g) => g.punteggio),
+        })
+        if (giaPresente(presenti, imp)) { saltate++; continue }
+
         const { data: partita, error } = await supabase
           .from('partite')
           .insert({
+            impronta: imp,
             gioco_id: giocoId,
             luogo_id: luogoId,
             giocata_il: p.giocata_il || new Date().toISOString(),
@@ -311,6 +485,70 @@ export default function Dati({ profilo }) {
         !cercaGiocatore.trim() || g.nome.toLowerCase().includes(cercaGiocatore.trim().toLowerCase())
       )
     : []
+
+  if (anteprimaBgg) {
+    const nuove = anteprimaBgg.partite.length - anteprimaBgg.sospette
+    return (
+      <div className="scheda">
+        <h2>Partite su BoardGameGeek</h2>
+        <p className="sottotitolo">
+          Trovate {anteprimaBgg.partite.length} partite per «{anteprimaBgg.utente}».
+        </p>
+
+        {errore && <div className="avviso errore">{errore}</div>}
+
+        <div className="numeroni">
+          <div className="numerone">
+            <span className="cifra">{nuove}</span>
+            <span className="didascalia">nuove</span>
+          </div>
+          <div className="numerone sotto">
+            <span className="cifra">{anteprimaBgg.sospette}</span>
+            <span className="didascalia">già presenti</span>
+          </div>
+        </div>
+
+        <p className="aiuto">
+          Una partita è considerata già presente quando coincidono gioco, giorno, numero
+          di giocatori e punteggi. È il confronto che regge fra fonti diverse, perché i
+          punteggi non cambiano mentre i nomi sì. Il conteggio è per quantità: se hai
+          sei partite uguali e ne arrivano sette, la settima entra.
+        </p>
+
+        {anteprimaBgg.deboli > 0 && (
+          <p className="aiuto avviso-pareggio">
+            Attenzione: {anteprimaBgg.deboli} di quelle già presenti non hanno punteggi,
+            quindi sono riconosciute solo da gioco, giorno e numero di giocatori. Se quel
+            giorno avete fatto più partite allo stesso gioco, controlla prima di importare.
+          </p>
+        )}
+
+        {avanzamento && (
+          <div className="avanzamento">
+            <span>{avanzamento.fase}</span>
+            <div className="barra-avanzamento">
+              <div style={{ width: `${(avanzamento.fatto / Math.max(1, avanzamento.totale)) * 100}%` }} />
+            </div>
+            <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
+          </div>
+        )}
+
+        <button className="bottone" onClick={() => confermaBgg(false)} disabled={lavorando || nuove === 0}>
+          {lavorando ? 'Importo…' : `Importa le ${nuove} nuove`}
+        </button>
+
+        {anteprimaBgg.sospette > 0 && (
+          <button className="bottone bottone-secondario" onClick={() => confermaBgg(true)} disabled={lavorando}>
+            Importa tutte, doppioni compresi
+          </button>
+        )}
+
+        <button className="bottone bottone-secondario" onClick={() => setAnteprimaBgg(null)} disabled={lavorando}>
+          Annulla
+        </button>
+      </div>
+    )
+  }
 
   if (anteprima) {
     return (
@@ -406,7 +644,17 @@ export default function Dati({ profilo }) {
         Esporta per foglio di calcolo
       </button>
 
-      <h3 className="titolo-sezione">Importa</h3>
+      <h3 className="titolo-sezione">Importa da BoardGameGeek</h3>
+      <div className="campo">
+        <label htmlFor="d-bgg">Il tuo nome utente BGG</label>
+        <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
+          placeholder="Come compare sul tuo profilo BGG" />
+      </div>
+      <button className="bottone bottone-secondario" onClick={leggiDaBgg} disabled={lavorando}>
+        {lavorando ? 'Leggo…' : 'Cerca le mie partite su BGG'}
+      </button>
+
+      <h3 className="titolo-sezione">Importa da un file</h3>
       <p className="aiuto">
         Accetta sia i file esportati da qui, sia il backup di <strong>BG Stats</strong>
         (Impostazioni → Esportazione). Il formato viene riconosciuto da solo. Le partite

@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.3.0 - 202609181400
+// v1.4.0 - 202609191500
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -9,6 +9,7 @@
 //   /api/bgg?azione=cerca&q=scythe
 //   /api/bgg?azione=dettagli&id=169786,224517
 //   /api/bgg?azione=collezione&utente=lucadir74
+//   /api/bgg?azione=partite&utente=lucadir74&pagina=1
 
 import { XMLParser } from 'fast-xml-parser'
 
@@ -118,7 +119,7 @@ function semplificaGioco(item) {
 }
 
 export default async function handler(req, res) {
-  const { azione, q, id, utente } = req.query
+  const { azione, q, id, utente, pagina } = req.query
 
   try {
     if (azione === 'cerca') {
@@ -170,6 +171,44 @@ export default async function handler(req, res) {
         // Senza nome la riga è inutile e il database la rifiuterebbe.
         .filter((g) => g.nome && Number.isFinite(g.bgg_id))
       return res.status(200).json({ giochi, totale: giochi.length })
+    }
+
+    if (azione === 'partite') {
+      if (!utente) return res.status(400).json({ errore: 'Manca il nome utente BGG.' })
+      // BGG restituisce cento partite per pagina.
+      const n = Math.max(1, Number(pagina) || 1)
+      const xml = await chiamaBGG(
+        `/plays?username=${encodeURIComponent(utente)}&page=${n}`
+      )
+      const dati = parser.parse(xml)
+      if (dati?.errors) return res.status(404).json({ errore: 'Utente BGG non trovato.' })
+
+      const partite = elenco(dati?.plays?.play).map((p) => ({
+        bgg_play_id: Number(p.id),
+        data: p.date ?? null,
+        durata_minuti: Number(p.length) || null,
+        luogo: p.location || null,
+        note: typeof p.comments === 'string' ? p.comments : (p.comments?.['#text'] ?? null),
+        incompleta: p.incomplete === 1 || p.incomplete === '1',
+        senza_punteggi: p.nowinstats === 1 || p.nowinstats === '1',
+        gioco: p.item
+          ? { bgg_id: Number(p.item.objectid), nome: p.item.name ?? null }
+          : null,
+        giocatori: elenco(p.players?.player).map((g) => ({
+          nome: g.name ?? g.username ?? 'Sconosciuto',
+          username: g.username || null,
+          punteggio: g.score === '' || g.score == null ? null : Number(g.score),
+          posizione: Number(g.startposition) || null,
+          vincitore: g.win === 1 || g.win === '1',
+          colore: g.color || null,
+        })),
+      }))
+
+      return res.status(200).json({
+        partite,
+        pagina: n,
+        totale: Number(dati?.plays?.total) || partite.length,
+      })
     }
 
     return res.status(400).json({ errore: 'Azione sconosciuta.' })

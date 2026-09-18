@@ -1,8 +1,9 @@
 // Primo Giocatore - registrazione e modifica partita
-// v2.8.1 - 202609182100
+// v3.0.0 - 202609191500
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
+import { impronta } from './impronta'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
 // la pagina o cade la linea, la ritrovi com'era.
@@ -466,6 +467,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       }))
       const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
       if (e2) throw e2
+
+      // L'impronta si calcola qui, quando i punteggi sono noti: serve
+      // a riconoscere questa stessa partita se un domani arriva da
+      // un'importazione.
+      await supabase.from('partite').update({
+        impronta: impronta({
+          giocoId: gioco.id,
+          giocataIl: campi.giocata_il,
+          punteggi: partecipazioni.map((x) => x.punteggio_totale),
+        }),
+      }).eq('id', id)
 
       if (modifica) {
         setMessaggio('Partita aggiornata.')

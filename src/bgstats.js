@@ -1,11 +1,12 @@
 // Primo Giocatore - importazione da BG Stats
-// v1.20.0 - 202609161100
+// v3.0.0 - 202609191500
 //
 // Il file di BG Stats contiene array separati di games, players,
 // locations e plays, collegati fra loro dagli "id" interni al file.
 // Qui si traducono nello schema dell'app.
 
 import { supabase } from './supabase'
+import { impronta } from './impronta'
 
 /* I punteggi in BG Stats sono testo e possono essere somme scritte a
    mano, tipo "21+18+17-15". Le calcolo solo se contengono unicamente
@@ -204,7 +205,13 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
       const note = [p.comments?.trim(), espansioni.length ? `Espansioni: ${espansioni.join(', ')}` : null]
         .filter(Boolean).join(' — ') || null
 
+      const punteggiPartita = (p.playerScores || []).map((s) => leggiPunteggio(s.score))
       righe.push({
+        impronta: impronta({
+          giocoId: gid,
+          giocataIl: (p.playDate || '').slice(0, 10),
+          punteggi: punteggiPartita,
+        }),
         gioco_id: gid,
         luogo_id: mappaLuoghi.get(luoghiFile.get(p.locationRefId)?.name?.trim()?.toLowerCase()) || null,
         giocata_il: (p.playDate || p.entryDate || '').replace(' ', 'T') || new Date().toISOString(),
