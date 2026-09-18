@@ -1282,3 +1282,142 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 
 /* Testi non selezionabili dove il tocco serve ad altro */
 .barra-basso button, .cella, .sottoschede button { user-select: none; }
+
+/* Un puntino sui giorni che hanno tavoli pubblicati */
+.punto-tavoli {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.25rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--blu);
+}
+
+/* ---------- Locandina del tavolo, formato A5 ---------- */
+
+.locandina {
+  width: 100%;
+  max-width: 14.8cm;
+  margin: 1rem auto 0;
+  padding: 1.4cm 1.2cm;
+  background: #FFFFFF;
+  color: #131C26;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.locandina-testa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.locandina-segnalino {
+  width: 1.8rem;
+  height: 1.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #E5A32B;
+  color: #131C26;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.locandina-marchio {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.locandina-titolo {
+  font-family: var(--display);
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.3rem;
+}
+
+.locandina-gioco { margin: 0 0 0.8rem; font-size: 1rem; color: #5A6874; }
+
+.locandina-quando {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0.8rem 0 0.1rem;
+  text-transform: capitalize;
+}
+
+.locandina-dove { margin: 0 0 1rem; font-size: 1rem; color: #5A6874; }
+
+.locandina-qr {
+  width: 6.5cm;
+  max-width: 70%;
+  height: auto;
+  margin: 0.6rem auto;
+  display: block;
+}
+
+.locandina-invito {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0.3rem 0 1rem;
+}
+
+.locandina-dati {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem 1rem;
+  font-size: 0.9rem;
+  color: #5A6874;
+  border-top: 1px solid #D6DCE2;
+  padding-top: 0.8rem;
+}
+
+.locandina-nota { font-size: 0.9rem; color: #5A6874; margin: 0.8rem 0 0; }
+
+.locandina-link {
+  font-size: 0.75rem;
+  color: #5A6874;
+  margin: 1rem 0 0;
+  word-break: break-all;
+}
+
+/* In stampa resta solo il foglio, senza interfaccia intorno */
+@media print {
+  @page { size: A5; margin: 0; }
+
+  body { background: #FFFFFF; }
+  .non-stampare, .barra-basso, .testata { display: none !important; }
+
+  .guscio { padding: 0; max-width: none; }
+
+  .scheda {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #FFFFFF;
+  }
+
+  .locandina {
+    max-width: none;
+    width: 14.8cm;
+    height: 21cm;
+    border: 0;
+    border-radius: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
+import Locandina from './Locandina.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -43,6 +44,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [luoghiNoti, setLuoghiNoti] = useState([])
   const [miaPosizione, setMiaPosizione] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
+  const [locandina, setLocandina] = useState(null)
 
   useEffect(() => { carica() }, [])
 
@@ -427,6 +429,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   if (caricamento) return <div className="scheda"><p>Carico i tavoli&hellip;</p></div>
 
+  if (locandina) return <Locandina tavolo={locandina} onChiudi={() => setLocandina(null)} />
+
   // --- Pannello iscritti ---
   if (gestito) {
     const contatto = (i) => i.iscrizioni_contatti?.[0] || i.iscrizioni_contatti || {}
@@ -792,6 +796,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         </div>
         <div className="tavolo-azioni">
           <button className="bottone-piatto" onClick={() => condividi(t)}>Condividi</button>
+          <button className="bottone-piatto" onClick={() => setLocandina(t)}>Locandina</button>
           {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
           {mio && <button className="bottone-piatto" onClick={() => apriModifica(t)}>Modifica</button>}
           {mio && !t.partita_id && new Date(t.inizio) < new Date() && (

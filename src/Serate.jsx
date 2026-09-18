@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v2.5.0 - 202609181100
+// v4.2.0 - 202609221400
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -41,6 +41,7 @@ export default function Serate({ profilo }) {
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [serate, setSerate] = useState([])
+  const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
@@ -54,16 +55,31 @@ export default function Serate({ profilo }) {
 
   async function carica() {
     setCaricamento(true)
-    const { data, error } = await supabase
-      .from('serate')
-      .select(`
-        *, disponibilita ( profilo_id, stato, note, profili ( nome, nickname ) )
-      `)
-      .gte('data', primoDelMese)
-      .lte('data', ultimoDelMese)
-      .order('data')
-    if (error) setErrore(error.message)
-    else setSerate(data || [])
+    const [s, t] = await Promise.all([
+      supabase
+        .from('serate')
+        .select(`
+          *, disponibilita ( profilo_id, stato, note, profili ( nome, nickname ) )
+        `)
+        .gte('data', primoDelMese)
+        .lte('data', ultimoDelMese)
+        .order('data'),
+      // I tavoli previsti nello stesso mese: servono a vedere la
+      // serata per intero, non solo chi c'è fra i dimostratori.
+      supabase
+        .from('tavoli')
+        .select(`
+          id, titolo, inizio, stato, posti_max, dimostratore_nome,
+          giochi:tavoli_gioco_id_fkey ( nome, immagine_url ),
+          iscrizioni_tavolo ( id, stato )
+        `)
+        .gte('inizio', `${primoDelMese}T00:00:00`)
+        .lte('inizio', `${ultimoDelMese}T23:59:59`)
+        .order('inizio'),
+    ])
+    if (s.error) setErrore(s.error.message)
+    else setSerate(s.data || [])
+    if (t.data) setTavoli(t.data)
     setCaricamento(false)
   }
 
@@ -167,6 +183,8 @@ export default function Serate({ profilo }) {
 
   const oggiIso = iso(new Date())
   const serataScelta = scelto ? serataDi(scelto) : null
+  const tavoliDelGiorno = (giorno) =>
+    tavoli.filter((t) => t.inizio.slice(0, 10) === giorno)
 
   return (
     <>
@@ -211,6 +229,7 @@ export default function Serate({ profilo }) {
                 <span className="ora">{s.ora_inizio.slice(0, 5)}</span>
               )}
               {s && disponibili > 0 && <span className="conta">{disponibili}</span>}
+              {tavoliDelGiorno(giorno).length > 0 && <span className="punto-tavoli" aria-hidden="true" />}
             </button>
           )
         })}
@@ -314,6 +333,47 @@ export default function Serate({ profilo }) {
                     })}
                   </div>
                 </>
+              )}
+
+              <h4 className="titolo-sezione">
+                Tavoli previsti{' '}
+                <span className="conteggio">{tavoliDelGiorno(scelto).length}</span>
+              </h4>
+              {tavoliDelGiorno(scelto).length === 0 ? (
+                <p className="aiuto">
+                  Nessun tavolo pubblicato per questa serata.
+                  {(serataScelta.disponibilita || []).some((d) => d.stato === 'si') &&
+                    ' Ci sono dimostratori disponibili: c\u2019è da organizzare.'}
+                </p>
+              ) : (
+                <ul className="elenco">
+                  {tavoliDelGiorno(scelto).map((t) => {
+                    const iscritti = (t.iscrizioni_tavolo || [])
+                      .filter((i) => i.stato === 'confermato').length
+                    return (
+                      <li key={t.id}>
+                        <div className="gioco">
+                          {t.giochi?.immagine_url && (
+                            <img src={t.giochi.immagine_url} alt="" className="copertina" />
+                          )}
+                          <div className="nome-giocatore">
+                            <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+                            <span className="anno block">
+                              {new Date(t.inizio).toLocaleTimeString('it-IT', {
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                              {t.dimostratore_nome ? ` · ${t.dimostratore_nome}` : ''}
+                              {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="anno">
+                          {iscritti}{t.posti_max ? `/${t.posti_max}` : ''}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
               )}
 
               <h4 className="titolo-sezione">
