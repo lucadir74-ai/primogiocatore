@@ -1,12 +1,12 @@
 // Primo Giocatore - importazione da BG Stats
-// v3.0.0 - 202609191500
+// v3.2.0 - 202609201000
 //
 // Il file di BG Stats contiene array separati di games, players,
 // locations e plays, collegati fra loro dagli "id" interni al file.
 // Qui si traducono nello schema dell'app.
 
 import { supabase } from './supabase'
-import { impronta } from './impronta'
+import { impronta, improntePresenti, giaPresente } from './impronta'
 
 /* I punteggi in BG Stats sono testo e possono essere somme scritte a
    mano, tipo "21+18+17-15". Le calcolo solo se contengono unicamente
@@ -176,13 +176,34 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
   }
 
   /* ---------- 4. Partite già importate ---------- */
+  // Prima rete: l'identificativo che BG Stats assegna a ogni partita.
   const { data: gia } = await supabase
     .from('partite').select('chiave_esterna')
     .eq('registrata_da', profilo.id).not('chiave_esterna', 'is', null)
   const chiaviPresenti = new Set((gia || []).map((r) => r.chiave_esterna))
 
-  const daImportare = partite.filter((p) => !chiaviPresenti.has(`bgstats:${p.uuid}`))
-  const saltate = partite.length - daImportare.length
+  // Seconda rete: l'impronta. Serve se gli identificativi sono cambiati,
+  // cosa che succede quando l'app viene reinstallata.
+  const conteggi = await improntePresenti(supabase, profilo.id)
+
+  const daImportare = []
+  let saltate = 0
+  for (const p of partite) {
+    if (chiaviPresenti.has(`bgstats:${p.uuid}`)) { saltate++; continue }
+
+    const gFile = giochiFile.get(p.gameRefId)
+    const gid = gFile ? idGioco(gFile) : null
+    const imp = gid
+      ? impronta({
+          giocoId: gid,
+          giocataIl: (p.playDate || '').slice(0, 10),
+          punteggi: (p.playerScores || []).map((s) => leggiPunteggio(s.score)),
+        })
+      : null
+
+    if (giaPresente(conteggi, imp).presente) { saltate++; continue }
+    daImportare.push(p)
+  }
 
   /* ---------- 5. Partite ---------- */
   let fatte = 0
