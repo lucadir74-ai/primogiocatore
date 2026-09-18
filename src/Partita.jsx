@@ -1,9 +1,10 @@
 // Primo Giocatore - registrazione e modifica partita
-// v3.3.0 - 202609201400
+// v4.0.0 - 202609220900
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { impronta } from './impronta'
+import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
 // la pagina o cade la linea, la ritrovi com'era.
@@ -68,9 +69,40 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [caricamento, setCaricamento] = useState(modifica)
+  const [inCoda, setInCoda] = useState(() => leggiCoda().length)
+  const [inviando, setInviando] = useState(false)
   const [ripresa, setRipresa] = useState(false)
 
   useEffect(() => { caricaElenchi() }, [])
+
+  // Appena la rete torna, le partite in attesa partono da sole.
+  useEffect(() => {
+    async function svuota() {
+      if (leggiCoda().length === 0 || inviando) return
+      setInviando(true)
+      try {
+        const esito = await inviaCoda(supabase, profilo)
+        setInCoda(esito.rimaste)
+        if (esito.inviate > 0) {
+          setMessaggio(
+            esito.inviate === 1
+              ? 'La partita in attesa è stata salvata.'
+              : `${esito.inviate} partite in attesa sono state salvate.`
+          )
+        }
+        if (esito.scartate.length) {
+          setErrore(`${esito.scartate.length} partite in attesa sono state rifiutate: ${esito.scartate[0].motivo}`)
+        }
+      } catch (e) {
+        setErrore(e.message)
+      } finally {
+        setInviando(false)
+      }
+    }
+    svuota()
+    window.addEventListener('online', svuota)
+    return () => window.removeEventListener('online', svuota)
+  }, [])
   useEffect(() => { if (partitaId) caricaPartita(partitaId) }, [partitaId])
 
   // Al primo avvio: se c'è una partita lasciata a metà, la rimetto com'era.
@@ -411,79 +443,51 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
     setSalvando(true)
     try {
-      let luogoId = null
-      if (luogo.trim()) {
-        const { data: esistente } = await supabase
-          .from('luoghi').select('id').ilike('nome', luogo.trim()).maybeSingle()
-        if (esistente) luogoId = esistente.id
-        else {
-          const { data, error } = await supabase
-            .from('luoghi')
-            .insert({ nome: luogo.trim(), tipo: 'altro', creato_da: profilo.id })
-            .select().single()
-          if (error) throw error
-          luogoId = data.id
-        }
-      }
-
-      const campi = {
+      // La posizione viene salvata, non ricalcolata a ogni lettura:
+      // gli spareggi cambiano da gioco a gioco.
+      const dati = {
+        partita_id: partitaId || null,
         gioco_id: gioco.id,
-        luogo_id: luogoId,
+        luogo,
         giocata_il: new Date(quando).toISOString(),
         durata_minuti: minuti ? Number(minuti) : null,
         tipo_punteggio: tipo,
         esito_coop: tipo === 'coop' ? esitoCoop : null,
         note: note.trim() || null,
+        giocatori: ordinata.map((r) => ({
+          utente_id: r.utente_id || null,
+          ospite_id: r.ospite_id || null,
+          ruolo: r.ruolo?.trim() || null,
+          punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
+          spareggio: r.spareggio === '' ? null : Number(r.spareggio),
+          posizione: tipo === 'coop' ? null : r.pos,
+          vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
+          ordine_turno: r.ordine ?? null,
+          primo_giocatore: r.ordine === 1,
+        })),
       }
 
-      let id = partitaId
-      if (modifica) {
-        const { error } = await supabase.from('partite').update(campi).eq('id', id)
-        if (error) throw error
-        // Le partecipazioni si riscrivono da zero: più semplice e più
-        // sicuro che inseguire chi è stato aggiunto o tolto.
-        const { error: e0 } = await supabase.from('partecipazioni').delete().eq('partita_id', id)
-        if (e0) throw e0
-      } else {
-        const { data, error } = await supabase
-          .from('partite')
-          .insert({ ...campi, registrata_da: profilo.id })
-          .select().single()
-        if (error) throw error
-        id = data.id
-      }
-
-      const partecipazioni = ordinata.map((r) => ({
-        partita_id: id,
-        utente_id: r.utente_id || null,
-        ospite_id: r.ospite_id || null,
-        ruolo: r.ruolo?.trim() || null,
-        punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
-        spareggio: r.spareggio === '' ? null : Number(r.spareggio),
-        posizione: tipo === 'coop' ? null : r.pos,
-        vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
-        ordine_turno: r.ordine ?? null,
-        primo_giocatore: r.ordine === 1,
-      }))
-      const { error: e2 } = await supabase.from('partecipazioni').insert(partecipazioni)
-      if (e2) throw e2
-
-      // L'impronta si calcola qui, quando i punteggi sono noti: serve
-      // a riconoscere questa stessa partita se un domani arriva da
-      // un'importazione.
-      await supabase.from('partite').update({
-        impronta: impronta({
-          giocoId: gioco.id,
-          giocataIl: campi.giocata_il,
-          punteggi: partecipazioni.map((x) => x.punteggio_totale),
-        }),
-      }).eq('id', id)
-
-      if (modifica) {
-        setMessaggio('Partita aggiornata.')
-        finitaModifica?.()
-      } else {
-        setMessaggio('Partita registrata.')
+      try {
+        await scriviPartita(supabase, profilo, dati)
+        if (modifica) {
+          setMessaggio('Partita aggiornata.')
+          finitaModifica?.()
+        } else {
+          setMessaggio('Partita registrata.')
+          azzera()
+        }
+      } catch (e) {
+        // Senza rete la partita resta sul telefono e parte da sola
+        // appena la linea torna. Una modifica invece richiede la rete:
+        // rifarla a mano su dati vecchi creerebbe più danni.
+        if (!eProblemaDiRete(e) || modifica) throw e
+        const quante = accodaPartita(dati)
+        setInCoda(quante)
+        setMessaggio(
+          quante === 1
+            ? 'Niente rete: la partita è salvata sul telefono e partirà da sola.'
+            : `Niente rete: ${quante} partite in attesa, partiranno da sole.`
+        )
         azzera()
       }
     } catch (e) {
@@ -528,6 +532,15 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      {inCoda > 0 && (
+        <div className="avviso errore">
+          {inCoda === 1
+            ? 'Una partita è in attesa di rete.'
+            : `${inCoda} partite sono in attesa di rete.`}{' '}
+          {inviando ? 'Le sto inviando…' : 'Partiranno da sole appena torna la linea.'}
+        </div>
+      )}
 
       {ripresa && !modifica && (
         <div className="avviso ok">
