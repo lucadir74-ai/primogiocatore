@@ -1,8 +1,9 @@
 // Primo Giocatore - schermata Giochi
-// v3.3.0 - 202609201400
+// v3.9.0 - 202609211100
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import Collezione from './Collezione.jsx'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -21,6 +22,7 @@ export default function Giochi({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [importando, setImportando] = useState(false)
   const [manuale, setManuale] = useState(null) // null = chiuso
+  const [vista, setVista] = useState('catalogo')
 
   useEffect(() => { caricaCatalogo() }, [])
 
@@ -189,6 +191,18 @@ export default function Giochi({ profilo }) {
   return (
     <div className="scheda">
       <h2>Giochi</h2>
+
+      <div className="sottoschede">
+        <button className={vista === 'catalogo' ? 'attiva' : ''} onClick={() => setVista('catalogo')}>
+          Catalogo
+        </button>
+        <button className={vista === 'collezione' ? 'attiva' : ''} onClick={() => setVista('collezione')}>
+          La mia collezione
+        </button>
+      </div>
+
+      {vista === 'collezione' ? <Collezione profilo={profilo} /> : <>
+
       <p className="sottotitolo">
         Cerca un gioco su BoardGameGeek e aggiungilo, oppure porta dentro tutta la tua collezione.
       </p>
@@ -344,6 +358,8 @@ export default function Giochi({ profilo }) {
           ))}
         </ul>
       )}
+
+      </>}
     </div>
   )
 }
