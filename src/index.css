@@ -1230,3 +1230,15 @@ body {
   color: var(--inchiostro-tenue);
   border: 1px solid var(--bordo);
 }
+
+/* ---------- Elenchi lunghi ---------- */
+.elenco-scorrevole {
+  max-height: 20rem;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--bordo) 45%, transparent);
+  border-radius: 10px;
+  padding-left: 0.6rem;
+}
+
+.elenco-scorrevole li { padding: 0.55rem 0; }

@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v2.8.0 - 202609182000
+// v2.8.1 - 202609182100
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -207,7 +207,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       const r = await fetch(`/api/bgg?azione=cerca&q=${encodeURIComponent(filtro.trim())}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Ricerca non riuscita.')
-      setSuBgg(dati.risultati.slice(0, 10))
+      setSuBgg({ righe: dati.risultati.slice(0, 40), totale: dati.risultati.length })
     } catch (e) {
       setErrore(e.message)
     } finally {
@@ -528,8 +528,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         <>
           <div className="campo">
             <label htmlFor="f-gioco">A che giochiamo?</label>
-            <input id="f-gioco" value={filtro} onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Scrivi le prime lettere" />
+            <input
+              id="f-gioco"
+              value={filtro}
+              onChange={(e) => { setFiltro(e.target.value); setSuBgg(null) }}
+              onKeyDown={(e) => e.key === 'Enter' && cercaSuBgg()}
+              placeholder="Scrivi le prime lettere, poi Invio per cercare su BGG"
+            />
           </div>
           {trovati.length > 0 && (
             <ul className="elenco">
@@ -556,23 +561,33 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
           {suBgg && (
             <>
-              <h3 className="titolo-sezione">Su BoardGameGeek</h3>
-              {suBgg.length === 0 ? (
-                <p className="aiuto">Nessun risultato.</p>
+              <h3 className="titolo-sezione">
+                Su BoardGameGeek <span className="conteggio">{suBgg.totale}</span>
+              </h3>
+              {suBgg.righe.length === 0 ? (
+                <p className="aiuto">Nessun risultato: prova con il titolo originale, di solito in inglese.</p>
               ) : (
-                <ul className="elenco">
-                  {suBgg.map((r) => (
-                    <li key={r.bgg_id}>
-                      <div className="nome-giocatore">
-                        <strong>{r.nome}</strong>
-                        {r.anno && <span className="anno"> {r.anno}</span>}
-                      </div>
-                      <button className="bottone-piatto" onClick={() => aggiungiDaBgg(r.bgg_id)}>
-                        Aggiungi e usa
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="elenco elenco-scorrevole">
+                    {suBgg.righe.map((r) => (
+                      <li key={r.bgg_id}>
+                        <div className="nome-giocatore">
+                          <strong>{r.nome}</strong>
+                          {r.anno && <span className="anno"> {r.anno}</span>}
+                        </div>
+                        <button className="bottone-piatto" onClick={() => aggiungiDaBgg(r.bgg_id)}>
+                          Aggiungi
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {suBgg.totale > suBgg.righe.length && (
+                    <p className="aiuto">
+                      Mostrati i primi {suBgg.righe.length} di {suBgg.totale}: scrivi il titolo
+                      più preciso e cerca di nuovo.
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
