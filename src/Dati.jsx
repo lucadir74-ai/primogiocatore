@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v3.3.0 - 202609201400
+// v3.8.0 - 202609210900
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -30,6 +30,9 @@ export default function Dati({ profilo }) {
   const [cercaGiocatore, setCercaGiocatore] = useState('')
   const [utenteBgg, setUtenteBgg] = useState(profilo.bgg_username || '')
   const [anteprimaBgg, setAnteprimaBgg] = useState(null)
+  const [ultimaSincro, setUltimaSincro] = useState(
+    () => { try { return localStorage.getItem('primo-giocatore:ultima-sincro-bgg') } catch { return null } }
+  )
 
   async function leggiTutto() {
     return tutteLeRighe(() => supabase
@@ -135,7 +138,7 @@ export default function Dati({ profilo }) {
 
   // Legge tutte le pagine delle partite da BGG e prepara l'anteprima,
   // segnalando quelle che sembrano già presenti.
-  async function leggiDaBgg() {
+  async function leggiDaBgg(opzioni = {}) {
     setErrore(''); setMessaggio('')
     const utente = utenteBgg.trim()
     if (!utente) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
@@ -179,7 +182,7 @@ export default function Dati({ profilo }) {
         return { ...p, impronta: imp, sospetta: esito.presente, debole: esito.modo === 'debole' }
       })
 
-      setAnteprimaBgg({
+      const anteprima = {
         partite: conStato,
         sospette: conStato.filter((p) => p.sospetta).length,
         deboli: conStato.filter((p) => p.debole).length,
@@ -187,13 +190,38 @@ export default function Dati({ profilo }) {
         // quelle partite risultano nuove per forza, non perché lo siano.
         senzaGioco: conStato.filter((p) => !p.impronta).length,
         utente,
-      })
+      }
+
+      // In modalità rapida si procede subito con le nuove.
+      if (opzioni.automatico) {
+        const nuove = conStato.length - anteprima.sospette
+        if (nuove === 0) {
+          const adesso = new Date().toISOString()
+          try { localStorage.setItem('primo-giocatore:ultima-sincro-bgg', adesso) } catch { /* niente */ }
+          setUltimaSincro(adesso)
+          setMessaggio('Già tutto aggiornato: nessuna partita nuova su BGG.')
+          return
+        }
+        setAnteprimaBgg(anteprima)
+        return
+      }
+
+      setAnteprimaBgg(anteprima)
     } catch (e) {
       setErrore(e.message)
     } finally {
       setLavorando(false)
       setAvanzamento(null)
     }
+  }
+
+  // Aggiornamento rapido: legge da BGG e importa solo le partite nuove,
+  // senza fermarsi all'anteprima. Per il controllo caso per caso resta
+  // il percorso lungo.
+  async function sincronizzaBgg() {
+    setErrore(''); setMessaggio('')
+    if (!utenteBgg.trim()) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
+    await leggiDaBgg({ automatico: true })
   }
 
   async function confermaBgg(includiSospette) {
@@ -286,6 +314,9 @@ export default function Dati({ profilo }) {
         fatte++
       }
 
+      const adesso = new Date().toISOString()
+      try { localStorage.setItem('primo-giocatore:ultima-sincro-bgg', adesso) } catch { /* niente */ }
+      setUltimaSincro(adesso)
       setMessaggio(
         `Da BGG: importate ${fatte} partite` +
         (saltate ? `, ${saltate} saltate perché già presenti` : '') + '.'
@@ -682,11 +713,35 @@ export default function Dati({ profilo }) {
         <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
           placeholder="Come compare sul tuo profilo BGG" />
       </div>
-      <button className="bottone bottone-secondario" onClick={leggiDaBgg} disabled={lavorando}>
-        {lavorando ? 'Leggo…' : 'Cerca le mie partite su BGG'}
+      <button className="bottone" onClick={sincronizzaBgg} disabled={lavorando}>
+        {lavorando ? 'Aggiorno…' : 'Aggiorna da BGG'}
+      </button>
+      <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
+        Guarda prima cosa c'è
       </button>
 
+      {ultimaSincro && (
+        <p className="aiuto">
+          Ultimo aggiornamento: {new Date(ultimaSincro).toLocaleString('it-IT', {
+            day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+          })}
+        </p>
+      )}
+
+      {avanzamento && !anteprimaBgg && (
+        <div className="avanzamento">
+          <span>{avanzamento.fase}</span>
+          <div className="barra-avanzamento">
+            <div style={{ width: `${(avanzamento.fatto / Math.max(1, avanzamento.totale)) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
       <h3 className="titolo-sezione">Importa da un file</h3>
+      <p className="aiuto">
+        BG Stats non ha un collegamento diretto come BGG: la sincronizzazione automatica
+        è riservata alla loro app. Qui serve il file, da Impostazioni → Esportazione.
+      </p>
       <p className="aiuto">
         Accetta sia i file esportati da qui, sia il backup di <strong>BG Stats</strong>
         (Impostazioni → Esportazione). Il formato viene riconosciuto da solo. Le partite
