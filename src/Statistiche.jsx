@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.4.1 - 202609201700
+// v3.5.0 - 202609201900
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -423,6 +423,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           istogramma={istogramma}
           vaiAlGioco={vaiAlGioco}
           vaiAlGiocatore={vaiAlGiocatore}
+          profilo={profilo}
+          onModifica={onModifica}
         />
       ) : tipo === 'gioco' ? (
         <SchedaGioco
@@ -434,7 +436,14 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           vaiAlGiocatore={vaiAlGiocatore}
         />
       ) : tipo === 'luogo' ? (
-        <SchedaLuogo d={delLuogo(attivo)} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
+        <SchedaLuogo
+          d={delLuogo(attivo)}
+          istogramma={istogramma}
+          vaiAlGiocatore={vaiAlGiocatore}
+          vaiAlGioco={vaiAlGioco}
+          profilo={profilo}
+          onModifica={onModifica}
+        />
       ) : (
         <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
       )}
@@ -473,7 +482,7 @@ function Istogramma({ dati }) {
 
 /* ---------- Giocatore ---------- */
 
-function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore }) {
+function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onModifica }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita per questo giocatore.</p>
   return (
     <>
@@ -536,6 +545,8 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore }) {
         )}
       </ul>
 
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} mostraGioco />
+
       <Istogramma dati={istogramma(d.sue)} />
 
       <h3 className="titolo-sezione">Gioco per gioco</h3>
@@ -589,7 +600,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore }) {
 
 /* ---------- Gioco ---------- */
 
-function PartiteDelGioco({ partite, profilo, onModifica }) {
+function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco }) {
   const [aperta, setAperta] = useState(null)
 
   // Raggruppate per giorno: le serate di gioco stanno insieme.
@@ -631,9 +642,14 @@ function PartiteDelGioco({ partite, profilo, onModifica }) {
                 <button className="testa-partita" onClick={() => setAperta(apertaQui ? null : p.id)}>
                   <div className="dati-partita">
                     <strong>
-                      {p.luoghi?.nome || 'Luogo non indicato'}
+                      {mostraGioco
+                        ? (p.giochi?.nome || 'Gioco')
+                        : (p.luoghi?.nome || 'Luogo non indicato')}
                       {p.durata_minuti ? ` · ${p.durata_minuti} min` : ''}
                     </strong>
+                    {mostraGioco && (
+                      <span className="anno">{p.luoghi?.nome || 'luogo non indicato'}</span>
+                    )}
                     <span className="anno">
                       {(p.partecipazioni || []).length} giocatori
                       {vincitori.length
@@ -815,7 +831,7 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, vaiAlGiocatore 
 
 /* ---------- Luogo ---------- */
 
-function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco }) {
+function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onModifica }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita in questo luogo.</p>
   return (
     <>
@@ -827,6 +843,8 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco }) {
       </div>
 
       {d.ultima && <p className="aiuto">Ultima volta: {giorno(d.ultima)}.</p>}
+
+      <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} mostraGioco />
 
       <Istogramma dati={istogramma(d.sue)} />
 
