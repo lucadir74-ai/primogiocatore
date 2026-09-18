@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v3.0.1 - 202609191700
+// v3.0.2 - 202609191800
 
 import { useRef, useState } from 'react'
 import { supabase } from './supabase'
@@ -185,6 +185,9 @@ export default function Dati({ profilo }) {
         partite: conStato,
         sospette: conStato.filter((p) => p.sospetta).length,
         deboli: conStato.filter((p) => p.debole).length,
+        // Senza il gioco in catalogo l'impronta non si può calcolare:
+        // quelle partite risultano nuove per forza, non perché lo siano.
+        senzaGioco: conStato.filter((p) => !p.impronta).length,
         utente,
       })
     } catch (e) {
@@ -514,6 +517,36 @@ export default function Dati({ profilo }) {
           punteggi non cambiano mentre i nomi sì. Il conteggio è per quantità: se hai
           sei partite uguali e ne arrivano sette, la settima entra.
         </p>
+
+        {anteprimaBgg.senzaGioco > 0 && (
+          <p className="aiuto avviso-pareggio">
+            {anteprimaBgg.senzaGioco} risultano nuove solo perché il gioco non è ancora
+            nel tuo catalogo: per quelle il confronto non si può fare. Vengono importate
+            insieme al loro gioco.
+          </p>
+        )}
+
+        <h3 className="titolo-sezione">Considerate nuove</h3>
+        <ul className="elenco elenco-scorrevole">
+          {anteprimaBgg.partite.filter((p) => !p.sospetta).map((p) => (
+            <li key={p.bgg_play_id}>
+              <div className="nome-giocatore">
+                <strong>{p.gioco?.nome || 'Gioco sconosciuto'}</strong>
+                <span className="anno block">
+                  {p.data}
+                  {p.luogo ? ` · ${p.luogo}` : ''}
+                  {` · ${p.giocatori.length} giocatori`}
+                </span>
+                <span className="anno block">
+                  {p.giocatori
+                    .map((g) => `${g.nome}${g.punteggio != null ? ` ${g.punteggio}` : ''}${g.vincitore ? ' ★' : ''}`)
+                    .join(' · ')}
+                </span>
+                {!p.impronta && <span className="distintivo grigio">gioco non in catalogo</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
 
         {anteprimaBgg.deboli > 0 && (
           <p className="aiuto avviso-pareggio">
