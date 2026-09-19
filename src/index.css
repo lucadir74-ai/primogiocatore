@@ -1431,3 +1431,5 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 }
 
 .dimostratore-nome .etichetta-dato { min-width: 0; }
+
+.scheda-sottile { padding: 0.7rem 1.35rem; margin-bottom: 0; }

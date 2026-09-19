@@ -6,6 +6,7 @@ import { supabase, daMostrare } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import Locandina from './Locandina.jsx'
+import TavoloPubblico from './TavoloPubblico.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -45,8 +46,13 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [miaPosizione, setMiaPosizione] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
+  const [aperto, setAperto] = useState(null)   // tavolo visto come lo vede chi arriva dal link
+  const [sessione, setSessione] = useState(null)
 
   useEffect(() => { carica() }, [])
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSessione(data.session))
+  }, [])
 
   async function carica() {
     setCaricamento(true)
@@ -452,6 +458,22 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   if (locandina) return <Locandina tavolo={locandina} onChiudi={() => setLocandina(null)} />
 
+  // La scheda del tavolo è la stessa che vede chi arriva dal link:
+  // così ci si iscrive senza uscire dall'app, e chi organizza vede
+  // esattamente quello che vedono gli altri.
+  if (aperto) {
+    return (
+      <>
+        <div className="scheda scheda-sottile">
+          <button className="bottone-piatto" onClick={() => { setAperto(null); carica() }}>
+            ← torna ai tavoli
+          </button>
+        </div>
+        <TavoloPubblico tavoloId={aperto.id} sessione={sessione} profilo={profilo} />
+      </>
+    )
+  }
+
   // --- Pannello iscritti ---
   if (gestito) {
     const contatto = (i) => i.iscrizioni_contatti?.[0] || i.iscrizioni_contatti || {}
@@ -816,6 +838,9 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           </div>
         </div>
         <div className="tavolo-azioni">
+          <button className="bottone-piatto" onClick={() => setAperto(t)}>
+            {t.stato === 'aperto' && new Date(t.inizio) >= adesso ? 'Apri e iscriviti' : 'Apri'}
+          </button>
           <button className="bottone-piatto" onClick={() => condividi(t)}>Condividi</button>
           <button className="bottone-piatto" onClick={() => setLocandina(t)}>Locandina</button>
           {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
