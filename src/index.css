@@ -1383,13 +1383,14 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   padding-top: 0.8rem;
 }
 
-.locandina-nota { font-size: 0.9rem; color: #5A6874; margin: 0.8rem 0 0; }
-
-.locandina-link {
-  font-size: 0.75rem;
+.locandina-nota {
+  font-size: 0.9rem;
   color: #5A6874;
-  margin: 1rem 0 0;
-  word-break: break-all;
+  margin: 0.9rem 0 0;
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
+  line-height: 1.5;
 }
 
 /* In stampa resta solo il foglio, senza interfaccia intorno */

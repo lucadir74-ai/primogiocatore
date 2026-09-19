@@ -1,5 +1,5 @@
 // Primo Giocatore - locandina del tavolo
-// v4.2.0 - 202609221400
+// v4.7.0 - 202609231600
 //
 // Un foglio A5 da stampare e appoggiare sul tavolo vero: chi passa
 // inquadra il codice e si iscrive, senza che nessuno debba spiegare
@@ -75,8 +75,6 @@ export default function Locandina({ tavolo, onChiudi }) {
         </div>
 
         {tavolo.descrizione && <p className="locandina-nota">{tavolo.descrizione}</p>}
-
-        <p className="locandina-link">{link.replace(/^https?:\/\//, '')}</p>
       </div>
     </div>
   )
