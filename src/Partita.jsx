@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.0.0 - 202609220900
+// v4.3.0 - 202609221700
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -261,6 +261,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
         min_giocatori: g.min_giocatori, max_giocatori: g.max_giocatori,
         durata_minuti: g.durata_minuti, immagine_url: g.immagine_url,
+        immagine_grande: g.immagine_grande,
         creato_da: profilo.id,
       }, { onConflict: 'bgg_id' }).select().single()
       if (error) throw error

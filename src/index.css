@@ -1421,3 +1421,13 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
     justify-content: center;
   }
 }
+
+/* L'etichetta sopra il nome, non appiccicata di fianco */
+.dimostratore-nome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.dimostratore-nome .etichetta-dato { min-width: 0; }

@@ -183,6 +183,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       }
 
       await sistemaDimostratore(tavoloId, campi)
+      await recuperaImmagineGrande(modulo.gioco_id)
       setModulo(null)
       carica()
     } catch (e) {
@@ -193,6 +194,26 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   // L'iscrizione del dimostratore si crea, si aggiorna o si toglie
   // secondo quanto scelto nel modulo. È marcata come tale, così una
   // modifica al tavolo non ne crea una seconda.
+  // La pagina pubblica mostra la copertina a tutta larghezza: la
+  // miniatura di BGG sgranerebbe. Si scarica l'immagine piena solo
+  // per i giochi che finiscono davvero su un tavolo.
+  async function recuperaImmagineGrande(giocoId) {
+    try {
+      const { data: g } = await supabase
+        .from('giochi').select('bgg_id, immagine_grande').eq('id', giocoId).maybeSingle()
+      if (!g?.bgg_id || g.immagine_grande) return
+
+      const r = await fetch(`/api/bgg?azione=dettagli&id=${g.bgg_id}`)
+      const dati = await r.json()
+      if (!r.ok) return
+      const grande = dati.giochi?.[0]?.immagine_grande
+      if (grande) await supabase.from('giochi').update({ immagine_grande: grande }).eq('id', giocoId)
+    } catch {
+      // Se non arriva resta la miniatura: nessun motivo per fermare
+      // la pubblicazione del tavolo.
+    }
+  }
+
   async function sistemaDimostratore(tavoloId, campi) {
     const { data: esistente } = await supabase
       .from('iscrizioni_tavolo').select('id')

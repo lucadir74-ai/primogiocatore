@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v3.9.0 - 202609211100
+// v4.3.0 - 202609221700
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -79,6 +79,7 @@ export default function Giochi({ profilo }) {
           max_giocatori: g.max_giocatori,
           durata_minuti: g.durata_minuti,
           immagine_url: g.immagine_url,
+          immagine_grande: g.immagine_grande,
           creato_da: profilo.id,
         },
         { onConflict: 'bgg_id' }

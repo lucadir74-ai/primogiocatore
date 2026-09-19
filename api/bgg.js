@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.4.0 - 202609191500
+// v1.5.0 - 202609221700
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -113,7 +113,10 @@ function semplificaGioco(item) {
     min_giocatori: item.minplayers?.value ?? null,
     max_giocatori: item.maxplayers?.value ?? null,
     durata_minuti: item.playingtime?.value ?? null,
+    // La miniatura per gli elenchi, l'immagine piena per la pagina
+    // del tavolo: la prima sgranerebbe a tutta larghezza.
     immagine_url: item.thumbnail ?? item.image ?? null,
+    immagine_grande: item.image ?? item.thumbnail ?? null,
     tipo: item.type ?? 'boardgame',
   }
 }

@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v2.2.0 - 202609171600
+// v4.3.0 - 202609221700
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -43,7 +43,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       .select(`
         id, titolo, descrizione, inizio, posti_min, posti_max, stato, pubblicato,
         dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
-        giochi:tavoli_gioco_id_fkey ( nome, immagine_url, min_giocatori, max_giocatori, durata_minuti ),
+        giochi:tavoli_gioco_id_fkey ( nome, immagine_url, immagine_grande, min_giocatori, max_giocatori, durata_minuti ),
         luoghi ( nome, tipo, indirizzo, piattaforma )
       `)
       .eq('id', tavoloId)
@@ -121,8 +121,12 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
   return (
     <div className="scheda">
-      {tavolo.giochi?.immagine_url && (
-        <img src={tavolo.giochi.immagine_url} alt="" className="copertina-grande" />
+      {(tavolo.giochi?.immagine_grande || tavolo.giochi?.immagine_url) && (
+        <img
+          src={tavolo.giochi.immagine_grande || tavolo.giochi.immagine_url}
+          alt=""
+          className="copertina-grande"
+        />
       )}
 
       <h2>{tavolo.titolo || tavolo.giochi?.nome || 'Tavolo'}</h2>
@@ -159,7 +163,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           {tavolo.dimostratore_foto
             ? <img src={tavolo.dimostratore_foto} alt="" className="foto-dimostratore" />
             : <span className="foto-dimostratore vuota" aria-hidden="true">?</span>}
-          <div>
+          <div className="dimostratore-nome">
             <span className="etichetta-dato">Spiega il gioco</span>
             <strong>{tavolo.dimostratore_nome}</strong>
           </div>
