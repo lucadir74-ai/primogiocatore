@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.3.0 - 202609221700
+// v4.8.0 - 202609231800
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -23,14 +23,30 @@ export default function Giochi({ profilo }) {
   const [importando, setImportando] = useState(false)
   const [manuale, setManuale] = useState(null) // null = chiuso
   const [vista, setVista] = useState('catalogo')
+  const [soloMiei, setSoloMiei] = useState(true)
+  const [mieiGiochi, setMieiGiochi] = useState(new Set())
+  const [cercaCatalogo, setCercaCatalogo] = useState('')
 
-  useEffect(() => { caricaCatalogo() }, [])
+  useEffect(() => { caricaCatalogo(); caricaMiei() }, [])
+
+  // I giochi che ti riguardano: quelli che possiedi e quelli che hai
+  // giocato. Il resto del catalogo è di tutti, e resta a disposizione.
+  async function caricaMiei() {
+    const [c, p] = await Promise.all([
+      tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id)),
+      tutteLeRighe(() => supabase.from('partecipazioni')
+        .select('partite ( gioco_id )').eq('utente_id', profilo.id)),
+    ])
+    const s = new Set(c.map((r) => r.gioco_id))
+    for (const r of p) if (r.partite?.gioco_id) s.add(r.partite.gioco_id)
+    setMieiGiochi(s)
+  }
 
   async function caricaCatalogo() {
     try {
       const righe = await tutteLeRighe(() => supabase
         .from('giochi')
-        .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni')
+        .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da')
         .order('nome'))
       setCatalogo(righe)
     } catch (e) {
@@ -85,8 +101,9 @@ export default function Giochi({ profilo }) {
         { onConflict: 'bgg_id' }
       )
       if (error) throw error
-      setMessaggio(`${g.nome} aggiunto al catalogo.`)
+      setMessaggio(`${g.nome} aggiunto.`)
       caricaCatalogo()
+      caricaMiei()
     } catch (e) {
       setErrore(e.message)
     }
@@ -144,6 +161,7 @@ export default function Giochi({ profilo }) {
 
       setMessaggio(`Collezione importata: ${dati.totale} giochi.`)
       caricaCatalogo()
+      caricaMiei()
     } catch (e) {
       setErrore(e.message)
       setMessaggio('')
@@ -188,6 +206,11 @@ export default function Giochi({ profilo }) {
   }
 
   const giaInCatalogo = (bggId) => catalogo.some((g) => g.bgg_id === bggId)
+
+
+  // Le impostazioni di un gioco valgono per tutti: le cambia chi ha
+  // aggiunto la voce, o un organizzatore.
+  const posso = (g) => g.creato_da === profilo.id || profilo.organizzatore
 
   return (
     <div className="scheda">
@@ -322,37 +345,75 @@ export default function Giochi({ profilo }) {
       )}
 
       <h3 className="titolo-sezione">
-        In catalogo <span className="conteggio">{catalogo.length}</span>
+        {soloMiei ? 'I giochi che ti riguardano' : 'Catalogo condiviso'}{' '}
+        <span className="conteggio">
+          {soloMiei ? mieiGiochi.size : catalogo.length}
+        </span>
       </h3>
+
+      <p className="aiuto">
+        {soloMiei
+          ? 'I giochi che possiedi o hai giocato. Da ogni riga imposti come si conta il punteggio e se ci sono fazioni: sono le impostazioni che decidono cosa ti chiede la schermata della partita.'
+          : 'Tutti i giochi che l\u2019app conosce, aggiunti da chiunque: serve a non rifare due volte lo stesso lavoro. Il catalogo completo dei giochi resta BoardGameGeek.'}
+      </p>
+
+      <div className="sottoschede">
+        <button className={!soloMiei ? 'attiva' : ''} onClick={() => setSoloMiei(false)}>
+          Tutti
+        </button>
+        <button className={soloMiei ? 'attiva' : ''} onClick={() => setSoloMiei(true)}>
+          Posseduti e giocati
+        </button>
+      </div>
+
+      {catalogo.length > 10 && (
+        <input className="campo-cerca" value={cercaCatalogo}
+          onChange={(e) => setCercaCatalogo(e.target.value)}
+          placeholder="Cerca nel catalogo" aria-label="Cerca nel catalogo" />
+      )}
 
       {catalogo.length === 0 ? (
         <p className="aiuto">Ancora nessun gioco. Cercane uno qui sopra.</p>
       ) : (
         <ul className="elenco elenco-catalogo">
-          {catalogo.map((g) => (
+          {catalogo
+            .filter((g) => !soloMiei || mieiGiochi.has(g.id))
+            .filter((g) => !cercaCatalogo.trim()
+              || g.nome.toLowerCase().includes(cercaCatalogo.trim().toLowerCase()))
+            .slice(0, 300)
+            .map((g) => (
             <li key={g.id}>
               <div className="gioco">
                 {g.immagine_url && <img src={g.immagine_url} alt="" className="copertina" />}
                 <div>
                   <strong>{g.nome}</strong>
                   {g.anno ? <span className="anno"> {g.anno}</span> : null}
-                  <select
-                    className="scelta-punteggio"
-                    value={g.tipo_punteggio || 'punti'}
-                    onChange={(e) => cambiaPunteggio(g.id, e.target.value)}
-                  >
-                    {TIPI_PUNTEGGIO.map((t) => (
-                      <option key={t.id} value={t.id}>{t.etichetta}</option>
-                    ))}
-                  </select>
-                  <label className="spunta-fazioni">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(g.usa_fazioni)}
-                      onChange={(e) => cambiaFazioni(g.id, e.target.checked)}
-                    />
-                    ha fazioni
-                  </label>
+                  {posso(g) ? (
+                    <>
+                      <select
+                        className="scelta-punteggio"
+                        value={g.tipo_punteggio || 'punti'}
+                        onChange={(e) => cambiaPunteggio(g.id, e.target.value)}
+                      >
+                        {TIPI_PUNTEGGIO.map((t) => (
+                          <option key={t.id} value={t.id}>{t.etichetta}</option>
+                        ))}
+                      </select>
+                      <label className="spunta-fazioni">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(g.usa_fazioni)}
+                          onChange={(e) => cambiaFazioni(g.id, e.target.checked)}
+                        />
+                        ha fazioni
+                      </label>
+                    </>
+                  ) : (
+                    <span className="anno block">
+                      {TIPI_PUNTEGGIO.find((t) => t.id === (g.tipo_punteggio || 'punti'))?.etichetta}
+                      {g.usa_fazioni ? ' · con fazioni' : ''}
+                    </span>
+                  )}
                 </div>
               </div>
             </li>
