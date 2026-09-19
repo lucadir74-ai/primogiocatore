@@ -1,4 +1,4 @@
-// Primo Giocatore v3.6.1 - 202609202100
+// Primo Giocatore v4.6.0 - 202609231400
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -57,7 +57,7 @@ function Avviso({ tipo, testo }) {
 /* ---------------- Accesso e registrazione ---------------- */
 
 function Accesso() {
-  const [modo, setModo] = useState('entra')
+  const [modo, setModo] = useState('entra')   // entra | iscriviti | recupero
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -69,7 +69,9 @@ function Accesso() {
     setErrore('')
     setOk('')
 
-    if (!email || !password) {
+    if (modo === 'recupero') {
+      if (!email) { setErrore('Scrivi l\u2019indirizzo con cui ti sei iscritto.'); return }
+    } else if (!email || !password) {
       setErrore('Servono email e password.')
       return
     }
@@ -84,6 +86,18 @@ function Accesso() {
 
     setAttesa(true)
     try {
+      if (modo === 'recupero') {
+        // Supabase manda un messaggio con un collegamento che riporta
+        // qui dentro già autenticati, giusto il tempo di scegliere
+        // una password nuova.
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        })
+        if (error) throw error
+        setOk('Ti ho mandato un messaggio: apri il collegamento e scegli la password nuova. Controlla anche la posta indesiderata.')
+        return
+      }
+
       if (modo === 'iscriviti') {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -106,11 +120,15 @@ function Accesso() {
 
   return (
     <div className="scheda">
-      <h2>{modo === 'entra' ? 'Entra' : 'Crea il tuo account'}</h2>
+      <h2>
+        {modo === 'entra' ? 'Entra'
+          : modo === 'iscriviti' ? 'Crea il tuo account'
+          : 'Password dimenticata'}
+      </h2>
       <p className="sottotitolo">
-        {modo === 'entra'
-          ? 'Riprendi da dove eri rimasto.'
-          : 'Ti serve per registrare le partite e iscriverti ai tavoli.'}
+        {modo === 'entra' ? 'Riprendi da dove eri rimasto.'
+          : modo === 'iscriviti' ? 'Ti serve per registrare le partite e iscriverti ai tavoli.'
+          : 'Scrivi il tuo indirizzo: ti mando un collegamento per sceglierne una nuova.'}
       </p>
 
       <Avviso tipo="errore" testo={errore} />
@@ -140,6 +158,7 @@ function Accesso() {
         />
       </div>
 
+      {modo !== 'recupero' && (
       <div className="campo">
         <label htmlFor="password">Password</label>
         <input
@@ -152,13 +171,26 @@ function Accesso() {
         />
         {modo === 'iscriviti' && <p className="aiuto">Almeno 8 caratteri.</p>}
       </div>
+      )}
 
       <button className="bottone" onClick={invia} disabled={attesa}>
-        {attesa ? 'Un attimo\u2026' : modo === 'entra' ? 'Entra' : 'Crea account'}
+        {attesa ? 'Un attimo\u2026'
+          : modo === 'entra' ? 'Entra'
+          : modo === 'iscriviti' ? 'Crea account'
+          : 'Mandami il collegamento'}
       </button>
 
+      {modo === 'entra' && (
+        <p className="riga-fondo">
+          <button className="bottone-piatto"
+            onClick={() => { setModo('recupero'); setErrore(''); setOk('') }}>
+            Password dimenticata
+          </button>
+        </p>
+      )}
+
       <p className="riga-fondo">
-        {modo === 'entra' ? 'Non hai ancora un account? ' : 'Ce l\u2019hai già? '}
+        {modo === 'iscriviti' ? 'Ce l\u2019hai già? ' : modo === 'recupero' ? '' : 'Non hai ancora un account? '}
         <button
           className="bottone-piatto"
           onClick={() => {
@@ -167,9 +199,60 @@ function Accesso() {
             setOk('')
           }}
         >
-          {modo === 'entra' ? 'Iscriviti' : 'Entra'}
+          {modo === 'entra' ? 'Iscriviti' : 'Torna all\u2019accesso'}
         </button>
       </p>
+    </div>
+  )
+}
+
+/* ---------------- Password nuova ---------------- */
+
+// Si arriva qui dal collegamento ricevuto per posta: Supabase apre
+// una sessione valida giusto per questo, e finché non si sceglie una
+// password nuova non si va da nessuna parte.
+function NuovaPassword({ fatto }) {
+  const [password, setPassword] = useState('')
+  const [ripeti, setRipeti] = useState('')
+  const [attesa, setAttesa] = useState(false)
+  const [errore, setErrore] = useState('')
+
+  async function salva() {
+    setErrore('')
+    if (password.length < 8) { setErrore('La password deve avere almeno 8 caratteri.'); return }
+    if (password !== ripeti) { setErrore('Le due password non coincidono.'); return }
+
+    setAttesa(true)
+    const { error } = await supabase.auth.updateUser({ password })
+    setAttesa(false)
+    if (error) setErrore(traduciErrore(error))
+    else fatto()
+  }
+
+  return (
+    <div className="scheda">
+      <h2>Scegli la password nuova</h2>
+      <p className="sottotitolo">Da adesso entrerai con questa.</p>
+
+      <Avviso tipo="errore" testo={errore} />
+
+      <div className="campo">
+        <label htmlFor="np1">Password nuova</label>
+        <input id="np1" type="password" value={password} autoComplete="new-password"
+          onChange={(e) => setPassword(e.target.value)} />
+        <p className="aiuto">Almeno 8 caratteri.</p>
+      </div>
+
+      <div className="campo">
+        <label htmlFor="np2">Ripetila</label>
+        <input id="np2" type="password" value={ripeti} autoComplete="new-password"
+          onChange={(e) => setRipeti(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && salva()} />
+      </div>
+
+      <button className="bottone" onClick={salva} disabled={attesa}>
+        {attesa ? 'Salvo\u2026' : 'Salva la password'}
+      </button>
     </div>
   )
 }
@@ -305,6 +388,7 @@ export default function App() {
   const [mira, setMira] = useState(null)
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
+  const [cambioPassword, setCambioPassword] = useState(false)
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -314,9 +398,11 @@ export default function App() {
       setPronto(true)
     })
 
-    const { data: iscrizione } = supabase.auth.onAuthStateChange((_evento, s) => {
+    const { data: iscrizione } = supabase.auth.onAuthStateChange((evento, s) => {
       setSessione(s)
       if (!s) setProfilo(null)
+      // Rientro dal collegamento di recupero: prima la password nuova.
+      if (evento === 'PASSWORD_RECOVERY') setCambioPassword(true)
     })
     return () => iscrizione.subscription.unsubscribe()
   }, [])
@@ -364,6 +450,8 @@ export default function App() {
         </div>
       ) : !pronto ? (
         <div className="scheda"><p>Un attimo&hellip;</p></div>
+      ) : cambioPassword ? (
+        <NuovaPassword fatto={() => setCambioPassword(false)} />
       ) : !sessione ? (
         <Accesso />
       ) : !profilo ? (
