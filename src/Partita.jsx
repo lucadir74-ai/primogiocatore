@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.3.0 - 202609221700
+// v4.5.0 - 202609231100
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -316,6 +316,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [suBgg, setSuBgg] = useState(null)      // risultati della ricerca su BGG
   const [cercandoBgg, setCercandoBgg] = useState(false)
   const [cercaGiocatore, setCercaGiocatore] = useState('')
+  const [sostituendo, setSostituendo] = useState(null)   // chiave della riga da cambiare
+  const [cercaSostituto, setCercaSostituto] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
   const [segnandoOrdine, setSegnandoOrdine] = useState(false)
 
@@ -351,6 +353,48 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, [campo]: valore } : r)))
 
   const togli = (chiave) => setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
+
+  // Cambia chi era al tavolo lasciando dov'è tutto il resto: punteggio,
+  // piazzamento, fazione, ordine di turno. Serve quando il nome era
+  // sbagliato o la persona non era quella.
+  function sostituisci(chiave, nuovo) {
+    setRighe((rs) => {
+      // Se la persona nuova è già in questa partita, non si raddoppia.
+      const giaDentro = rs.some(
+        (r) => r.chiave !== chiave &&
+          (nuovo.tipo === 'utente' ? r.utente_id === nuovo.dato.id : r.ospite_id === nuovo.dato.id)
+      )
+      if (giaDentro) {
+        setErrore(`${nuovo.nome} è già in questa partita.`)
+        return rs
+      }
+      return rs.map((r) =>
+        r.chiave === chiave
+          ? {
+              ...r,
+              chiave: nuovo.chiave,
+              nome: nuovo.nome,
+              utente_id: nuovo.tipo === 'utente' ? nuovo.dato.id : undefined,
+              ospite_id: nuovo.tipo === 'ospite' ? nuovo.dato.id : undefined,
+            }
+          : r
+      )
+    })
+    setSostituendo(null)
+    setCercaSostituto('')
+    setErrore('')
+  }
+
+  // Un ospite creato al volo mentre si sostituisce.
+  async function creaESostituisci(chiave) {
+    const nome = cercaSostituto.trim()
+    if (!nome) return
+    const { data, error } = await supabase
+      .from('ospiti').insert({ nome, creato_da: profilo.id }).select().single()
+    if (error) { setErrore(error.message); return }
+    setOspiti([...ospiti, data])
+    sostituisci(chiave, { chiave: `o-${data.id}`, nome: data.nome, tipo: 'ospite', dato: data })
+  }
 
   // Si tocca nell'ordine in cui si è giocato: 1 a chi ha iniziato.
   // Ritoccare un numero già dato lo toglie e ricompatta gli altri.
@@ -697,9 +741,55 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     <span className="pallino" style={{ background: coloreDi(r) }} aria-hidden="true" />
                   )}
                   <div className="nome-giocatore">
-                    <strong>{r.nome}</strong>
+                    <button
+                      className="nome-cliccabile"
+                      onClick={() => {
+                        setSostituendo(sostituendo === r.chiave ? null : r.chiave)
+                        setCercaSostituto('')
+                      }}
+                      title="Cambia giocatore"
+                    >
+                      {r.nome}
+                    </button>
                     {r.ospite_id && <span className="anno"> ospite</span>}
                     {vince && <span className="etichetta-vince">vince</span>}
+
+                    {sostituendo === r.chiave && (
+                      <div className="sostituzione">
+                        <span className="anno block">Chi era al suo posto?</span>
+                        <input
+                          className="campo-cerca"
+                          value={cercaSostituto}
+                          onChange={(e) => setCercaSostituto(e.target.value)}
+                          placeholder="Cerca o scrivi un nome nuovo"
+                          autoFocus
+                        />
+                        <div className="pastiglie-persone">
+                          {tuttiDisponibili
+                            .filter((x) => !cercaSostituto.trim()
+                              || x.nome.toLowerCase().includes(cercaSostituto.trim().toLowerCase()))
+                            .slice(0, 8)
+                            .map((x) => (
+                              <button
+                                key={x.chiave}
+                                className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}`}
+                                onClick={() => sostituisci(r.chiave, x)}
+                              >
+                                {x.nome}
+                              </button>
+                            ))}
+                          {cercaSostituto.trim() && (
+                            <button className="pastiglia-nome nuovo"
+                              onClick={() => creaESostituisci(r.chiave)}>
+                              + {cercaSostituto.trim()}
+                            </button>
+                          )}
+                        </div>
+                        <button className="bottone-piatto" onClick={() => setSostituendo(null)}>
+                          annulla
+                        </button>
+                      </div>
+                    )}
                     {!segnandoOrdine && r.ordine != null && (
                       <span className="anno fazione-nota"> · {r.ordine}° di turno</span>
                     )}

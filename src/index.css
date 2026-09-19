@@ -1433,3 +1433,15 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 .dimostratore-nome .etichetta-dato { min-width: 0; }
 
 .scheda-sottile { padding: 0.7rem 1.35rem; margin-bottom: 0; }
+
+/* ---------- Sostituzione di un giocatore ---------- */
+.sostituzione {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  background: var(--carta);
+  border: 1px dashed var(--bordo-forte);
+  border-radius: 10px;
+}
+
+.sostituzione .campo-cerca { margin-bottom: 0.4rem; }
+.sostituzione .pastiglie-persone { margin-bottom: 0.4rem; }
