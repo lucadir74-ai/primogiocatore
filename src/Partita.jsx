@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.8.0 - 202609202100
+// v4.9.0 - 202609202330
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -26,10 +26,12 @@ function cancellaBozza() {
   try { localStorage.removeItem(BOZZA) } catch { /* niente da fare */ }
 }
 
-function mmss(secondi) {
-  const m = Math.floor(secondi / 60)
+// Orologio della partita: ore, minuti e secondi, come 0:12:34.
+function orologio(secondi) {
+  const o = Math.floor(secondi / 3600)
+  const m = Math.floor((secondi % 3600) / 60)
   const s = secondi % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${o}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 // "2026-09-14T21:30" per il campo data/ora del browser.
@@ -792,7 +794,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               >
                 {inCorso ? '❚❚' : '▶'}
               </button>
-              <span className={`orologio${inCorso ? ' acceso' : ''}`}>{mmss(secondi)}</span>
+              <span className={`orologio${inCorso ? ' acceso' : ''}`}>{orologio(secondi)}</span>
               {secondi > 0 && (
                 <button className="azzera-timer" onClick={azzeraTimer}
                   aria-label="Azzera il timer">↺</button>
