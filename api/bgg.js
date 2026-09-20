@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.5.0 - 202609221700
+// v1.6.0 - 202609210030
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -93,6 +93,38 @@ async function chiamaBGG(percorso) {
 
 const elenco = (x) => (x == null ? [] : Array.isArray(x) ? x : [x])
 
+// BGG conserva i titoli già scritti alla maniera dell'HTML: l'apostrofo di
+// "Darwin's Journey" arriva come &#039;. Dentro l'XML quella & è a sua volta
+// protetta, quindi dopo la lettura resta il codice in chiaro, che finirebbe
+// nel database così com'è. Qui i codici tornano caratteri veri.
+const NOMINATI = {
+  amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ',
+  rsquo: '\u2019', lsquo: '\u2018', ldquo: '\u201c', rdquo: '\u201d',
+  ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', deg: '\u00b0',
+  eacute: '\u00e9', egrave: '\u00e8', uuml: '\u00fc', ouml: '\u00f6', auml: '\u00e4',
+}
+
+function ripulisci(testo) {
+  if (typeof testo !== 'string' || !testo.includes('&')) return testo
+  let prima = testo
+  // Due passate: i titoli di BGG possono avere la & a sua volta protetta.
+  for (let giro = 0; giro < 2; giro++) {
+    const dopo = prima.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (intero, corpo) => {
+      if (corpo[0] === '#') {
+        const n = corpo[1] === 'x' || corpo[1] === 'X'
+          ? parseInt(corpo.slice(2), 16)
+          : parseInt(corpo.slice(1), 10)
+        return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : intero
+      }
+      const c = NOMINATI[corpo.toLowerCase()]
+      return c === undefined ? intero : c
+    })
+    if (dopo === prima) break
+    prima = dopo
+  }
+  return prima.trim()
+}
+
 // Il nome principale. BGG lo restituisce in tre forme diverse a seconda
 // della chiamata: testo puro, oggetto con "value", oppure oggetto con
 // attributi e il testo dentro "#text" (è il caso della collezione).
@@ -100,9 +132,9 @@ function nomePrincipale(nome) {
   const nomi = elenco(nome)
   const primario = nomi.find((n) => n?.type === 'primary') || nomi[0]
   if (primario == null) return null
-  if (typeof primario === 'string') return primario
+  if (typeof primario === 'string') return ripulisci(primario)
   if (typeof primario === 'number') return String(primario)
-  return primario.value ?? primario['#text'] ?? null
+  return ripulisci(primario.value ?? primario['#text'] ?? null)
 }
 
 function semplificaGioco(item) {
@@ -190,15 +222,15 @@ export default async function handler(req, res) {
         bgg_play_id: Number(p.id),
         data: p.date ?? null,
         durata_minuti: Number(p.length) || null,
-        luogo: p.location || null,
-        note: typeof p.comments === 'string' ? p.comments : (p.comments?.['#text'] ?? null),
+        luogo: ripulisci(p.location) || null,
+        note: ripulisci(typeof p.comments === 'string' ? p.comments : (p.comments?.['#text'] ?? null)),
         incompleta: p.incomplete === 1 || p.incomplete === '1',
         senza_punteggi: p.nowinstats === 1 || p.nowinstats === '1',
         gioco: p.item
-          ? { bgg_id: Number(p.item.objectid), nome: p.item.name ?? null }
+          ? { bgg_id: Number(p.item.objectid), nome: ripulisci(p.item.name) ?? null }
           : null,
         giocatori: elenco(p.players?.player).map((g) => ({
-          nome: g.name ?? g.username ?? 'Sconosciuto',
+          nome: ripulisci(g.name ?? g.username ?? 'Sconosciuto'),
           username: g.username || null,
           punteggio: g.score === '' || g.score == null ? null : Number(g.score),
           posizione: Number(g.startposition) || null,
