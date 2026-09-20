@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.5.0 - 202609231100
+// v4.6.0 - 202609201900
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -320,6 +320,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [cercaSostituto, setCercaSostituto] = useState('')
   const [fazioniNote, setFazioniNote] = useState([])
   const [segnandoOrdine, setSegnandoOrdine] = useState(false)
+  const [sorteggio, setSorteggio] = useState(null) // chiave evidenziata mentre gira
+  const giro = useRef(null)
 
   // I suggerimenti nascono dall'uso: le fazioni già scritte in altre
   // partite a questo gioco. Nessun elenco da compilare a mano.
@@ -415,6 +417,46 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   const azzeraOrdine = () => setRighe((rs) => rs.map((x) => ({ ...x, ordine: null })))
+
+  // Sorteggio del primo giocatore. L'estrazione è decisa subito, con un
+  // numero casuale crittografico (nessun giocatore favorito); il giro
+  // sui nomi serve solo a farla vedere a tutti al tavolo. Il sorteggiato
+  // prende l'ordine 1, che si salva con la partita come primo giocatore.
+  function casuale(n) {
+    const limite = Math.floor(0x100000000 / n) * n
+    const buf = new Uint32Array(1)
+    do { crypto.getRandomValues(buf) } while (buf[0] >= limite)
+    return buf[0] % n
+  }
+
+  function sorteggiaPrimo() {
+    if (righe.length < 2 || giro.current) return
+    const chiavi = righe.map((r) => r.chiave)
+    const scelto = casuale(chiavi.length)
+    const fine = () => {
+      giro.current = null
+      setSorteggio(null)
+      setSegnandoOrdine(false)
+      setRighe((rs) => rs.map((x) => ({ ...x, ordine: x.chiave === chiavi[scelto] ? 1 : null })))
+    }
+    const fermo = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (fermo) { fine(); return }
+
+    // Due giri e mezzo che rallentano, poi si ferma sul sorteggiato.
+    const passi = chiavi.length * 2 + scelto + 1
+    let passo = 0
+    const avanza = () => {
+      setSorteggio(chiavi[passo % chiavi.length])
+      passo += 1
+      if (passo >= passi) { giro.current = setTimeout(fine, 450); return }
+      giro.current = setTimeout(avanza, 60 + Math.round(240 * (passo / passi) ** 2))
+    }
+    avanza()
+  }
+
+  useEffect(() => () => giro.current && clearTimeout(giro.current), [])
+
+  const primo = righe.find((r) => r.ordine === 1)
 
   const tipo = gioco?.tipo_punteggio || 'punti'
 
@@ -729,7 +771,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   {tipo !== 'coop' && (
                     <span className="posto" aria-hidden="true">{r.pos ? `${r.pos}°` : '–'}</span>
                   )}
-                  {segnandoOrdine ? (
+                  {sorteggio ? (
+                    <span className={`tondo-ordine${sorteggio === r.chiave ? ' dato' : ''}`}
+                      aria-hidden="true">
+                      {sorteggio === r.chiave ? '1' : ''}
+                    </span>
+                  ) : segnandoOrdine ? (
                     <button
                       className={`tondo-ordine${r.ordine != null ? ' dato' : ''}`}
                       onClick={() => segnaOrdine(r.chiave)}
@@ -838,6 +885,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           {righe.length > 1 && (
             <div className="riga-ordine">
               <button
+                className="bottone"
+                onClick={sorteggiaPrimo}
+                disabled={Boolean(sorteggio)}
+              >
+                {sorteggio ? 'Sorteggio\u2026' : primo ? 'Sorteggia di nuovo' : 'Sorteggia chi inizia'}
+              </button>
+              <button
                 className={`bottone bottone-secondario${segnandoOrdine ? ' attivo' : ''}`}
                 onClick={() => setSegnandoOrdine(!segnandoOrdine)}
               >
@@ -848,6 +902,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               )}
             </div>
           )}
+
+          <p className={!sorteggio && primo && !segnandoOrdine ? 'aiuto' : undefined} aria-live="polite">
+            {!sorteggio && primo && !segnandoOrdine
+              ? `Inizia ${primo.nome}. Se vuoi, segna anche l\u2019ordine degli altri.`
+              : ''}
+          </p>
 
           {segnandoOrdine && (
             <p className="aiuto">
