@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.7.0 - 202609202000
+// v4.8.0 - 202609202100
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -607,9 +607,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     }
   }
 
+  // I tuoi giochi vengono prima, poi quelli presi da BGG, poi quelli a mano:
+  // se ci sono due voci con lo stesso nome, la buona è quasi sempre la prima.
+  const peso = (g) => (miaCollezione.has(g.id) ? 0 : g.bgg_id ? 1 : 2)
   const trovati = filtro.trim().length > 0
-    ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase())).slice(0, 8)
+    ? catalogo
+      .filter((g) => g.nome.toLowerCase().includes(filtro.toLowerCase()))
+      .sort((a, b) => peso(a) - peso(b) || a.nome.localeCompare(b.nome, 'it'))
+      .slice(0, 8)
     : []
+  const nomeDoppio = (g) =>
+    trovati.filter((x) => x.nome.trim().toLowerCase() === g.nome.trim().toLowerCase()).length > 1
 
   // Un elenco solo, utenti e ospiti insieme, ordinato per quanto
   // spesso giocano. Senza filtro se ne mostrano pochi.
@@ -675,7 +683,15 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             <ul className="elenco">
               {trovati.map((g) => (
                 <li key={g.id}>
-                  <span>{g.nome}</span>
+                  <div className="nome-giocatore">
+                    <span>{g.nome}</span>
+                    {g.anno ? <span className="anno"> {g.anno}</span> : null}
+                    {miaCollezione.has(g.id)
+                      ? <span className="anno"> · tuo</span>
+                      : nomeDoppio(g) && (
+                        <span className="anno"> · {g.bgg_id ? 'da BGG' : 'aggiunto a mano'}</span>
+                      )}
+                  </div>
                   <button className="bottone-piatto" onClick={() => scegliGioco(g)}>Scegli</button>
                 </li>
               ))}

@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.9.0 - 202609201900
+// v4.10.0 - 202609202100
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -174,6 +174,12 @@ export default function Giochi({ profilo }) {
     }
   }
 
+  // Giochi già registrati con lo stesso nome (maiuscole e spazi non contano).
+  const normale = (t) => (t || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const omonimi = (nome) => normale(nome)
+    ? catalogo.filter((g) => normale(g.nome) === normale(nome))
+    : []
+
   // Gioco non presente su BGG: prototipo, print and play, autoprodotto.
   async function salvaManuale() {
     setErrore('')
@@ -182,6 +188,13 @@ export default function Giochi({ profilo }) {
       setErrore('Serve almeno il nome del gioco.')
       return
     }
+    // Un gioco con lo stesso nome c'è già: di solito è lui, e crearne un
+    // secondo divide le partite fra due voci. Si procede solo se confermi.
+    if (omonimi(manuale.nome).length > 0 && !window.confirm(
+      `Esiste già un gioco chiamato «${manuale.nome.trim()}». Se è lo stesso, annulla e usa quello: ` +
+      'le partite registrate su due voci diverse non si sommano nelle statistiche.\n\n' +
+      'Crearne comunque un altro?'
+    )) return
     const { error } = await supabase.from('giochi').insert({
       nome: manuale.nome.trim(),
       anno: manuale.anno ? Number(manuale.anno) : null,
@@ -357,6 +370,13 @@ export default function Giochi({ profilo }) {
               value={manuale.nome}
               onChange={(e) => setManuale({ ...manuale, nome: e.target.value })}
             />
+            {omonimi(manuale.nome).length > 0 && (
+              <p className="aiuto" role="status">
+                C&rsquo;è già un gioco con questo nome
+                {omonimi(manuale.nome).some((g) => g.bgg_id) ? ', preso da BoardGameGeek' : ''}.
+                Se è lo stesso non serve crearlo: lo trovi quando registri la partita.
+              </p>
+            )}
           </div>
 
           <div className="riga-campi">
