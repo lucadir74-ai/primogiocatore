@@ -1,7 +1,7 @@
 // Primo Giocatore - schermata Giochi
-// v4.10.0 - 202609202100
+// v4.11.0 - 202609210130
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import Collezione from './Collezione.jsx'
 
@@ -26,6 +26,9 @@ export default function Giochi({ profilo }) {
   const [posseduti, setPosseduti] = useState(new Set()) // collezione BGG
   const [giocati, setGiocati] = useState(new Set())     // partite registrate
   const [cercaCatalogo, setCercaCatalogo] = useState('')
+  const [completando, setCompletando] = useState(0) // quanti ne mancano
+  const giaTentati = useRef(new Set())
+  const inCorso = useRef(false)
 
   useEffect(() => { caricaCatalogo(); caricaMiei() }, [])
 
@@ -173,6 +176,52 @@ export default function Giochi({ profilo }) {
       setImportando(false)
     }
   }
+
+  // L'import della collezione porta solo nome e anno, perché chiedere a BGG
+  // i dettagli di 139 giochi richiede minuti. Copertina, giocatori e durata
+  // arrivano qui da sole, in sottofondo, venti per volta e solo per i tuoi
+  // giochi. Se BGG non risponde si riprova alla prossima apertura.
+  useEffect(() => {
+    if (inCorso.current) return
+    const mancanti = catalogo.filter((g) =>
+      g.bgg_id && !g.immagine_url
+      && (posseduti.has(g.id) || giocati.has(g.id))
+      && !giaTentati.current.has(g.bgg_id))
+    if (mancanti.length === 0) { setCompletando(0); return }
+
+    let vivo = true
+    inCorso.current = true
+    setCompletando(mancanti.length)
+
+    ;(async () => {
+      for (let i = 0; i < mancanti.length && vivo; i += 20) {
+        const gruppo = mancanti.slice(i, i + 20)
+        gruppo.forEach((g) => giaTentati.current.add(g.bgg_id))
+        try {
+          const r = await fetch(`/api/bgg?azione=dettagli&id=${gruppo.map((g) => g.bgg_id).join(',')}`)
+          const dati = await r.json()
+          if (!r.ok || !dati.giochi?.length) continue
+          const righe = dati.giochi.map((g) => ({
+            bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
+            min_giocatori: g.min_giocatori, max_giocatori: g.max_giocatori,
+            durata_minuti: g.durata_minuti,
+            immagine_url: g.immagine_url, immagine_grande: g.immagine_grande,
+          }))
+          const { error } = await supabase.from('giochi').upsert(righe, { onConflict: 'bgg_id' })
+          if (error) continue
+          if (!vivo) return
+          // Aggiorno solo le righe toccate: niente ricarica dell'intero elenco.
+          const perBgg = new Map(righe.map((x) => [x.bgg_id, x]))
+          setCatalogo((c) => c.map((x) => (perBgg.has(x.bgg_id) ? { ...x, ...perBgg.get(x.bgg_id) } : x)))
+        } catch { /* rete assente: si riprova alla prossima apertura */ }
+        if (vivo) setCompletando((n) => Math.max(0, n - gruppo.length))
+      }
+      inCorso.current = false
+      if (vivo) setCompletando(0)
+    })()
+
+    return () => { vivo = false; inCorso.current = false }
+  }, [catalogo, posseduti, giocati])
 
   // Giochi già registrati con lo stesso nome (maiuscole e spazi non contano).
   const normale = (t) => (t || '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -418,6 +467,13 @@ export default function Giochi({ profilo }) {
             </button>
           </div>
         </div>
+      )}
+
+      {completando > 0 && (
+        <p className="aiuto" role="status">
+          Sto recuperando le copertine da BoardGameGeek: ne mancano {completando}.
+          Puoi continuare a usare l&rsquo;app.
+        </p>
       )}
 
       <p className="aiuto">
