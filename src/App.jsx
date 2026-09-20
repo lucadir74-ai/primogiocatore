@@ -1,4 +1,4 @@
-// Primo Giocatore v4.7.0 - 202609202200
+// Primo Giocatore v4.8.0 - 202609202300
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -404,6 +404,87 @@ function Profilo({ sessione, profilo, setProfilo }) {
 
       <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>
         Esci dall'account
+      </button>
+
+      <EliminaAccount email={sessione.user.email} />
+    </div>
+  )
+}
+
+/* ---------------- Elimina account ---------------- */
+
+// In fondo al profilo, chiusa finché non la apri. Per confermare si
+// riscrive la propria email: un tocco distratto non basta a cancellare.
+function EliminaAccount({ email }) {
+  const [aperta, setAperta] = useState(false)
+  const [conferma, setConferma] = useState('')
+  const [attesa, setAttesa] = useState(false)
+  const [errore, setErrore] = useState('')
+
+  const giusta = conferma.trim().toLowerCase() === (email || '').toLowerCase()
+
+  async function elimina() {
+    if (!giusta || attesa) return
+    setErrore('')
+    setAttesa(true)
+    const { error } = await supabase.rpc('elimina_mio_account')
+    if (error) {
+      setAttesa(false)
+      setErrore('Eliminazione non riuscita: ' + traduciErrore(error))
+      return
+    }
+    // Via anche bozze e partite in attesa salvate su questo telefono.
+    try { localStorage.clear() } catch { /* niente da fare */ }
+    await supabase.auth.signOut()
+  }
+
+  if (!aperta) {
+    return (
+      <p className="riga-fondo">
+        <button className="bottone-piatto" onClick={() => setAperta(true)}>
+          Elimina il mio account
+        </button>
+      </p>
+    )
+  }
+
+  return (
+    <div className="campo" style={{ marginTop: '2rem' }}>
+      <h3 className="titolo-sezione">Elimina il mio account</h3>
+      <p className="aiuto">
+        Non si torna indietro. Spariscono il tuo account, il profilo, la collezione,
+        le iscrizioni ai tavoli e le partite che hai giocato da solo o solo con i tuoi ospiti.
+      </p>
+      <p className="aiuto">
+        Le partite in cui c&rsquo;erano altri giocatori dell&rsquo;app restano nel loro storico:
+        al tuo posto comparirà &laquo;Ex giocatore&raquo;, senza il tuo nome né altri tuoi dati.
+        I giochi e i luoghi che hai aggiunto restano a disposizione di tutti.
+      </p>
+      <Avviso tipo="errore" testo={errore} />
+      <label htmlFor="conferma-elimina">Per confermare, scrivi la tua email</label>
+      <input
+        id="conferma-elimina"
+        type="email"
+        value={conferma}
+        onChange={(e) => setConferma(e.target.value)}
+        autoComplete="off"
+        autoCapitalize="none"
+        placeholder={email}
+      />
+      <button
+        className="bottone"
+        style={{ marginTop: '0.75rem', background: '#8C2A20' }}
+        onClick={elimina}
+        disabled={!giusta || attesa}
+      >
+        {attesa ? 'Elimino\u2026' : 'Elimina definitivamente'}
+      </button>
+      <button
+        className="bottone bottone-secondario"
+        onClick={() => { setAperta(false); setConferma(''); setErrore('') }}
+        disabled={attesa}
+      >
+        Annulla
       </button>
     </div>
   )
