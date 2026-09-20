@@ -1,4 +1,4 @@
-// Primo Giocatore v4.6.0 - 202609231400
+// Primo Giocatore v4.7.0 - 202609202200
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -52,6 +52,49 @@ function Marchio() {
 function Avviso({ tipo, testo }) {
   if (!testo) return null
   return <div className={`avviso ${tipo}`}>{testo}</div>
+}
+
+/* ---------------- Casella password con l'occhio ---------------- */
+
+// Una casella password con un tasto per vedere quello che si è scritto.
+// Resta nascosta finché non la mostri, e torna nascosta a ogni apertura.
+function CampoPassword({ id, value, onChange, autoComplete, onKeyDown }) {
+  const [visibile, setVisibile] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        id={id}
+        type={visibile ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        autoComplete={autoComplete}
+        onKeyDown={onKeyDown}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        style={{ paddingRight: '3rem' }}
+      />
+      <button
+        type="button"
+        onClick={() => setVisibile((v) => !v)}
+        aria-label={visibile ? 'Nascondi password' : 'Mostra password'}
+        aria-pressed={visibile}
+        title={visibile ? 'Nascondi password' : 'Mostra password'}
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '2.9rem',
+          display: 'grid', placeItems: 'center', background: 'none', border: 0,
+          padding: 0, cursor: 'pointer', color: 'var(--inchiostro-tenue, currentColor)',
+        }}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+          {visibile && <path d="M3 3l18 18" />}
+        </svg>
+      </button>
+    </div>
+  )
 }
 
 /* ---------------- Accesso e registrazione ---------------- */
@@ -161,9 +204,8 @@ function Accesso() {
       {modo !== 'recupero' && (
       <div className="campo">
         <label htmlFor="password">Password</label>
-        <input
+        <CampoPassword
           id="password"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete={modo === 'entra' ? 'current-password' : 'new-password'}
@@ -238,14 +280,14 @@ function NuovaPassword({ fatto }) {
 
       <div className="campo">
         <label htmlFor="np1">Password nuova</label>
-        <input id="np1" type="password" value={password} autoComplete="new-password"
+        <CampoPassword id="np1" value={password} autoComplete="new-password"
           onChange={(e) => setPassword(e.target.value)} />
         <p className="aiuto">Almeno 8 caratteri.</p>
       </div>
 
       <div className="campo">
         <label htmlFor="np2">Ripetila</label>
-        <input id="np2" type="password" value={ripeti} autoComplete="new-password"
+        <CampoPassword id="np2" value={ripeti} autoComplete="new-password"
           onChange={(e) => setRipeti(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && salva()} />
       </div>
