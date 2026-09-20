@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.7.0 - 202609202200
+// v3.8.0 - 202609210010
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -91,19 +91,26 @@ export default function Statistiche({ profilo, onModifica, mira }) {
 
   /* ---------- Elenchi per le tendine ---------- */
 
+  // Gli elenchi partono da chi e da cosa hai frequentato di più: aprendo la
+  // scheda ti trovi davanti il gioco più giocato, non il primo in ordine
+  // alfabetico. A parità di partite vale l'ordine alfabetico.
   const elenchi = useMemo(() => {
     const persone = new Map()
     const giochi = new Map()
     const luoghi = new Map()
-    for (const p of partite) {
-      if (p.giochi) giochi.set(p.giochi.id, p.giochi.nome)
-      if (p.luoghi) luoghi.set(p.luoghi.id, p.luoghi.nome)
-      for (const x of p.partecipazioni || []) {
-        const k = identita(x)
-        if (!persone.has(k)) persone.set(k, nomeDi(x))
-      }
+    const conta = (m, k, nome) => {
+      const v = m.get(k) || { nome, n: 0 }
+      v.n++
+      m.set(k, v)
     }
-    const ordina = (m) => [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'it'))
+    for (const p of partite) {
+      if (p.giochi) conta(giochi, p.giochi.id, p.giochi.nome)
+      if (p.luoghi) conta(luoghi, p.luoghi.id, p.luoghi.nome)
+      for (const x of p.partecipazioni || []) conta(persone, identita(x), nomeDi(x))
+    }
+    const ordina = (m) => [...m.entries()]
+      .sort((a, b) => b[1].n - a[1].n || a[1].nome.localeCompare(b[1].nome, 'it'))
+      .map(([k, v]) => [k, v.nome])
     return { persone: ordina(persone), giochi: ordina(giochi), luoghi: ordina(luoghi) }
   }, [partite])
 
@@ -762,7 +769,14 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, onCancella, vai
 
       <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} />
 
-      <h3 className="titolo-sezione">Chi lo domina</h3>
+      <h3 className="titolo-sezione">Chi vince a questo gioco</h3>
+      <p className="aiuto">
+        Il numero a destra confronta le vittorie con quelle che avrebbe un giocatore
+        qualunque, tenendo conto di quanti eravate al tavolo: in quattro, una partita su
+        quattro. Sopra 1,00 vince più del previsto, sotto 1,00 di meno. Le cooperative
+        restano fuori. Con poche partite il numero balla parecchio: 0,00&times; su due
+        partite non vuol dire quasi niente.
+      </p>
       <ul className="elenco">
         {d.giocatori.map((g) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
