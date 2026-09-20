@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v3.6.1 - 202609202100
+// v3.7.0 - 202609202345
 
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -94,15 +94,26 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
     return [...m.values()].sort((a, b) => b.partite - a.partite)
   }
 
+  // Per ogni giocatore: quante partite avete giocato insieme e come sono
+  // finite fra voi due. Le cooperative restano fuori dal bilancio, perché
+  // lì o vincete tutti o perdete tutti.
   function perGiocatore() {
     const m = new Map()
     for (const p of partite) {
+      const mia = p.partecipazioni?.find((x) => mieiId.has(x.utente_id))
+      const sfida = p.tipo_punteggio !== 'coop'
       for (const par of p.partecipazioni || []) {
         const c = chi(par)
         if (mieiId.has(par.utente_id)) continue // non conto me stesso
-        const v = m.get(c.identita) || { chiave: c.identita, nome: c.nome, colore: c.colore, ospite: c.ospite, partite: 0, vittorie: 0 }
+        const v = m.get(c.identita)
+          || { chiave: c.identita, nome: c.nome, colore: c.colore, ospite: c.ospite,
+               partite: 0, sfide: 0, vittorie: 0, mie: 0 }
         v.partite++
-        if (par.vincitore) v.vittorie++
+        if (sfida) {
+          v.sfide++
+          if (par.vincitore) v.vittorie++
+          if (mia?.vincitore) v.mie++
+        }
         m.set(c.identita, v)
       }
     }
@@ -301,9 +312,14 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
                 </button>
                 {g.ospite && <span className="anno"> ospite</span>}
               </div>
-              <span className="anno">
-                {g.partite} insieme · {g.vittorie} vinte
-              </span>
+              <div className="conto-scontri">
+                <span className="anno block">{g.partite} insieme</span>
+                {g.sfide > 0 && (
+                  <span className="anno block">
+                    vinte: {g.vittorie} sue, {g.mie} tue
+                  </span>
+                )}
+              </div>
             </li>
           ))}
           {perGiocatore().length === 0 && (
