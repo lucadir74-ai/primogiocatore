@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.6.0 - 202609201900
+// v4.7.0 - 202609202000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -290,6 +290,29 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     }
   }
 
+  // Le fazioni si attivano anche da qui, senza passare dalla scheda Giochi.
+  // Vale per il gioco, quindi per tutte le sue partite: la può cambiare chi
+  // l'ha aggiunto all'app o un organizzatore, come nella scheda Giochi.
+  const possoImpostare = (g) => g?.creato_da === profilo.id || profilo.organizzatore
+
+  async function cambiaFazioniGioco(valore) {
+    setErrore('')
+    const { error } = await supabase.from('giochi').update({ usa_fazioni: valore }).eq('id', gioco.id)
+    if (error) { setErrore(error.message); return }
+    setGioco((g) => ({ ...g, usa_fazioni: valore }))
+    setCatalogo((c) => c.map((x) => (x.id === gioco.id ? { ...x, usa_fazioni: valore } : x)))
+  }
+
+  // Butta via la partita che si sta scrivendo. Se c'è già qualcosa da
+  // perdere chiede conferma, perché non si torna indietro.
+  function annullaPartita() {
+    const qualcosa = righe.some((r) => r.punteggio !== '' || r.posizione !== '' || r.ruolo)
+      || righe.length > 1 || note || luogo || accumulati || avviatoIl
+    if (qualcosa && !window.confirm('Annullare questa partita? Quello che hai inserito andrà perso.')) return
+    azzera()
+    window.scrollTo?.({ top: 0 })
+  }
+
   function scegliGioco(g) {
     setGioco(g)
     setFiltro('')
@@ -544,7 +567,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         giocatori: ordinata.map((r) => ({
           utente_id: r.utente_id || null,
           ospite_id: r.ospite_id || null,
-          ruolo: r.ruolo?.trim() || null,
+          ruolo: gioco.usa_fazioni ? (r.ruolo?.trim() || null) : null,
           punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
           spareggio: r.spareggio === '' ? null : Number(r.spareggio),
           posizione: tipo === 'coop' ? null : r.pos,
@@ -722,6 +745,18 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   {miaCollezione.has(gioco.id) ? 'togli dalla collezione' : 'è mio'}
                 </button>
               </p>
+              {possoImpostare(gioco) ? (
+                <label className="spunta-fazioni">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(gioco.usa_fazioni)}
+                    onChange={(e) => cambiaFazioniGioco(e.target.checked)}
+                  />
+                  ha fazioni
+                </label>
+              ) : gioco.usa_fazioni ? (
+                <span className="anno block">con fazioni</span>
+              ) : null}
             </div>
           </div>
 
@@ -1009,9 +1044,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             {salvando ? 'Salvo…' : modifica ? 'Salva modifiche' : 'Registra partita'}
           </button>
 
-          {modifica && (
+          {modifica ? (
             <button className="bottone bottone-secondario" onClick={() => finitaModifica?.()}>
-              Annulla
+              Annulla modifiche
+            </button>
+          ) : (
+            <button className="bottone bottone-secondario" onClick={annullaPartita} disabled={salvando}>
+              Annulla partita
             </button>
           )}
         </>
