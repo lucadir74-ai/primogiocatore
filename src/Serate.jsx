@@ -1,9 +1,11 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.2.0 - 202609221400
+// v4.3.0 - 202609282100
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
-// quali giorni la sede è aperta e con quale orario.
+// quali giorni la sede è aperta e con quale orario. Gli organizzatori
+// possono anche segnare a mano la disponibilità degli altri, per chi
+// avvisa a voce o su WhatsApp.
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -47,8 +49,28 @@ export default function Serate({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [scelto, setScelto] = useState(null)      // data in formato ISO
   const [modifica, setModifica] = useState(null)  // serata in modifica
+  const [dimostratori, setDimostratori] = useState([])
+  const [gestione, setGestione] = useState(false) // inserimento manuale aperto
+  const [bozzeNote, setBozzeNote] = useState({})  // profilo_id -> testo
 
   useEffect(() => { carica() }, [mese])
+
+  // L'elenco dei dimostratori serve solo a chi può scrivere per gli altri.
+  useEffect(() => {
+    if (!profilo.organizzatore) return
+    supabase
+      .from('profili')
+      .select('id, nome, nickname')
+      .eq('dimostratore', true)
+      .order('nome')
+      .then(({ data, error }) => {
+        if (error) setErrore(error.message)
+        else setDimostratori(data || [])
+      })
+  }, [profilo.organizzatore])
+
+  // Cambiando giorno si chiude l'inserimento manuale e si buttano le bozze.
+  useEffect(() => { setGestione(false); setBozzeNote({}) }, [scelto])
 
   const primoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth(), 1))
   const ultimoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth() + 1, 0))
@@ -163,20 +185,53 @@ export default function Serate({ profilo }) {
     else { setScelto(null); carica() }
   }
 
-  async function dai(serataId, stato) {
-    const { error } = await supabase.from('disponibilita').upsert({
-      serata_id: serataId, profilo_id: profilo.id, stato,
+  // Senza chi, vale per sé stessi. Con chi, è un organizzatore che
+  // scrive per un altro: il database lo consente solo agli organizzatori.
+  async function dai(serataId, stato, chi = profilo.id, note) {
+    setErrore('')
+    const riga = {
+      serata_id: serataId, profilo_id: chi, stato,
       aggiornata_il: new Date().toISOString(),
-    })
+    }
+    if (note !== undefined) riga.note = note.trim() || null
+    const { error } = await supabase.from('disponibilita').upsert(riga)
     if (error) setErrore(error.message)
     else carica()
   }
 
-  async function ritira(serataId) {
+  async function ritira(serataId, chi = profilo.id) {
+    setErrore('')
     const { error } = await supabase.from('disponibilita').delete()
-      .eq('serata_id', serataId).eq('profilo_id', profilo.id)
+      .eq('serata_id', serataId).eq('profilo_id', chi)
     if (error) setErrore(error.message)
     else carica()
+  }
+
+  async function salvaNota(serataId, chi) {
+    const testo = bozzeNote[chi]
+    if (testo === undefined) return
+    const { error } = await supabase.from('disponibilita')
+      .update({ note: testo.trim() || null, aggiornata_il: new Date().toISOString() })
+      .eq('serata_id', serataId).eq('profilo_id', chi)
+    if (error) { setErrore(error.message); return }
+    setBozzeNote((b) => { const n = { ...b }; delete n[chi]; return n })
+    carica()
+  }
+
+  // Tutti i dimostratori ufficiali, più chi ha risposto pur non essendolo
+  // più (o non esserlo mai stato): nessuna risposta resta invisibile.
+  function elencoPerGestione(serata) {
+    const risposte = serata.disponibilita || []
+    const persone = dimostratori.map((p) => ({ id: p.id, nome: daMostrare(p) }))
+    for (const d of risposte) {
+      if (!persone.some((p) => p.id === d.profilo_id)) {
+        persone.push({ id: d.profilo_id, nome: d.profili ? daMostrare(d.profili) : 'Dimostratore' })
+      }
+    }
+    return persone
+      .map((p) => ({ ...p, risposta: risposte.find((d) => d.profilo_id === p.id) }))
+      .sort((a, b) => Number(Boolean(a.risposta)) - Number(Boolean(b.risposta))
+        || a.nome.localeCompare(b.nome, 'it'))
   }
 
   /* ---------- Vista ---------- */
@@ -379,7 +434,58 @@ export default function Serate({ profilo }) {
               <h4 className="titolo-sezione">
                 Chi c&rsquo;è <span className="conteggio">{(serataScelta.disponibilita || []).length}</span>
               </h4>
-              {(serataScelta.disponibilita || []).length === 0 ? (
+
+              {profilo.organizzatore && !serataScelta.annullata && (
+                <button className="bottone-piatto" onClick={() => setGestione(!gestione)}>
+                  {gestione ? 'Fatto' : 'Inserisci le disponibilità a mano'}
+                </button>
+              )}
+
+              {gestione ? (
+                dimostratori.length === 0 && (serataScelta.disponibilita || []).length === 0 ? (
+                  <p className="aiuto">
+                    Non ci sono dimostratori ufficiali. Nominali da Profilo &rarr; Ruoli.
+                  </p>
+                ) : (
+                  <>
+                    <p className="aiuto">
+                      Tocca la risposta per ciascuno. Toccare di nuovo quella scelta la toglie.
+                      In cima chi non ha ancora risposto.
+                    </p>
+                    {elencoPerGestione(serataScelta).map((p) => (
+                      <div key={p.id} style={{ padding: '0.6rem 0', borderTop: '1px solid var(--bordo)' }}>
+                        <strong>
+                          {p.nome}
+                          {p.id === profilo.id && <span className="anno"> · tu</span>}
+                        </strong>
+                        <div className="scelte-disponibilita">
+                          {STATI.map((st) => (
+                            <button key={st.id}
+                              className={`pastiglia-stato ${st.id}${p.risposta?.stato === st.id ? ' scelto' : ''}`}
+                              onClick={() => (p.risposta?.stato === st.id
+                                ? ritira(serataScelta.id, p.id)
+                                : dai(serataScelta.id, st.id, p.id))}>
+                              {st.etichetta}
+                            </button>
+                          ))}
+                        </div>
+                        {p.risposta && (
+                          <input
+                            className="campo-cerca"
+                            style={{ marginTop: '0.4rem' }}
+                            value={bozzeNote[p.id] ?? p.risposta.note ?? ''}
+                            onChange={(e) => setBozzeNote({ ...bozzeNote, [p.id]: e.target.value })}
+                            onBlur={() => salvaNota(serataScelta.id, p.id)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                            placeholder="Nota: arriva alle 22, porta Brass…"
+                            aria-label={`Nota per ${p.nome}`}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )
+              ) : (serataScelta.disponibilita || []).length === 0 ? (
                 <p className="aiuto">Nessuno si è ancora espresso.</p>
               ) : (
                 <ul className="elenco">
@@ -389,6 +495,7 @@ export default function Serate({ profilo }) {
                       <li key={d.profilo_id}>
                         <div className="nome-giocatore">
                           <strong>{d.profili ? daMostrare(d.profili) : 'Dimostratore'}</strong>
+                          {d.note && <span className="anno block">{d.note}</span>}
                         </div>
                         <span className={`pastiglia-stato piccola ${d.stato}`}>
                           {STATI.find((x) => x.id === d.stato)?.etichetta}
