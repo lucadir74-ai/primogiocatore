@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.3.1 - 202609282130
+// v4.4.0 - 202609282200
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -7,6 +7,8 @@
 // possono anche segnare a mano la disponibilità degli altri, per chi
 // avvisa a voce o su WhatsApp. I dimostratori possono essere persone
 // con un account o ospiti, cioè giocatori non ancora registrati.
+// Dalla serata l'organizzatore cerca chi c'è, vede solo i disponibili
+// e a ciascuno può assegnare un tavolo con un gioco.
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -36,6 +38,9 @@ const ORARI = [
 const chiaveDi = (d) => (d.profilo_id ? `p:${d.profilo_id}` : `o:${d.ospite_id}`)
 const nomeDi = (d) => (d.profili ? daMostrare(d.profili) : d.ospiti?.nome || 'Dimostratore')
 
+// Separatore fra una persona e l'altra nella gestione della serata.
+const RIGA = { padding: '0.6rem 0', borderTop: '1px solid var(--bordo)' }
+
 const STATI = [
   { id: 'si', etichetta: 'Ci sono' },
   { id: 'forse', etichetta: 'Forse' },
@@ -55,7 +60,11 @@ export default function Serate({ profilo }) {
   const [scelto, setScelto] = useState(null)      // data in formato ISO
   const [modifica, setModifica] = useState(null)  // serata in modifica
   const [dimostratori, setDimostratori] = useState([])
-  const [gestione, setGestione] = useState(false) // inserimento manuale aperto
+  const [cercaSerata, setCercaSerata] = useState('')
+  const [trovatiSerata, setTrovatiSerata] = useState([])
+  const [inScelta, setInScelta] = useState(null)  // persona di cui segno la risposta
+  const [assegna, setAssegna] = useState(null)    // modulo del tavolo da assegnare
+  const [giochiTrovati, setGiochiTrovati] = useState([])
   const [bozzeNote, setBozzeNote] = useState({})  // id disponibilità -> testo
   const [pannello, setPannello] = useState(false) // elenco dimostratori aperto
   const [cercaDim, setCercaDim] = useState('')
@@ -80,54 +89,138 @@ export default function Serate({ profilo }) {
     ].sort((a, b) => a.nome.localeCompare(b.nome, 'it')))
   }
 
-  // Cerca fra chi ha un account e fra i giocatori delle partite.
-  useEffect(() => {
+  // Cerca fra chi ha un account e fra i giocatori delle partite, escluso
+  // chi è già dimostratore (quelli li ho già in memoria).
+  async function cercaNonDimostratori(testo) {
     // Virgole e parentesi romperebbero il filtro di Supabase.
-    const q = cercaDim.trim().replace(/[,()%*]/g, '')
-    if (q.length < 2) { setTrovati([]); return }
-    const attesa = setTimeout(async () => {
-      const [p, o] = await Promise.all([
-        supabase.from('profili').select('id, nome, nickname')
-          .or(`nome.ilike.%${q}%,nickname.ilike.%${q}%`)
-          .eq('dimostratore', false).limit(8),
-        supabase.from('ospiti').select('id, nome')
-          .ilike('nome', `%${q}%`)
-          .eq('dimostratore', false).is('utente_collegato', null).limit(8),
-      ])
-      setTrovati([
-        ...(p.data || []).map((x) => ({ tipo: 'profilo', id: x.id, nome: daMostrare(x) })),
-        ...(o.data || []).map((x) => ({ tipo: 'ospite', id: x.id, nome: x.nome })),
-      ])
-    }, 250)
+    const q = testo.trim().replace(/[,()%*]/g, '')
+    if (q.length < 2) return []
+    const [p, o] = await Promise.all([
+      supabase.from('profili').select('id, nome, nickname')
+        .or(`nome.ilike.%${q}%,nickname.ilike.%${q}%`)
+        .eq('dimostratore', false).limit(8),
+      supabase.from('ospiti').select('id, nome')
+        .ilike('nome', `%${q}%`)
+        .eq('dimostratore', false).is('utente_collegato', null).limit(8),
+    ])
+    return [
+      ...(p.data || []).map((x) => ({ chiave: `p:${x.id}`, tipo: 'profilo', id: x.id, nome: daMostrare(x) })),
+      ...(o.data || []).map((x) => ({ chiave: `o:${x.id}`, tipo: 'ospite', id: x.id, nome: x.nome })),
+    ]
+  }
+
+  useEffect(() => {
+    if (cercaDim.trim().length < 2) { setTrovati([]); return }
+    const attesa = setTimeout(async () => setTrovati(await cercaNonDimostratori(cercaDim)), 250)
     return () => clearTimeout(attesa)
   }, [cercaDim])
+
+  useEffect(() => {
+    if (cercaSerata.trim().length < 2) { setTrovatiSerata([]); return }
+    const attesa = setTimeout(async () => setTrovatiSerata(await cercaNonDimostratori(cercaSerata)), 250)
+    return () => clearTimeout(attesa)
+  }, [cercaSerata])
+
+  // Il gioco del tavolo si cerca nel catalogo condiviso.
+  useEffect(() => {
+    const q = (assegna?.cercaGioco || '').trim().replace(/[%*]/g, '')
+    if (q.length < 2) { setGiochiTrovati([]); return }
+    const attesa = setTimeout(async () => {
+      const { data } = await supabase.from('giochi')
+        .select('id, nome, immagine_url, max_giocatori')
+        .ilike('nome', `%${q}%`)
+        .order('nome').limit(8)
+      setGiochiTrovati(data || [])
+    }, 250)
+    return () => clearTimeout(attesa)
+  }, [assegna?.cercaGioco])
 
   async function nomina(persona, valore) {
     setErrore(''); setMessaggio('')
     const tabella = persona.tipo === 'profilo' ? 'profili' : 'ospiti'
     const { error } = await supabase.from(tabella)
       .update({ dimostratore: valore }).eq('id', persona.id)
-    if (error) { setErrore(error.message); return }
+    if (error) { setErrore(error.message); return false }
     setCercaDim('')
     caricaDimostratori()
+    return true
   }
 
   // Una persona mai vista prima: diventa un ospite, lo stesso che si
   // potrà poi mettere nelle partite e collegare quando si registra.
-  async function nuovoDimostratore() {
-    const nome = cercaDim.trim()
-    if (!nome) return
+  async function nuovoDimostratore(testo) {
+    const nome = testo.trim()
+    if (!nome) return null
     setErrore(''); setMessaggio('')
-    const { error } = await supabase.from('ospiti')
+    const { data, error } = await supabase.from('ospiti')
       .insert({ nome, creato_da: profilo.id, dimostratore: true })
-    if (error) { setErrore(error.message); return }
-    setCercaDim('')
+      .select('id, nome').single()
+    if (error) { setErrore(error.message); return null }
     setMessaggio(`${nome} aggiunto ai dimostratori.`)
     caricaDimostratori()
+    return { chiave: `o:${data.id}`, tipo: 'ospite', id: data.id, nome: data.nome }
   }
 
-  // Cambiando giorno si chiude l'inserimento manuale e si buttano le bozze.
-  useEffect(() => { setGestione(false); setBozzeNote({}) }, [scelto])
+  // Dalla ricerca della serata: chi non è ancora dimostratore lo diventa,
+  // poi si sceglie la sua risposta.
+  async function scegliPersona(persona, giaDimostratore) {
+    if (!giaDimostratore && !(await nomina(persona, true))) return
+    setInScelta(persona)
+    setCercaSerata('')
+  }
+
+  async function aggiungiDaSerata() {
+    const persona = await nuovoDimostratore(cercaSerata)
+    if (!persona) return
+    setInScelta(persona)
+    setCercaSerata('')
+  }
+
+  async function creaTavolo(serata) {
+    setErrore(''); setMessaggio('')
+    const a = assegna
+    if (!a.gioco) { setErrore('Scegli il gioco.'); return }
+
+    // La data è quella della serata, l'ora quella scelta: il browser la
+    // interpreta come ora italiana e la converte per il database.
+    const inizio = new Date(`${serata.data}T${a.ora || serata.ora_inizio.slice(0, 5)}`)
+    const ospite = a.persona.tipo === 'ospite'
+
+    const { data, error } = await supabase.from('tavoli').insert({
+      gioco_id: a.gioco.id,
+      host_id: profilo.id,
+      inizio: inizio.toISOString(),
+      posti_max: a.posti ? Number(a.posti) : null,
+      luogo_id: serata.luogo_id || null,
+      dimostratore_nome: a.persona.nome,
+      dimostratore_id: ospite ? null : a.persona.id,
+      dimostratore_ospite_id: ospite ? a.persona.id : null,
+      dimostratore_gioca: true,
+      pubblicato: a.pubblica,
+      stato: 'aperto',
+    }).select('id').single()
+    if (error) { setErrore(error.message); return }
+
+    // Il dimostratore occupa un posto, come quando il tavolo nasce
+    // dalla scheda Tavoli.
+    const { error: e2 } = await supabase.from('iscrizioni_tavolo').insert({
+      tavolo_id: data.id,
+      [ospite ? 'ospite_id' : 'utente_id']: a.persona.id,
+      ruolo: 'dimostratore',
+      stato: 'confermato',
+    })
+
+    setAssegna(null)
+    setMessaggio(e2
+      ? `Tavolo creato, ma ${a.persona.nome} non è stato iscritto come giocatore. Aprilo da Tavoli e salvalo.`
+      : `Tavolo di ${a.gioco.nome} assegnato a ${a.persona.nome}${a.pubblica ? ' e pubblicato' : ' (bozza)'}.`)
+    carica()
+  }
+
+  // Cambiando giorno si chiude tutto quello che era aperto sul precedente.
+  useEffect(() => {
+    setBozzeNote({}); setCercaSerata(''); setInScelta(null); setAssegna(null)
+  }, [scelto])
 
   const primoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth(), 1))
   const ultimoDelMese = iso(new Date(mese.getFullYear(), mese.getMonth() + 1, 0))
@@ -151,7 +244,8 @@ export default function Serate({ profilo }) {
       supabase
         .from('tavoli')
         .select(`
-          id, titolo, inizio, stato, posti_max, dimostratore_nome,
+          id, titolo, inizio, stato, posti_max, pubblicato,
+          dimostratore_nome, dimostratore_id, dimostratore_ospite_id,
           giochi:tavoli_gioco_id_fkey ( nome, immagine_url ),
           iscrizioni_tavolo ( id, stato )
         `)
@@ -280,28 +374,6 @@ export default function Serate({ profilo }) {
     carica()
   }
 
-  // Tutti i dimostratori, più chi ha risposto pur non essendolo più:
-  // nessuna risposta resta invisibile.
-  function elencoPerGestione(serata) {
-    const risposte = serata.disponibilita || []
-    const persone = [...dimostratori]
-    for (const d of risposte) {
-      const chiave = chiaveDi(d)
-      if (!persone.some((p) => p.chiave === chiave)) {
-        persone.push({
-          chiave,
-          tipo: d.profilo_id ? 'profilo' : 'ospite',
-          id: d.profilo_id || d.ospite_id,
-          nome: nomeDi(d),
-        })
-      }
-    }
-    return persone
-      .map((p) => ({ ...p, risposta: risposte.find((d) => chiaveDi(d) === p.chiave) }))
-      .sort((a, b) => Number(Boolean(a.risposta)) - Number(Boolean(b.risposta))
-        || a.nome.localeCompare(b.nome, 'it'))
-  }
-
   /* ---------- Vista ---------- */
 
   const oggiIso = iso(new Date())
@@ -395,7 +467,8 @@ export default function Serate({ profilo }) {
                 </button>
               ))}
               {!trovati.some((p) => p.nome.toLowerCase() === cercaDim.trim().toLowerCase()) && (
-                <button className="pastiglia-nome nuovo" onClick={nuovoDimostratore}>
+                <button className="pastiglia-nome nuovo"
+                  onClick={async () => { if (await nuovoDimostratore(cercaDim)) setCercaDim('') }}>
                   + Aggiungi &laquo;{cercaDim.trim()}&raquo;
                 </button>
               )}
@@ -560,59 +633,212 @@ export default function Serate({ profilo }) {
                 Chi c&rsquo;è <span className="conteggio">{(serataScelta.disponibilita || []).length}</span>
               </h4>
 
-              {profilo.organizzatore && !serataScelta.annullata && (
-                <button className="bottone-piatto" onClick={() => setGestione(!gestione)}>
-                  {gestione ? 'Fatto' : 'Inserisci le disponibilità a mano'}
-                </button>
-              )}
+              {profilo.organizzatore && !serataScelta.annullata ? (() => {
+                const risposte = serataScelta.disponibilita || []
+                const rispostaDi = (chiave) => risposte.find((d) => chiaveDi(d) === chiave)
+                const personaDi = (d) => ({
+                  chiave: chiaveDi(d),
+                  tipo: d.profilo_id ? 'profilo' : 'ospite',
+                  id: d.profilo_id || d.ospite_id,
+                  nome: nomeDi(d),
+                })
+                const q = cercaSerata.trim().toLowerCase()
+                const trovatiDim = q.length >= 2
+                  ? dimostratori.filter((p) => p.nome.toLowerCase().includes(q)).slice(0, 8)
+                  : []
+                // Prima chi c'è di sicuro, poi i forse; chi non può resta in fondo.
+                const disponibili = risposte
+                  .filter((d) => d.stato !== 'no')
+                  .sort((a, b) => Number(a.stato !== 'si') - Number(b.stato !== 'si')
+                    || nomeDi(a).localeCompare(nomeDi(b), 'it'))
+                const assenti = risposte.filter((d) => d.stato === 'no')
+                const tavoliDi = (pers) => tavoliDelGiorno(scelto).filter((t) =>
+                  pers.tipo === 'profilo' ? t.dimostratore_id === pers.id : t.dimostratore_ospite_id === pers.id)
+                const etichettaDi = (stato) => STATI.find((x) => x.id === stato)?.etichetta
 
-              {gestione ? (
-                dimostratori.length === 0 && (serataScelta.disponibilita || []).length === 0 ? (
-                  <p className="aiuto">
-                    Non ci sono ancora dimostratori. Aggiungili dal pulsante
-                    Dimostratori sotto il calendario.
-                  </p>
-                ) : (
+                return (
                   <>
-                    <p className="aiuto">
-                      Tocca la risposta per ciascuno. Toccare di nuovo quella scelta la toglie.
-                      In cima chi non ha ancora risposto.
-                    </p>
-                    {elencoPerGestione(serataScelta).map((p) => (
-                      <div key={p.chiave} style={{ padding: '0.6rem 0', borderTop: '1px solid var(--bordo)' }}>
-                        <strong>
-                          {p.nome}
-                          {p.chiave === `p:${profilo.id}` && <span className="anno"> · tu</span>}
-                          {p.tipo === 'ospite' && <span className="anno"> · senza account</span>}
-                        </strong>
-                        <div className="scelte-disponibilita">
-                          {STATI.map((st) => (
-                            <button key={st.id}
-                              className={`pastiglia-stato ${st.id}${p.risposta?.stato === st.id ? ' scelto' : ''}`}
-                              onClick={() => (p.risposta?.stato === st.id
-                                ? ritira(serataScelta.id, p)
-                                : dai(serataScelta.id, st.id, p))}>
-                              {st.etichetta}
+                    <input className="campo-cerca" value={cercaSerata}
+                      onChange={(e) => setCercaSerata(e.target.value)}
+                      placeholder="Cerca chi c'è…" aria-label="Cerca un dimostratore" />
+
+                    {q.length >= 2 && (
+                      <div className="pastiglie-persone">
+                        {trovatiDim.map((p) => {
+                          const r = rispostaDi(p.chiave)
+                          return (
+                            <button key={p.chiave} className="pastiglia-nome"
+                              onClick={() => scegliPersona(p, true)}>
+                              {p.nome}{r ? ` · ${etichettaDi(r.stato).toLowerCase()}` : ''}
                             </button>
-                          ))}
+                          )
+                        })}
+                        {trovatiSerata.map((p) => (
+                          <button key={p.chiave} className="pastiglia-nome ospite"
+                            onClick={() => scegliPersona(p, false)}>
+                            {p.nome} (nuovo dimostratore)
+                          </button>
+                        ))}
+                        {![...trovatiDim, ...trovatiSerata].some((p) => p.nome.toLowerCase() === q) && (
+                          <button className="pastiglia-nome nuovo" onClick={aggiungiDaSerata}>
+                            + Aggiungi &laquo;{cercaSerata.trim()}&raquo;
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {inScelta && (
+                      <div style={RIGA}>
+                        <strong>{inScelta.nome}</strong>
+                        <div className="scelte-disponibilita">
+                          {STATI.map((st) => {
+                            const r = rispostaDi(inScelta.chiave)
+                            return (
+                              <button key={st.id}
+                                className={`pastiglia-stato ${st.id}${r?.stato === st.id ? ' scelto' : ''}`}
+                                onClick={async () => {
+                                  if (r?.stato === st.id) await ritira(serataScelta.id, inScelta)
+                                  else await dai(serataScelta.id, st.id, inScelta)
+                                  setInScelta(null)
+                                }}>
+                                {st.etichetta}
+                              </button>
+                            )
+                          })}
                         </div>
-                        {p.risposta && (
+                        <button className="bottone-piatto" onClick={() => setInScelta(null)}>Annulla</button>
+                      </div>
+                    )}
+
+                    {disponibili.length === 0 ? (
+                      <p className="aiuto">Nessun disponibile. Cerca un nome qui sopra.</p>
+                    ) : disponibili.map((d) => {
+                      const pers = personaDi(d)
+                      const suoi = tavoliDi(pers)
+                      const aperto = assegna?.persona.chiave === pers.chiave
+                      return (
+                        <div key={d.id} style={RIGA}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                            <strong>
+                              {pers.nome}
+                              {pers.tipo === 'ospite' && <span className="anno"> · senza account</span>}
+                            </strong>
+                            <button className={`pastiglia-stato piccola ${d.stato}`}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setInScelta(pers)}
+                              aria-label={`Cambia la risposta di ${pers.nome}`}>
+                              {etichettaDi(d.stato)}
+                            </button>
+                          </div>
+
                           <input
                             className="campo-cerca"
                             style={{ marginTop: '0.4rem' }}
-                            value={bozzeNote[p.risposta.id] ?? p.risposta.note ?? ''}
-                            onChange={(e) => setBozzeNote({ ...bozzeNote, [p.risposta.id]: e.target.value })}
-                            onBlur={() => salvaNota(p.risposta.id)}
+                            value={bozzeNote[d.id] ?? d.note ?? ''}
+                            onChange={(e) => setBozzeNote({ ...bozzeNote, [d.id]: e.target.value })}
+                            onBlur={() => salvaNota(d.id)}
                             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="Nota: arriva alle 22, porta Brass…"
-                            aria-label={`Nota per ${p.nome}`}
+                            placeholder="Nota: arriva alle 22…"
+                            aria-label={`Nota per ${pers.nome}`}
                           />
-                        )}
-                      </div>
-                    ))}
+
+                          {suoi.length > 0 && (
+                            <p className="anno" style={{ margin: '0.4rem 0 0' }}>
+                              {suoi.map((t) =>
+                                `${t.giochi?.nome || t.titolo || 'Tavolo'} alle ${new Date(t.inizio)
+                                  .toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
+                                + (t.pubblicato === false ? ' (bozza)' : ''),
+                              ).join(' · ')}
+                            </p>
+                          )}
+
+                          {!aperto ? (
+                            <button className="bottone-piatto"
+                              onClick={() => setAssegna({
+                                persona: pers, gioco: null, cercaGioco: '',
+                                ora: serataScelta.ora_inizio.slice(0, 5), posti: '', pubblica: true,
+                              })}>
+                              {suoi.length ? 'Assegna un altro tavolo' : 'Assegna un tavolo'}
+                            </button>
+                          ) : (
+                            <div style={{ marginTop: '0.5rem' }}>
+                              {assegna.gioco ? (
+                                <div className="pastiglie-persone">
+                                  <button className="pastiglia-nome nuovo"
+                                    onClick={() => setAssegna({ ...assegna, gioco: null })}
+                                    aria-label="Cambia gioco">
+                                    {assegna.gioco.nome} ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <input className="campo-cerca" autoFocus value={assegna.cercaGioco}
+                                    onChange={(e) => setAssegna({ ...assegna, cercaGioco: e.target.value })}
+                                    placeholder="Cerca il gioco…" aria-label="Cerca il gioco" />
+                                  <div className="pastiglie-persone">
+                                    {giochiTrovati.map((g) => (
+                                      <button key={g.id} className="pastiglia-nome"
+                                        onClick={() => setAssegna({
+                                          ...assegna, gioco: g, cercaGioco: '',
+                                          posti: assegna.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
+                                        })}>
+                                        {g.nome}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {assegna.cercaGioco.trim().length >= 2 && giochiTrovati.length === 0 && (
+                                    <p className="aiuto">Nessun gioco con questo nome. Aggiungilo prima dalla scheda Giochi.</p>
+                                  )}
+                                </>
+                              )}
+
+                              <div className="riga-campi">
+                                <div className="campo">
+                                  <label htmlFor="a-ora">Alle</label>
+                                  <input id="a-ora" type="time" value={assegna.ora}
+                                    onChange={(e) => setAssegna({ ...assegna, ora: e.target.value })} />
+                                </div>
+                                <div className="campo">
+                                  <label htmlFor="a-posti">Posti</label>
+                                  <input id="a-posti" type="number" min="1" inputMode="numeric"
+                                    value={assegna.posti}
+                                    onChange={(e) => setAssegna({ ...assegna, posti: e.target.value })} />
+                                </div>
+                              </div>
+
+                              <label className="consenso">
+                                <input type="checkbox" checked={assegna.pubblica}
+                                  onChange={(e) => setAssegna({ ...assegna, pubblica: e.target.checked })} />
+                                <span>Pubblica subito nella vetrina. Senza spunta resta in bozza.</span>
+                              </label>
+
+                              <div className="riga-bottoni">
+                                <button className="bottone" onClick={() => creaTavolo(serataScelta)}>Crea il tavolo</button>
+                                <button className="bottone bottone-secondario" onClick={() => setAssegna(null)}>Annulla</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+
+                    {assenti.length > 0 && (
+                      <p className="aiuto">
+                        Non possono:{' '}
+                        {assenti.map((d, k) => (
+                          <span key={d.id}>
+                            {k > 0 && ', '}
+                            <button className="bottone-piatto" style={{ padding: 0 }}
+                              onClick={() => setInScelta(personaDi(d))}>
+                              {nomeDi(d)}
+                            </button>
+                          </span>
+                        ))}
+                      </p>
+                    )}
                   </>
                 )
-              ) : (serataScelta.disponibilita || []).length === 0 ? (
+              })() : (serataScelta.disponibilita || []).length === 0 ? (
                 <p className="aiuto">Nessuno si è ancora espresso.</p>
               ) : (
                 <ul className="elenco">
