@@ -1,10 +1,12 @@
 // Primo Giocatore - Esporta e importa
-// v3.8.0 - 202609210900
+// v3.9.0 - 202609302000
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
 import { impronta, improntePresenti, giaPresente } from './impronta'
+import { leggiPartiteBgg, importaPartiteBgg, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
+import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
@@ -145,67 +147,15 @@ export default function Dati({ profilo }) {
 
     setLavorando(true)
     try {
-      const tutte = []
-      let pagina = 1
-      let totale = 0
-      while (pagina <= 30) {
-        setAvanzamento({ fase: 'Leggo da BGG', fatto: tutte.length, totale: totale || 100 })
-        const r = await fetch(`/api/bgg?azione=partite&utente=${encodeURIComponent(utente)}&pagina=${pagina}`)
-        const dati = await r.json()
-        if (!r.ok) throw new Error(dati.errore || 'Lettura non riuscita.')
-        totale = dati.totale
-        tutte.push(...dati.partite)
-        if (tutte.length >= totale || dati.partite.length === 0) break
-        pagina++
-      }
+      const anteprima = await leggiPartiteBgg({ utente, profiloId: profilo.id, avanzamento: setAvanzamento })
 
-      const presenti = await improntePresenti(supabase, profilo.id)
-
-      // Per confrontare le impronte serve sapere a quale gioco del
-      // catalogo corrisponde ognuna: si cercano per identificativo BGG.
-      const bggIds = [...new Set(tutte.map((p) => p.gioco?.bgg_id).filter(Boolean))]
-      const { data: giochiNoti } = await supabase
-        .from('giochi').select('id, bgg_id').in('bgg_id', bggIds)
-      const perBgg = new Map((giochiNoti || []).map((g) => [g.bgg_id, g.id]))
-
-      // Si scorre dalla più vecchia, così il conteggio viene consumato
-      // nell'ordine giusto quando ci sono più partite uguali.
-      const conStato = [...tutte].reverse().map((p) => {
-        const giocoId = perBgg.get(p.gioco?.bgg_id)
-        const imp = giocoId
-          ? impronta({
-              giocoId, giocataIl: p.data,
-              punteggi: p.giocatori.map((g) => g.punteggio),
-            })
-          : null
-        const esito = giaPresente(presenti, imp)
-        return { ...p, impronta: imp, sospetta: esito.presente, debole: esito.modo === 'debole' }
-      })
-
-      const anteprima = {
-        partite: conStato,
-        sospette: conStato.filter((p) => p.sospetta).length,
-        deboli: conStato.filter((p) => p.debole).length,
-        // Senza il gioco in catalogo l'impronta non si può calcolare:
-        // quelle partite risultano nuove per forza, non perché lo siano.
-        senzaGioco: conStato.filter((p) => !p.impronta).length,
-        utente,
-      }
-
-      // In modalità rapida si procede subito con le nuove.
-      if (opzioni.automatico) {
-        const nuove = conStato.length - anteprima.sospette
-        if (nuove === 0) {
-          const adesso = new Date().toISOString()
-          try { localStorage.setItem('primo-giocatore:ultima-sincro-bgg', adesso) } catch { /* niente */ }
-          setUltimaSincro(adesso)
-          setMessaggio('Già tutto aggiornato: nessuna partita nuova su BGG.')
-          return
-        }
-        setAnteprimaBgg(anteprima)
+      // In modalità rapida, se non c'è niente di nuovo, si chiude qui.
+      if (opzioni.automatico && anteprima.partite.length === 0) {
+        setUltimaSincro(new Date().toISOString())
+        try { localStorage.setItem('primo-giocatore:ultima-sincro-bgg', new Date().toISOString()) } catch { /* niente */ }
+        setMessaggio('Già tutto aggiornato: nessuna partita nuova su BGG.')
         return
       }
-
       setAnteprimaBgg(anteprima)
     } catch (e) {
       setErrore(e.message)
@@ -215,12 +165,14 @@ export default function Dati({ profilo }) {
     }
   }
 
-  // Aggiornamento rapido: legge da BGG e importa solo le partite nuove,
-  // senza fermarsi all'anteprima. Per il controllo caso per caso resta
-  // il percorso lungo.
+  // Aggiornamento rapido: legge da BGG e mostra solo cosa c'è di nuovo.
   async function sincronizzaBgg() {
     setErrore(''); setMessaggio('')
     if (!utenteBgg.trim()) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
+    // Il nome utente serve anche all'aggiornamento automatico.
+    if (utenteBgg.trim() !== (profilo.bgg_username || '')) {
+      await supabase.from('profili').update({ bgg_username: utenteBgg.trim() }).eq('id', profilo.id)
+    }
     await leggiDaBgg({ automatico: true })
   }
 
@@ -228,95 +180,11 @@ export default function Dati({ profilo }) {
     setErrore(''); setMessaggio(''); setLavorando(true)
     try {
       const daFare = anteprimaBgg.partite.filter((p) => includiSospette || !p.sospetta)
-      let fatte = 0
-      let saltate = anteprimaBgg.partite.length - daFare.length
-
-      // Cache dei giochi e degli ospiti, per non interrogare ogni volta.
-      const giochi = new Map()
-      const ospiti = new Map()
-      const { data: ospitiEsistenti } = await supabase.from('ospiti').select('id, nome')
-      for (const o of ospitiEsistenti || []) ospiti.set(o.nome.toLowerCase(), o.id)
-
-      for (const p of daFare) {
-        setAvanzamento({ fase: 'Importo', fatto: fatte, totale: daFare.length })
-        if (!p.gioco?.bgg_id) { saltate++; continue }
-
-        let giocoId = giochi.get(p.gioco.bgg_id)
-        if (!giocoId) {
-          const { data: esistente } = await supabase
-            .from('giochi').select('id').eq('bgg_id', p.gioco.bgg_id).maybeSingle()
-          if (esistente) giocoId = esistente.id
-          else {
-            const { data: creato, error } = await supabase.from('giochi').insert({
-              bgg_id: p.gioco.bgg_id, nome: p.gioco.nome || 'Senza nome', creato_da: profilo.id,
-            }).select('id').single()
-            if (error) throw error
-            giocoId = creato.id
-          }
-          giochi.set(p.gioco.bgg_id, giocoId)
-        }
-
-        let luogoId = null
-        if (p.luogo) {
-          const { data: l } = await supabase.from('luoghi').select('id').ilike('nome', p.luogo).maybeSingle()
-          if (l) luogoId = l.id
-          else {
-            const { data: creato } = await supabase.from('luoghi')
-              .insert({ nome: p.luogo, tipo: 'altro', creato_da: profilo.id }).select('id').single()
-            luogoId = creato?.id || null
-          }
-        }
-
-        const punteggi = p.giocatori.map((g) => g.punteggio)
-        const { data: partita, error: e1 } = await supabase.from('partite').insert({
-          gioco_id: giocoId,
-          luogo_id: luogoId,
-          giocata_il: `${p.data}T20:00:00`,
-          durata_minuti: p.durata_minuti,
-          tipo_punteggio: 'punti',
-          note: p.note,
-          chiave_esterna: `bgg:${p.bgg_play_id}`,
-          impronta: impronta({ giocoId, giocataIl: p.data, punteggi }),
-          registrata_da: profilo.id,
-        }).select('id').single()
-        if (e1) throw e1
-
-        // Il proprietario dell'archivio si riconosce dal nome utente BGG.
-        const righe = []
-        for (const g of p.giocatori) {
-          const sonoIo = g.username && g.username.toLowerCase() === anteprimaBgg.utente.toLowerCase()
-          let ospiteId = null
-          if (!sonoIo) {
-            const nome = (g.nome || 'Sconosciuto').trim()
-            ospiteId = ospiti.get(nome.toLowerCase())
-            if (!ospiteId) {
-              const { data: creato, error } = await supabase.from('ospiti')
-                .insert({ nome, creato_da: profilo.id }).select('id').single()
-              if (error) throw error
-              ospiteId = creato.id
-              ospiti.set(nome.toLowerCase(), ospiteId)
-            }
-          }
-          righe.push({
-            partita_id: partita.id,
-            utente_id: sonoIo ? profilo.id : null,
-            ospite_id: ospiteId,
-            punteggio_totale: g.punteggio,
-            vincitore: g.vincitore,
-            ordine_turno: g.posizione,
-            primo_giocatore: g.posizione === 1,
-          })
-        }
-        if (righe.length) {
-          const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
-          if (e2) throw e2
-        }
-        fatte++
-      }
-
-      const adesso = new Date().toISOString()
-      try { localStorage.setItem('primo-giocatore:ultima-sincro-bgg', adesso) } catch { /* niente */ }
-      setUltimaSincro(adesso)
+      const { fatte } = await importaPartiteBgg({
+        partite: daFare, utente: anteprimaBgg.utente, profiloId: profilo.id, avanzamento: setAvanzamento,
+      })
+      const saltate = anteprimaBgg.partite.length - fatte
+      setUltimaSincro(ultimaSincroBgg())
       setMessaggio(
         `Da BGG: importate ${fatte} partite` +
         (saltate ? `, ${saltate} saltate perché già presenti` : '') + '.'
@@ -364,24 +232,12 @@ export default function Dati({ profilo }) {
         if (!g?.nome) return null
         const k = (g.bgg_id ? `b:${g.bgg_id}` : `n:${g.nome.toLowerCase()}`)
         if (giochi.has(k)) return giochi.get(k)
-        let query = supabase.from('giochi').select('id')
-        query = g.bgg_id ? query.eq('bgg_id', g.bgg_id) : query.ilike('nome', g.nome)
-        const { data } = await query.maybeSingle()
-        let id = data?.id
-        if (!id) {
-          const { data: creato, error } = await supabase
-            .from('giochi')
-            .insert({
-              nome: g.nome, bgg_id: g.bgg_id ?? null, anno: g.anno ?? null,
-              min_giocatori: g.min_giocatori ?? null, max_giocatori: g.max_giocatori ?? null,
-              tipo_punteggio: g.tipo_punteggio || 'punti',
-              usa_fazioni: Boolean(g.usa_fazioni),
-              creato_da: profilo.id,
-            })
-            .select('id').single()
-          if (error) throw error
-          id = creato.id
-        }
+        // Quello già nell'app se c'è (anche aggiunto da altri), altrimenti nuovo.
+        const { id } = await assicuraGiocoBgg({
+          nome: g.nome, bgg_id: g.bgg_id ?? null, anno: g.anno ?? null,
+          min_giocatori: g.min_giocatori ?? null, max_giocatori: g.max_giocatori ?? null,
+          tipo_punteggio: g.tipo_punteggio || 'punti', usa_fazioni: Boolean(g.usa_fazioni),
+        })
         giochi.set(k, id)
         return id
       }
@@ -389,34 +245,14 @@ export default function Dati({ profilo }) {
       async function trovaLuogo(l) {
         if (!l?.nome) return null
         const k = l.nome.toLowerCase()
-        if (luoghi.has(k)) return luoghi.get(k)
-        const { data } = await supabase.from('luoghi').select('id').ilike('nome', l.nome).maybeSingle()
-        let id = data?.id
-        if (!id) {
-          const { data: creato, error } = await supabase
-            .from('luoghi')
-            .insert({ nome: l.nome, tipo: l.tipo || 'altro', creato_da: profilo.id })
-            .select('id').single()
-          if (error) throw error
-          id = creato.id
-        }
-        luoghi.set(k, id)
-        return id
+        if (!luoghi.has(k)) luoghi.set(k, await trovaOCreaLuogo(l.nome, profilo.id, l.tipo || 'altro'))
+        return luoghi.get(k)
       }
 
       async function trovaOspite(nome) {
         const k = nome.toLowerCase()
-        if (ospiti.has(k)) return ospiti.get(k)
-        const { data } = await supabase.from('ospiti').select('id').ilike('nome', nome).maybeSingle()
-        let id = data?.id
-        if (!id) {
-          const { data: creato, error } = await supabase
-            .from('ospiti').insert({ nome, creato_da: profilo.id }).select('id').single()
-          if (error) throw error
-          id = creato.id
-        }
-        ospiti.set(k, id)
-        return id
+        if (!ospiti.has(k)) ospiti.set(k, await trovaOCreaOspite(nome, profilo.id))
+        return ospiti.get(k)
       }
 
       for (const p of doc.partite || []) {

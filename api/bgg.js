@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.6.0 - 202609210030
+// v1.7.0 - 202609302000
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -10,6 +10,7 @@
 //   /api/bgg?azione=dettagli&id=169786,224517
 //   /api/bgg?azione=collezione&utente=lucadir74
 //   /api/bgg?azione=partite&utente=lucadir74&pagina=1
+//   /api/bgg?azione=partite&utente=lucadir74&dal=2026-09-01   (solo da quella data)
 
 import { XMLParser } from 'fast-xml-parser'
 
@@ -40,8 +41,10 @@ function attesa(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function chiamaBGG(percorso) {
-  const daCache = cache.get(percorso)
+// fresco: salta la memoria. Serve per le partite, che devono arrivare
+// appena registrate e non dopo dodici ore.
+async function chiamaBGG(percorso, { fresco = false } = {}) {
+  const daCache = fresco ? null : cache.get(percorso)
   if (daCache && Date.now() - daCache.quando < DURATA_CACHE) {
     return daCache.xml
   }
@@ -154,7 +157,7 @@ function semplificaGioco(item) {
 }
 
 export default async function handler(req, res) {
-  const { azione, q, id, utente, pagina } = req.query
+  const { azione, q, id, utente, pagina, dal } = req.query
 
   try {
     if (azione === 'cerca') {
@@ -212,8 +215,10 @@ export default async function handler(req, res) {
       if (!utente) return res.status(400).json({ errore: 'Manca il nome utente BGG.' })
       // BGG restituisce cento partite per pagina.
       const n = Math.max(1, Number(pagina) || 1)
+      const daData = /^\d{4}-\d{2}-\d{2}$/.test(dal || '') ? `&mindate=${dal}` : ''
       const xml = await chiamaBGG(
-        `/plays?username=${encodeURIComponent(utente)}&page=${n}`
+        `/plays?username=${encodeURIComponent(utente)}&page=${n}${daData}`,
+        { fresco: true }
       )
       const dati = parser.parse(xml)
       if (dati?.errors) return res.status(404).json({ errore: 'Utente BGG non trovato.' })

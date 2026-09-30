@@ -1,4 +1,4 @@
-// Primo Giocatore v4.10.0 - 202609301800
+// Primo Giocatore v4.11.0 - 202609302000
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -17,6 +17,7 @@ import GiochiDoppi from './GiochiDoppi.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import Organizzatori from './Organizzatori.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
+import { sincronizzaSeServe } from './sincroBgg'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -582,6 +583,16 @@ export default function App() {
     try { return localStorage.getItem(CHIAVE_SEZIONE) || 'profilo' } catch { return 'profilo' }
   })
   const [daApprovare, setDaApprovare] = useState(0)
+  const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
+
+  // Partite nuove su BGG (anche quelle che BG Stats ci pubblica, comprese
+  // quelle di Board Game Arena): arrivano da sole all'apertura.
+  useEffect(() => {
+    if (!profilo?.bgg_username) return
+    sincronizzaSeServe(profilo)
+      .then((r) => { if (r?.fatte) setDaBgg(r) })
+      .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
+  }, [profilo?.id])
 
   function apriSezione(id) {
     setSezioneProfilo(id)
@@ -685,6 +696,16 @@ export default function App() {
               </button>
             ))}
           </nav>
+
+          {daBgg && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {daBgg.fatte > 0 && `Da BGG: ${daBgg.fatte} ${daBgg.fatte === 1 ? 'partita nuova' : 'partite nuove'}. `}
+                {daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Dati e import. `}
+                <button className="bottone-piatto" onClick={() => setDaBgg(null)}>ok</button>
+              </p>
+            </div>
+          )}
 
           {scheda !== 'profilo' && daApprovare > 0 && (
             <div className="scheda scheda-sottile">

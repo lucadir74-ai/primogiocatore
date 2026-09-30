@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del gioco di un tavolo
-// v1.1.0 - 202609301800
+// v1.2.0 - 202609302000
 //
 // Il gioco di un tavolo non viene dalla collezione di chi lo pubblica:
 // il gioco lo porta il dimostratore. Mentre scrivi cerca fra tutti i
@@ -92,7 +92,7 @@ export default function CercaGiocoBgg({ profilo, onScegli, autoFocus = false }) 
       if (!risposta.ok) throw new Error(dati.errore || 'Non sono riuscito a leggere il gioco da BGG.')
       const g = dati.giochi?.[0]
       if (!g) throw new Error('BGG non ha restituito il gioco.')
-      onScegli(await assicuraGiocoBgg(g, profilo.id, CAMPI))
+      onScegli(await assicuraGiocoBgg(g))
     } catch (e) {
       setErrore(e.message)
     } finally {

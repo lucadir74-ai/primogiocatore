@@ -1,11 +1,12 @@
 // Primo Giocatore - partite in attesa di rete
-// v4.0.0 - 202609220900
+// v4.1.0 - 202609302000
 //
 // Quando manca la linea la partita resta sul telefono e parte da sola
 // appena la rete torna. Vale solo per le partite nuove: modificarne
 // una già registrata richiede di averla letta, quindi lì la rete serve.
 
 import { impronta } from './impronta'
+import { trovaOCreaLuogo } from './giochiMiei'
 
 const CODA = 'primo-giocatore:coda'
 
@@ -50,20 +51,8 @@ export function eProblemaDiRete(errore) {
 // Una partita e i suoi giocatori. Usata sia al salvataggio normale
 // sia quando la coda riparte, così la logica è una sola.
 export async function scriviPartita(supabase, profilo, dati) {
-  let luogoId = null
-  if (dati.luogo?.trim()) {
-    const { data: esistente } = await supabase
-      .from('luoghi').select('id').ilike('nome', dati.luogo.trim()).maybeSingle()
-    if (esistente) luogoId = esistente.id
-    else {
-      const { data, error } = await supabase
-        .from('luoghi')
-        .insert({ nome: dati.luogo.trim(), tipo: 'altro', creato_da: profilo.id })
-        .select('id').single()
-      if (error) throw error
-      luogoId = data.id
-    }
-  }
+  // Fra i luoghi che vedi, prima il tuo; se non c'è lo crei tu.
+  const luogoId = await trovaOCreaLuogo(dati.luogo, profilo.id)
 
   const campi = {
     gioco_id: dati.gioco_id,

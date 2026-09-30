@@ -261,7 +261,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       const g = dati.giochi[0]
       if (!g) throw new Error('BGG non ha restituito il gioco.')
 
-      const data = await assicuraGiocoBgg(g, profilo.id)
+      const data = await assicuraGiocoBgg(g)
 
       setCatalogo((c) => [...c.filter((x) => x.id !== data.id), data])
       setSuBgg(null)

@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.8.0 - 202609301800
+// v2.9.0 - 202609302000
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -10,6 +10,7 @@ import TavoloPubblico from './TavoloPubblico.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
+import { trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -151,20 +152,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     if (!modulo.inizio) { setErrore('Metti data e ora.'); return }
 
     try {
-      let luogoId = null
-      if (modulo.luogo.trim()) {
-        const { data: esistente } = await supabase
-          .from('luoghi').select('id').ilike('nome', modulo.luogo.trim()).maybeSingle()
-        if (esistente) luogoId = esistente.id
-        else {
-          const { data, error } = await supabase
-            .from('luoghi')
-            .insert({ nome: modulo.luogo.trim(), tipo: 'sede', creato_da: profilo.id })
-            .select('id').single()
-          if (error) throw error
-          luogoId = data.id
-        }
-      }
+      const luogoId = await trovaOCreaLuogo(modulo.luogo, profilo.id, 'sede')
 
       const campi = {
         titolo: modulo.titolo.trim() || null,
@@ -381,8 +369,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       // Gli iscritti senza account diventano ospiti, riusando quelli
       // già esistenti quando il nome coincide.
       const { data: ospitiEsistenti } = await supabase
-        .from('ospiti').select('id, nome').is('utente_collegato', null)
-      const mappa = new Map((ospitiEsistenti || []).map((o) => [o.nome.toLowerCase(), o.id]))
+        .from('ospiti').select('id, nome, creato_da').is('utente_collegato', null)
+      const mappa = mappaPerNome(ospitiEsistenti, profilo.id)
 
       const righe = []
       for (const i of partecipanti) {

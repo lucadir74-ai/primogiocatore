@@ -1,10 +1,14 @@
-// Primo Giocatore - i giochi che una persona può vedere
-// v1.0.0 - 202609301600
+// Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
+// v2.0.0 - 202609302000
 //
-// Nessuno sfoglia il catalogo comune: dentro ci sono le collezioni
-// degli altri. Ognuno vede solo i propri giochi, cioè quelli che
-// possiede, quelli a cui ha giocato (anche nelle partite con altri) e
-// quelli che ha aggiunto lui. Tutto il resto si cerca su BGG.
+// Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
+// luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
+// non arriva nemmeno all'app.
+//
+// Per questo non si può controllare "esiste già?" leggendo il catalogo:
+// i giochi passano da assicura_giochi, che guarda anche quelli che non
+// vedi e restituisce quello giusto. Luoghi e ospiti invece restano di
+// chi li crea: fra quelli visibili si preferiscono i propri.
 
 import { supabase, tutteLeRighe } from './supabase'
 
@@ -23,25 +27,69 @@ export async function giochiMiei(profiloId, campi) {
   return [...mappa.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
 }
 
-// Un gioco arrivato da BGG: se è già nell'app si usa quella voce,
-// senza toccarla (può averla aggiunta qualcun altro); altrimenti si crea.
-export async function assicuraGiocoBgg(g, profiloId, campi = '*') {
-  const { data: esistente } = await supabase
-    .from('giochi').select(campi).eq('bgg_id', g.bgg_id).maybeSingle()
-  if (esistente) return esistente
+const CAMPI_GIOCO = ['bgg_id', 'nome', 'anno', 'min_giocatori', 'max_giocatori', 'durata_minuti',
+  'immagine_url', 'immagine_grande', 'tipo_punteggio', 'usa_fazioni']
 
-  const { data: creato, error } = await supabase.from('giochi').insert({
-    bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
-    min_giocatori: g.min_giocatori, max_giocatori: g.max_giocatori,
-    durata_minuti: g.durata_minuti, immagine_url: g.immagine_url,
-    immagine_grande: g.immagine_grande,
-    creato_da: profiloId,
-  }).select(campi).single()
-  if (!error) return creato
-
-  // Qualcun altro può averlo aggiunto nel frattempo.
-  const { data: ancora } = await supabase
-    .from('giochi').select(campi).eq('bgg_id', g.bgg_id).maybeSingle()
-  if (ancora) return ancora
-  throw error
+// Trova o crea i giochi, a blocchi. Restituisce le righe nello stesso
+// ordine di quelle passate.
+export async function assicuraGiochi(righe) {
+  const fuori = []
+  for (let i = 0; i < righe.length; i += 200) {
+    const blocco = righe.slice(i, i + 200).map((g) => {
+      const r = {}
+      for (const k of CAMPI_GIOCO) if (g[k] != null && g[k] !== '') r[k] = g[k]
+      return r
+    })
+    const { data, error } = await supabase.rpc('assicura_giochi', { p_righe: blocco })
+    if (error) throw error
+    fuori.push(...(data || []))
+  }
+  return fuori
 }
+
+// Un gioco arrivato da BGG (o scritto a mano): quello già presente se
+// c'è, altrimenti nuovo.
+export async function assicuraGiocoBgg(g) {
+  const [riga] = await assicuraGiochi([g])
+  if (!riga) throw new Error('Non sono riuscito ad aggiungere il gioco.')
+  return riga
+}
+
+// Fra più righe con lo stesso nome vince la propria.
+export function mappaPerNome(righe, profiloId) {
+  const m = new Map()
+  const ordinate = [...(righe || [])].sort(
+    (a, b) => (a.creato_da === profiloId ? 1 : 0) - (b.creato_da === profiloId ? 1 : 0))
+  for (const r of ordinate) m.set(r.nome.toLowerCase(), r.id)
+  return m
+}
+
+// Il luogo con quel nome fra quelli che vedi (prima il tuo); se non
+// c'è, lo crei tu.
+export async function trovaOCreaLuogo(nome, profiloId, tipo = 'altro') {
+  const pulito = (nome || '').trim()
+  if (!pulito) return null
+  const { data } = await supabase.from('luoghi')
+    .select('id, nome, creato_da').ilike('nome', pulito).limit(20)
+  const trovato = mappaPerNome(data, profiloId).get(pulito.toLowerCase())
+  if (trovato) return trovato
+  const { data: creato, error } = await supabase.from('luoghi')
+    .insert({ nome: pulito, tipo, creato_da: profiloId }).select('id').single()
+  if (error) throw error
+  return creato.id
+}
+
+// Lo stesso per gli ospiti.
+export async function trovaOCreaOspite(nome, profiloId) {
+  const pulito = (nome || '').trim() || 'Sconosciuto'
+  const { data } = await supabase.from('ospiti')
+    .select('id, nome, creato_da').ilike('nome', pulito).is('utente_collegato', null).limit(20)
+  const trovato = mappaPerNome(data, profiloId).get(pulito.toLowerCase())
+  if (trovato) return trovato
+  const { data: creato, error } = await supabase.from('ospiti')
+    .insert({ nome: pulito, creato_da: profiloId }).select('id').single()
+  if (error) throw error
+  return creato.id
+}
+
+export { tutteLeRighe }

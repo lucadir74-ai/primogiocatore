@@ -1,10 +1,10 @@
 // Primo Giocatore - schermata Giochi
-// v4.12.0 - 202609301600
+// v4.13.0 - 202609302000
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import Collezione from './Collezione.jsx'
-import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
+import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -93,7 +93,7 @@ export default function Giochi({ profilo }) {
       const g = dati.giochi[0]
       if (!g) throw new Error('BGG non ha restituito il gioco.')
 
-      await assicuraGiocoBgg(g, profilo.id, 'id')
+      await assicuraGiocoBgg(g)
       setMessaggio(`${g.nome} aggiunto. Comparirà qui quando lo giocherai o lo segnerai come tuo.`)
       caricaCatalogo()
       caricaMiei()
@@ -120,26 +120,11 @@ export default function Giochi({ profilo }) {
 
       // Salva i giochi nel catalogo (solo nome e anno: i dettagli si
       // completano quando servono) e segna quali possiedi.
-      const righe = dati.giochi.map((g) => ({
-        bgg_id: g.bgg_id,
-        nome: g.nome,
-        anno: g.anno,
-        creato_da: profilo.id,
-      }))
-
-      for (let i = 0; i < righe.length; i += 200) {
-        const { error } = await supabase
-          .from('giochi')
-          // I giochi già presenti non si toccano: possono essere di altri.
-          .upsert(righe.slice(i, i + 200), { onConflict: 'bgg_id', ignoreDuplicates: true })
-        if (error) throw error
-      }
-
-      const { data: salvati, error: e2 } = await supabase
-        .from('giochi')
-        .select('id, bgg_id')
-        .in('bgg_id', dati.giochi.map((g) => g.bgg_id))
-      if (e2) throw e2
+      // Quelli già presenti nell'app (anche aggiunti da altri) si
+      // riusano senza toccarli; gli altri si creano.
+      const salvati = await assicuraGiochi(dati.giochi.map((g) => ({
+        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
+      })))
 
       const possedute = salvati.map((g) => ({
         utente_id: profilo.id,

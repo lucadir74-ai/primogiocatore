@@ -1,11 +1,12 @@
 // Primo Giocatore - importazione da BG Stats
-// v3.2.1 - 202609201100
+// v3.3.0 - 202609302000
 //
 // Il file di BG Stats contiene array separati di games, players,
 // locations e plays, collegati fra loro dagli "id" interni al file.
 // Qui si traducono nello schema dell'app.
 
-import { supabase } from './supabase'
+import { supabase, tutteLeRighe } from './supabase'
+import { assicuraGiochi, mappaPerNome } from './giochiMiei'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 
 /* I punteggi in BG Stats sono testo e possono essere somme scritte a
@@ -133,23 +134,15 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
   }
   const senzaBgg = [...perNome.values()]
 
-  for (const blocco of aBlocchi(conBgg, 200)) {
-    // I giochi già presenti non si toccano: possono essere di altri.
-    const { error } = await supabase.from('giochi').upsert(blocco, { onConflict: 'bgg_id', ignoreDuplicates: true })
-    if (error) throw error
-  }
-  for (const g of senzaBgg) {
-    const { data } = await supabase.from('giochi').select('id').ilike('nome', g.nome).maybeSingle()
-    if (!data) {
-      const { error } = await supabase.from('giochi').insert(g)
-      if (error) throw error
-    }
-  }
-
-  const { data: giochiSalvati, error: eg } = await supabase.from('giochi').select('id, bgg_id, nome')
-  if (eg) throw eg
+  // I giochi già presenti nell'app (anche aggiunti da altri) si riusano
+  // senza toccarli; gli altri si creano. Si ottengono solo quelli usati.
+  const giochiSalvati = await assicuraGiochi([...conBgg, ...senzaBgg])
   const idPerBgg = new Map(giochiSalvati.filter((g) => g.bgg_id).map((g) => [g.bgg_id, g.id]))
   const idPerNome = new Map(giochiSalvati.map((g) => [g.nome.toLowerCase(), g.id]))
+  // Anche per il nome scritto nel file, che può differire da quello nell'app.
+  ;[...conBgg, ...senzaBgg].forEach((r, i) => {
+    if (giochiSalvati[i] && r.nome) idPerNome.set(r.nome.toLowerCase(), giochiSalvati[i].id)
+  })
   const idGioco = (gFile) =>
     (gFile.bggId && idPerBgg.get(gFile.bggId)) || idPerNome.get((gFile.name || '').toLowerCase()) || null
 
@@ -157,8 +150,9 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
   avanzamento({ fase: 'Luoghi', fatto: 0, totale: 1 })
 
   const nomiLuoghi = [...new Set(partite.map((p) => luoghiFile.get(p.locationRefId)?.name?.trim()).filter(Boolean))]
-  const { data: luoghiEsistenti } = await supabase.from('luoghi').select('id, nome')
-  const mappaLuoghi = new Map((luoghiEsistenti || []).map((l) => [l.nome.toLowerCase(), l.id]))
+  // Fra i luoghi che vedi, a parità di nome vince il tuo.
+  const luoghiEsistenti = await tutteLeRighe(() => supabase.from('luoghi').select('id, nome, creato_da'))
+  const mappaLuoghi = mappaPerNome(luoghiEsistenti, profilo.id)
 
   const luoghiNuovi = nomiLuoghi
     .filter((n) => !mappaLuoghi.has(n.toLowerCase()))
@@ -181,8 +175,9 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
     .map((id) => giocatoriFile.get(id)?.name?.trim())
     .filter(Boolean)
 
-  const { data: ospitiEsistenti } = await supabase.from('ospiti').select('id, nome')
-  const mappaOspiti = new Map((ospitiEsistenti || []).map((o) => [o.nome.toLowerCase(), o.id]))
+  const ospitiEsistenti = await tutteLeRighe(() => supabase.from('ospiti')
+    .select('id, nome, creato_da').is('utente_collegato', null))
+  const mappaOspiti = mappaPerNome(ospitiEsistenti, profilo.id)
 
   // Un nome può ripetersi con maiuscole diverse: una voce sola.
   const nomiUnici = new Map()
