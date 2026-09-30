@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.4.0 - 202609302230
+// v4.5.0 - 202609302300
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -25,6 +25,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [disposto, setDisposto] = useState(false)   // tavolo libero: disposto a spiegare
   const [consenso, setConsenso] = useState(false)
   const [invio, setInvio] = useState(false)
 
@@ -56,7 +57,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       setTavolo(data)
       const { data: is } = await supabase
         .from('iscrizioni_tavolo')
-        .select('id, stato, nome_visibile, utente_id, ruolo, profili:utente_id ( nome, nickname )')
+        .select('id, stato, nome_visibile, utente_id, ruolo, disposto_a_dimostrare, profili:utente_id ( nome, nickname )')
         .eq('tavolo_id', tavoloId)
         .neq('stato', 'annullato')
         .order('creata_il')
@@ -66,6 +67,10 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
   }
 
   const confermati = iscritti.filter((i) => i.stato === 'confermato')
+  // Senza gioco è il tavolo libero: più dimostratori, e chi si iscrive
+  // può offrirsi di spiegare.
+  const libero = tavolo && !tavolo.giochi
+  const chiSpiega = confermati.filter((i) => i.ruolo === 'dimostratore')
   const inAttesa = iscritti.filter((i) => i.stato === 'attesa')
   const pieno = tavolo?.posti_max ? confermati.length >= tavolo.posti_max : false
   const chiuse =
@@ -97,6 +102,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           utente_id: sessione?.user?.id || null,
           nome_visibile: nome.trim(),
           stato: pieno ? 'attesa' : 'confermato',
+          disposto_a_dimostrare: libero && disposto,
         })
         .select('id').single()
       if (error) throw error
@@ -159,7 +165,15 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
         )}
       </ul>
 
-      {tavolo.dimostratore_nome && (
+      {libero ? (chiSpiega.length > 0 && (
+        <div className="dimostratore">
+          <span className="foto-dimostratore vuota" aria-hidden="true">?</span>
+          <div className="dimostratore-nome">
+            <span className="etichetta-dato">{chiSpiega.length === 1 ? 'Spiega i giochi' : 'Spiegano i giochi'}</span>
+            <strong>{chiSpiega.map(nomeIscritto).join(', ')}</strong>
+          </div>
+        </div>
+      )) : tavolo.dimostratore_nome && (
         <div className="dimostratore">
           {tavolo.dimostratore_foto
             ? <img src={tavolo.dimostratore_foto} alt="" className="foto-dimostratore" />
@@ -184,6 +198,9 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
             <li key={i.id}>
               <strong>{nomeIscritto(i)}</strong>
               {i.ruolo === 'dimostratore' && <span className="distintivo">Spiega</span>}
+              {i.ruolo !== 'dimostratore' && i.disposto_a_dimostrare && (
+                <span className="distintivo verde">Può spiegare</span>
+              )}
             </li>
           ))}
         </ul>
@@ -213,6 +230,22 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           <h3 className="titolo-sezione">{pieno ? 'Mettiti in lista d\u2019attesa' : 'Iscriviti'}</h3>
 
           {errore && <div className="avviso errore">{errore}</div>}
+
+          {libero && (
+            <div className="campo">
+              <label>Come partecipi</label>
+              <div className="scelte-disponibilita">
+                <button type="button" className={`pastiglia-stato si${!disposto ? ' scelto' : ''}`}
+                  aria-pressed={!disposto} onClick={() => setDisposto(false)}>
+                  Mi godo la serata
+                </button>
+                <button type="button" className={`pastiglia-stato forse${disposto ? ' scelto' : ''}`}
+                  aria-pressed={disposto} onClick={() => setDisposto(true)}>
+                  Posso spiegare un gioco
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="campo">
             <label htmlFor="i-nome">Nome</label>

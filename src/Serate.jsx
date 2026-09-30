@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.9.0 - 202609302230
+// v4.10.0 - 202609302300
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -178,6 +178,30 @@ export default function Serate({ profilo }) {
     const inizio = new Date(`${serata.data}T${a.ora || serata.ora_inizio.slice(0, 5)}`)
     const ospite = a.persona.tipo === 'ospite'
 
+    // Il tavolo libero della serata è uno solo: se c'è già, chi viene
+    // assegnato si aggiunge ai suoi dimostratori.
+    const liberoEsistente = a.libero
+      && tavoliDelGiorno(serata.data).find((t) => !t.gioco_id && t.stato !== 'annullato')
+    if (liberoEsistente) {
+      const giaDentro = (liberoEsistente.iscrizioni_tavolo || []).find((i) => i.stato !== 'annullato'
+        && (ospite ? i.ospite_id === a.persona.id : i.utente_id === a.persona.id))
+      const { error } = giaDentro
+        ? await supabase.from('iscrizioni_tavolo')
+          .update({ ruolo: 'dimostratore', stato: 'confermato' }).eq('id', giaDentro.id)
+        : await supabase.from('iscrizioni_tavolo').insert({
+          tavolo_id: liberoEsistente.id,
+          [ospite ? 'ospite_id' : 'utente_id']: a.persona.id,
+          nome_visibile: a.persona.nome,
+          ruolo: 'dimostratore',
+          stato: 'confermato',
+        })
+      if (error) { setErrore(error.message); return }
+      setAssegna(null)
+      setMessaggio(`${a.persona.nome} aggiunto ai dimostratori del tavolo libero.`)
+      carica()
+      return
+    }
+
     const { data, error } = await supabase.from('tavoli').insert({
       gioco_id: a.libero ? null : a.gioco.id,
       titolo: a.libero ? 'Tavolo libero' : null,
@@ -238,10 +262,10 @@ export default function Serate({ profilo }) {
       supabase
         .from('tavoli')
         .select(`
-          id, titolo, inizio, stato, posti_max, pubblicato,
+          id, titolo, inizio, stato, posti_max, pubblicato, gioco_id,
           dimostratore_nome, dimostratore_id, dimostratore_ospite_id,
           giochi:tavoli_gioco_id_fkey ( nome, immagine_url ),
-          iscrizioni_tavolo ( id, stato )
+          iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id )
         `)
         .gte('inizio', `${primoDelMese}T00:00:00`)
         .lte('inizio', `${ultimoDelMese}T23:59:59`)
@@ -649,8 +673,11 @@ export default function Serate({ profilo }) {
                   .sort((a, b) => Number(a.stato !== 'si') - Number(b.stato !== 'si')
                     || nomeDi(a).localeCompare(nomeDi(b), 'it'))
                 const assenti = risposte.filter((d) => d.stato === 'no')
+                // Anche i tavoli liberi dove spiega insieme ad altri.
                 const tavoliDi = (pers) => tavoliDelGiorno(scelto).filter((t) =>
-                  pers.tipo === 'profilo' ? t.dimostratore_id === pers.id : t.dimostratore_ospite_id === pers.id)
+                  (pers.tipo === 'profilo' ? t.dimostratore_id === pers.id : t.dimostratore_ospite_id === pers.id)
+                  || (t.iscrizioni_tavolo || []).some((i) => i.ruolo === 'dimostratore' && i.stato !== 'annullato'
+                    && (pers.tipo === 'profilo' ? i.utente_id === pers.id : i.ospite_id === pers.id)))
                 const etichettaDi = (stato) => STATI.find((x) => x.id === stato)?.etichetta
 
                 return (

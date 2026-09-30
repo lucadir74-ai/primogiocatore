@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.12.0 - 202609302230
+// v2.13.0 - 202609302300
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -25,7 +25,7 @@ const perCampo = (d) => {
 }
 
 const VUOTO = {
-  titolo: '', gioco_id: null, gioco: null, libero: false, luogo: '', inizio: '', posti_min: '', posti_max: '',
+  titolo: '', gioco_id: null, gioco: null, libero: false, dimostratori: [], luogo: '', inizio: '', posti_min: '', posti_max: '',
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
   dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
@@ -65,7 +65,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         .select(`
           *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
           luoghi ( nome, tipo, latitudine, longitudine, posizione_pubblica ),
-          iscrizioni_tavolo ( id, stato )
+          iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id, nome_visibile )
         `)
         .order('inizio', { ascending: true }),
       supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
@@ -101,6 +101,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       gioco: t.giochi || null,
       // Senza gioco è un tavolo libero: ognuno porta o sceglie sul momento.
       libero: !t.gioco_id,
+      dimostratori: dimostratoriDi(t),
       luogo: t.luoghi?.nome || '',
       inizio: perCampo(t.inizio),
       posti_min: t.posti_min || '',
@@ -149,6 +150,63 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     setModulo((m) => ({ ...m, dimostratore_foto: data.publicUrl }))
   }
 
+  // I dimostratori di un tavolo sono gli iscritti con ruolo
+  // "dimostratore": nel tavolo libero possono essere più d'uno.
+  function dimostratoriDi(t) {
+    return (t.iscrizioni_tavolo || [])
+      .filter((i) => i.ruolo === 'dimostratore' && i.stato !== 'annullato')
+      .map((i) => ({
+        chiave: i.utente_id ? `p:${i.utente_id}` : i.ospite_id ? `o:${i.ospite_id}` : `n:${i.id}`,
+        tipo: i.utente_id ? 'profilo' : i.ospite_id ? 'ospite' : 'nome',
+        id: i.utente_id || i.ospite_id || null,
+        nome: i.nome_visibile || 'Dimostratore',
+      }))
+  }
+
+  // Tavolo libero: allinea gli iscritti con ruolo dimostratore alla
+  // lista del modulo. Chi era già iscritto come giocatore diventa
+  // dimostratore senza doppioni; chi esce dalla lista torna giocatore
+  // se si era iscritto da solo, altrimenti viene tolto.
+  async function sistemaDimostratori(tavoloId, lista) {
+    const { data: righe } = await supabase
+      .from('iscrizioni_tavolo')
+      .select('id, ruolo, stato, utente_id, ospite_id, nome_visibile, disposto_a_dimostrare')
+      .eq('tavolo_id', tavoloId).neq('stato', 'annullato')
+    const esistenti = righe || []
+    const stessa = (r, p) => (p.tipo === 'profilo' && r.utente_id === p.id)
+      || (p.tipo === 'ospite' && r.ospite_id === p.id)
+      || (p.tipo === 'nome' && !r.utente_id && !r.ospite_id
+          && (r.nome_visibile || '').toLowerCase() === p.nome.toLowerCase())
+
+    for (const p of lista) {
+      const r = esistenti.find((x) => stessa(x, p))
+      if (r) {
+        if (r.ruolo !== 'dimostratore' || r.stato !== 'confermato') {
+          await supabase.from('iscrizioni_tavolo')
+            .update({ ruolo: 'dimostratore', stato: 'confermato' }).eq('id', r.id)
+        }
+      } else {
+        await supabase.from('iscrizioni_tavolo').insert({
+          tavolo_id: tavoloId,
+          utente_id: p.tipo === 'profilo' ? p.id : null,
+          ospite_id: p.tipo === 'ospite' ? p.id : null,
+          nome_visibile: p.nome,
+          stato: 'confermato',
+          ruolo: 'dimostratore',
+        })
+      }
+    }
+
+    for (const r of esistenti.filter((x) => x.ruolo === 'dimostratore')) {
+      if (lista.some((p) => stessa(r, p))) continue
+      if (r.disposto_a_dimostrare) {
+        await supabase.from('iscrizioni_tavolo').update({ ruolo: 'giocatore' }).eq('id', r.id)
+      } else {
+        await supabase.from('iscrizioni_tavolo').delete().eq('id', r.id)
+      }
+    }
+  }
+
   async function salva() {
     setErrore(''); setMessaggio('')
     if (!modulo.gioco_id && !modulo.libero) { setErrore('Scegli il gioco, oppure segna «tavolo libero».'); return }
@@ -156,6 +214,20 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
     try {
       const luogoId = await trovaOCreaLuogo(modulo.luogo, profilo.id, 'sede')
+
+      // Tavolo libero: i nomi di tutti, il primo come riferimento.
+      const primo = modulo.libero ? modulo.dimostratori[0] : null
+      const dim = modulo.libero
+        ? {
+            dimostratore_nome: modulo.dimostratori.map((p) => p.nome).join(', ') || null,
+            dimostratore_id: primo?.tipo === 'profilo' ? primo.id : null,
+            dimostratore_ospite_id: primo?.tipo === 'ospite' ? primo.id : null,
+          }
+        : {
+            dimostratore_nome: modulo.dimostratore_nome.trim() || null,
+            dimostratore_id: modulo.dimostratore_id,
+            dimostratore_ospite_id: modulo.dimostratore_ospite_id,
+          }
 
       const campi = {
         titolo: modulo.titolo.trim() || (modulo.libero ? 'Tavolo libero' : null),
@@ -165,10 +237,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         posti_min: modulo.posti_min ? Number(modulo.posti_min) : null,
         posti_max: modulo.posti_max ? Number(modulo.posti_max) : null,
         descrizione: modulo.descrizione.trim() || null,
-        dimostratore_nome: modulo.dimostratore_nome.trim() || null,
+        ...dim,
         dimostratore_foto: modulo.dimostratore_foto || null,
-        dimostratore_id: modulo.dimostratore_id,
-        dimostratore_ospite_id: modulo.dimostratore_ospite_id,
         dimostratore_gioca: modulo.dimostratore_gioca,
         chiusura_iscrizioni: modulo.chiusura_iscrizioni
           ? new Date(modulo.chiusura_iscrizioni).toISOString() : null,
@@ -190,7 +260,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         setMessaggio('Tavolo pubblicato.')
       }
 
-      await sistemaDimostratore(tavoloId, campi)
+      if (modulo.libero) await sistemaDimostratori(tavoloId, modulo.dimostratori)
+      else await sistemaDimostratore(tavoloId, campi)
       if (!modulo.libero && modulo.gioco_id) await recuperaImmagineGrande(modulo.gioco_id)
       setModulo(null)
       carica()
@@ -268,7 +339,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     const { data, error } = await supabase
       .from('iscrizioni_tavolo')
       .select(`
-        id, stato, nome_visibile, presente, creata_il, utente_id, ruolo,
+        id, stato, nome_visibile, presente, creata_il, utente_id, ospite_id, ruolo, disposto_a_dimostrare,
         profili:utente_id ( nome, nickname ),
         iscrizioni_contatti ( email, telefono )
       `)
@@ -506,6 +577,9 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
                   <div className="nome-giocatore">
                     <strong>{i.profili ? daMostrare(i.profili) : i.nome_visibile}</strong>
                     {i.ruolo === 'dimostratore' && <span className="distintivo">Spiega</span>}
+                    {i.ruolo !== 'dimostratore' && i.disposto_a_dimostrare && (
+                      <span className="distintivo verde">Disposto a spiegare</span>
+                    )}
                     <span className="anno block">
                       {i.stato === 'attesa' ? 'in attesa · ' : i.stato === 'annullato' ? 'annullato · ' : ''}
                       {c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}
@@ -519,6 +593,17 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
                       {i.stato === 'attesa' && (
                         <button className="bottone-piatto"
                           onClick={() => cambiaIscrizione(i.id, { stato: 'confermato' })}>conferma</button>
+                      )}
+                      {!gestito.gioco_id && i.stato !== 'annullato' && (
+                        i.ruolo === 'dimostratore' ? (
+                          <button className="bottone-piatto"
+                            onClick={() => cambiaIscrizione(i.id, { ruolo: 'giocatore' })}>non spiega</button>
+                        ) : (
+                          <button className="bottone-piatto"
+                            onClick={() => cambiaIscrizione(i.id, { ruolo: 'dimostratore', stato: 'confermato' })}>
+                            fa spiegare
+                          </button>
+                        )
                       )}
                       <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>togli</button>
                     </span>
@@ -661,7 +746,18 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
             </div>
           ) : (
             <CercaGiocoBgg profilo={profilo}
-              onLibero={() => setModulo((m) => ({ ...m, libero: true, gioco_id: null, gioco: null }))}
+              onLibero={() => setModulo((m) => ({
+                ...m, libero: true, gioco_id: null, gioco: null,
+                // Il dimostratore già scelto diventa il primo della lista.
+                dimostratori: m.dimostratori.length || !(m.dimostratore_id || m.dimostratore_ospite_id)
+                  ? m.dimostratori
+                  : [{
+                      chiave: m.dimostratore_id ? `p:${m.dimostratore_id}` : `o:${m.dimostratore_ospite_id}`,
+                      tipo: m.dimostratore_id ? 'profilo' : 'ospite',
+                      id: m.dimostratore_id || m.dimostratore_ospite_id,
+                      nome: m.dimostratore_nome || 'Dimostratore',
+                    }],
+              }))}
               onScegli={(g) => setModulo((m) => ({
                 ...m, gioco_id: g.id, gioco: g,
                 posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
@@ -708,6 +804,33 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           </div>
         </div>
 
+        {modulo.libero ? (
+        <div className="campo">
+          <label>Chi spiega i giochi</label>
+          {modulo.dimostratori.length > 0 && (
+            <div className="pastiglie-persone">
+              {modulo.dimostratori.map((p) => (
+                <button key={p.chiave} className="pastiglia-nome nuovo" aria-label={`Togli ${p.nome}`}
+                  onClick={() => setModulo((m) => ({
+                    ...m, dimostratori: m.dimostratori.filter((x) => x.chiave !== p.chiave),
+                  }))}>
+                  {p.nome} ✕
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="aiuto">
+            Nel tavolo libero possono essere più d&rsquo;uno, anche su tavoli diversi. Occupano un
+            posto e gestiscono il tavolo come chi l&rsquo;ha pubblicato. Chi si iscrive può anche dire
+            che è disposto a spiegare: lo vedi fra gli iscritti.
+          </p>
+          <CercaDimostratore profilo={profilo} onErrore={setErrore}
+            disponibili={disponibili.filter((d) => !modulo.dimostratori.some((x) => x.chiave === d.chiave))}
+            onScegli={(p) => setModulo((m) => (m.dimostratori.some((x) => x.chiave === p.chiave)
+              ? m
+              : { ...m, dimostratori: [...m.dimostratori, p] }))} />
+        </div>
+        ) : (
         <div className="campo">
           <label>Chi spiega il gioco</label>
           {dimScelto ? (
@@ -744,6 +867,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
             <span>Gioca anche lui, quindi occupa un posto e va iscritto al tavolo.</span>
           </label>
         </div>
+        )}
 
         <div className="campo">
           <label htmlFor="t-foto">Foto del dimostratore</label>
@@ -813,6 +937,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     // dimostratore non può.
     const proprietario = t.host_id === profilo.id || profilo.organizzatore
     const mio = proprietario || t.dimostratore_id === profilo.id
+      || (t.iscrizioni_tavolo || []).some((i) =>
+        i.ruolo === 'dimostratore' && i.utente_id === profilo.id && i.stato !== 'annullato')
     return (
       <div className="tavolo-scheda" key={t.id}>
         <div className="tavolo-testa">
