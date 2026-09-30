@@ -1446,3 +1446,24 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 
 .sostituzione .campo-cerca { margin-bottom: 0.4rem; }
 .sostituzione .pastiglie-persone { margin-bottom: 0.4rem; }
+
+/* ---------- Menu del profilo: resta in cima mentre si scorre ---------- */
+
+.menu-profilo {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  padding: calc(0.6rem + env(safe-area-inset-top)) 0.85rem 0.6rem;
+  background: color-mix(in srgb, var(--carta) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.menu-profilo .sottoschede {
+  margin: 0;
+  background: var(--superficie);
+  box-shadow: 0 1px 3px var(--ombra);
+}
+
+.menu-profilo .sottoschede button { flex: 0 0 auto; }
+.menu-profilo .sottoschede button.attiva { background: var(--carta); }

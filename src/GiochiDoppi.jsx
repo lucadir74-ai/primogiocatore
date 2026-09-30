@@ -1,5 +1,5 @@
 // Primo Giocatore - giochi doppi
-// v3.3.0 - 202609201400
+// v3.4.0 - 202609301600
 //
 // Capita quando lo stesso gioco entra due volte: una aggiunto a mano,
 // una arrivato da BGG o da un'importazione. L'aggancio avviene per
@@ -17,7 +17,9 @@ export default function GiochiDoppi({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [lavorando, setLavorando] = useState(false)
 
-  useEffect(() => { carica() }, [])
+  // Mostra tutto il catalogo, quindi anche le collezioni altrui: è
+  // lavoro da organizzatori.
+  useEffect(() => { if (profilo.organizzatore) carica() }, [])
 
   async function carica() {
     try {
@@ -94,6 +96,8 @@ export default function GiochiDoppi({ profilo }) {
   const descrivi = (g) =>
     `${g.partite} ${g.partite === 1 ? 'partita' : 'partite'}` +
     (g.bgg_id ? ' · collegato a BGG' : ' · aggiunto a mano')
+
+  if (!profilo.organizzatore) return null
 
   return (
     <div className="scheda">

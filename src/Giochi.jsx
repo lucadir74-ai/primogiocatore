@@ -1,9 +1,10 @@
 // Primo Giocatore - schermata Giochi
-// v4.11.0 - 202609210130
+// v4.12.0 - 202609301600
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import Collezione from './Collezione.jsx'
+import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -51,10 +52,9 @@ export default function Giochi({ profilo }) {
 
   async function caricaCatalogo() {
     try {
-      const righe = await tutteLeRighe(() => supabase
-        .from('giochi')
-        .select('id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da')
-        .order('nome'))
+      // Solo i propri giochi: il catalogo comune contiene le collezioni altrui.
+      const righe = await giochiMiei(profilo.id,
+        'id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da')
       setCatalogo(righe)
     } catch (e) {
       setErrore(e.message)
@@ -93,21 +93,7 @@ export default function Giochi({ profilo }) {
       const g = dati.giochi[0]
       if (!g) throw new Error('BGG non ha restituito il gioco.')
 
-      const { error } = await supabase.from('giochi').upsert(
-        {
-          bgg_id: g.bgg_id,
-          nome: g.nome,
-          anno: g.anno,
-          min_giocatori: g.min_giocatori,
-          max_giocatori: g.max_giocatori,
-          durata_minuti: g.durata_minuti,
-          immagine_url: g.immagine_url,
-          immagine_grande: g.immagine_grande,
-          creato_da: profilo.id,
-        },
-        { onConflict: 'bgg_id' }
-      )
-      if (error) throw error
+      await assicuraGiocoBgg(g, profilo.id, 'id')
       setMessaggio(`${g.nome} aggiunto. Comparirà qui quando lo giocherai o lo segnerai come tuo.`)
       caricaCatalogo()
       caricaMiei()
@@ -144,7 +130,8 @@ export default function Giochi({ profilo }) {
       for (let i = 0; i < righe.length; i += 200) {
         const { error } = await supabase
           .from('giochi')
-          .upsert(righe.slice(i, i + 200), { onConflict: 'bgg_id' })
+          // I giochi già presenti non si toccano: possono essere di altri.
+          .upsert(righe.slice(i, i + 200), { onConflict: 'bgg_id', ignoreDuplicates: true })
         if (error) throw error
       }
 
@@ -380,7 +367,7 @@ export default function Giochi({ profilo }) {
                 {r.anno ? <span className="anno"> {r.anno}</span> : null}
               </div>
               {giaInCatalogo(r.bgg_id) ? (
-                <span className="gia">già in catalogo</span>
+                <span className="gia">già fra i tuoi</span>
               ) : (
                 <button className="bottone-piatto" onClick={() => aggiungi(r.bgg_id)}>
                   Aggiungi

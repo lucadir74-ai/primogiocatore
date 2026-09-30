@@ -1,11 +1,12 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.3.0 - 202609201400
+// v3.4.0 - 202609301500
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import { RichiesteDaApprovare } from './SeiTu.jsx'
 
 export default function UnisciOspiti({ profilo }) {
   const [ospiti, setOspiti] = useState([])
@@ -31,7 +32,9 @@ export default function UnisciOspiti({ profilo }) {
       setPersone(pr)
       const conteggio = new Map()
       for (const r of p) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
-      setOspiti(o.map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
+      // Quelli già collegati a un account non sono più ospiti.
+      setOspiti(o.filter((x) => !x.utente_collegato)
+        .map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
     } catch (e) {
       setErrore(e.message)
     }
@@ -46,54 +49,21 @@ export default function UnisciOspiti({ profilo }) {
     else { setMessaggio('Nome corretto.'); setRinomina(null); carica() }
   }
 
-  // L'ospite si è iscritto: le sue partite passano all'account vero e
-  // la voce ospite sparisce. Da qui in poi è una persona sola ovunque.
+  // L'ospite si è iscritto: partite, tavoli e disponibilità passano
+  // all'account vero e la voce ospite sparisce. Lo fa il database, così
+  // si spostano anche le partite registrate da altri.
   async function diventaAccount(ospite, utente) {
     setErrore(''); setMessaggio('')
     const nomeUtente = utente.nickname || utente.nome
-    if (!confirm(`«${ospite.nome}» è ${nomeUtente}? Le sue ${ospite.partite} partite passano a quell'account e la voce ospite sparisce.`)) return
+    if (!confirm(`«${ospite.nome}» è ${nomeUtente}? Le sue ${ospite.partite} partite, i tavoli e le disponibilità passano a quell'account e la voce ospite sparisce.`)) return
 
     setLavorando(true)
-    try {
-      // Se in una partita compaiono sia l'ospite sia l'account, una
-      // delle due righe va tolta: la stessa persona non può essere
-      // due volte allo stesso tavolo.
-      const { data: righeOspite } = await supabase
-        .from('partecipazioni').select('id, partita_id').eq('ospite_id', ospite.id)
-      const { data: righeUtente } = await supabase
-        .from('partecipazioni').select('partita_id').eq('utente_id', utente.id)
-
-      const partiteUtente = new Set((righeUtente || []).map((r) => r.partita_id))
-      const doppie = (righeOspite || []).filter((r) => partiteUtente.has(r.partita_id))
-      if (doppie.length) {
-        const { error } = await supabase
-          .from('partecipazioni').delete().in('id', doppie.map((r) => r.id))
-        if (error) throw error
-      }
-
-      const { error: e1 } = await supabase
-        .from('partecipazioni')
-        .update({ utente_id: utente.id, ospite_id: null })
-        .eq('ospite_id', ospite.id)
-      if (e1) throw e1
-
-      await supabase.from('iscrizioni_tavolo')
-        .update({ utente_id: utente.id, ospite_id: null }).eq('ospite_id', ospite.id)
-
-      const { error: e3 } = await supabase.from('ospiti').delete().eq('id', ospite.id)
-      if (e3) throw e3
-
-      setMessaggio(
-        `«${ospite.nome}» ora è ${nomeUtente}` +
-        (doppie.length ? `, ${doppie.length} doppioni nella stessa partita eliminati` : '') + '.'
-      )
-      setCollega(null)
-      carica()
-    } catch (e) {
-      setErrore(e.message)
-    } finally {
-      setLavorando(false)
-    }
+    const { error } = await supabase.rpc('collega_ospite', { p_ospite: ospite.id, p_utente: utente.id })
+    setLavorando(false)
+    if (error) { setErrore(error.message); return }
+    setMessaggio(`«${ospite.nome}» ora è ${nomeUtente}.`)
+    setCollega(null)
+    carica()
   }
 
   async function unisci() {
@@ -160,6 +130,8 @@ export default function UnisciOspiti({ profilo }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      <RichiesteDaApprovare profilo={profilo} onCambio={carica} />
 
       {ospiti.length > 8 && (
         <input

@@ -1,9 +1,10 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.9.0 - 202609202330
+// v4.10.0 - 202609301600
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { impronta } from './impronta'
+import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
@@ -169,7 +170,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   async function caricaElenchi() {
     const [g, p, o, f, l, c] = await Promise.all([
-      tutteLeRighe(() => supabase.from('giochi').select('*').order('nome')),
+      giochiMiei(profilo.id, '*'),
       tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname, colore').order('nome')),
       tutteLeRighe(() => supabase.from('ospiti').select('id, nome').order('nome')),
       tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
@@ -233,8 +234,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setCaricamento(false)
   }
 
-  // Il gioco non è in catalogo: lo si cerca su BGG e si aggiunge senza
-  // uscire da qui. Prima si guarda sempre in catalogo, che è immediato.
+  // Il gioco non è fra i tuoi: lo si cerca su BGG e si aggiunge senza
+  // uscire da qui. Prima si guarda sempre fra i tuoi, che è immediato.
+  // Il catalogo comune non si sfoglia: contiene le collezioni degli altri.
   async function cercaSuBgg() {
     if (filtro.trim().length < 2) return
     setErrore(''); setCercandoBgg(true); setSuBgg(null)
@@ -259,14 +261,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       const g = dati.giochi[0]
       if (!g) throw new Error('BGG non ha restituito il gioco.')
 
-      const { data, error } = await supabase.from('giochi').upsert({
-        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
-        min_giocatori: g.min_giocatori, max_giocatori: g.max_giocatori,
-        durata_minuti: g.durata_minuti, immagine_url: g.immagine_url,
-        immagine_grande: g.immagine_grande,
-        creato_da: profilo.id,
-      }, { onConflict: 'bgg_id' }).select().single()
-      if (error) throw error
+      const data = await assicuraGiocoBgg(g, profilo.id)
 
       setCatalogo((c) => [...c.filter((x) => x.id !== data.id), data])
       setSuBgg(null)
@@ -707,7 +702,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   : 'Cerca su BoardGameGeek'}
               </button>
               {trovati.length === 0 && !suBgg && !cercandoBgg && (
-                <p className="aiuto">Nessun gioco con questo nome fra quelli già registrati.</p>
+                <p className="aiuto">Nessun gioco con questo nome fra i tuoi.</p>
               )}
             </>
           )}

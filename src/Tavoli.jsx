@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.6.0 - 202609181600
+// v2.7.0 - 202609301500
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -7,6 +7,8 @@ import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
+import CercaGiocoBgg from './CercaGiocoBgg.jsx'
+import CercaDimostratore from './CercaDimostratore.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -20,25 +22,22 @@ const perCampo = (d) => {
 }
 
 const VUOTO = {
-  titolo: '', gioco_id: null, luogo: '', inizio: '', posti_min: '', posti_max: '',
+  titolo: '', gioco_id: null, gioco: null, luogo: '', inizio: '', posti_min: '', posti_max: '',
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
-  dimostratore_id: null, dimostratore_gioca: true,
+  dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
 }
 
 export default function Tavoli({ profilo, onRegistraPartita }) {
   const [tavoli, setTavoli] = useState([])
-  const [catalogo, setCatalogo] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
 
   const [modulo, setModulo] = useState(null)      // null = chiuso
-  const [filtroGioco, setFiltroGioco] = useState('')
   const [gestito, setGestito] = useState(null)    // tavolo di cui vedo gli iscritti
   const [iscritti, setIscritti] = useState([])
   const [persone, setPersone] = useState([])
-  const [cercaDim, setCercaDim] = useState('')
   const [aMano, setAMano] = useState(null)   // { nome, email, telefono, utente_id }
   const [sezione, setSezione] = useState('tavoli')
   const [disponibili, setDisponibili] = useState([])
@@ -56,7 +55,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   async function carica() {
     setCaricamento(true)
-    const [t, g, pr, lu] = await Promise.all([
+    const [t, pr, lu] = await Promise.all([
       supabase
         .from('tavoli')
         .select(`
@@ -65,13 +64,11 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           iscrizioni_tavolo ( id, stato )
         `)
         .order('inizio', { ascending: true }),
-      supabase.from('giochi').select('id, nome, immagine_url').order('nome'),
       supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
       supabase.from('luoghi').select('nome').order('nome'),
     ])
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
-    if (g.data) setCatalogo(g.data)
     if (pr.data) setPersone(pr.data)
     if (lu.data) setLuoghiNoti(lu.data.map((x) => x.nome))
     setCaricamento(false)
@@ -93,6 +90,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       id: t.id,
       titolo: t.titolo || '',
       gioco_id: t.gioco_id,
+      gioco: t.giochi || null,
       luogo: t.luoghi?.nome || '',
       inizio: perCampo(t.inizio),
       posti_min: t.posti_min || '',
@@ -101,6 +99,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       dimostratore_nome: t.dimostratore_nome || '',
       dimostratore_foto: t.dimostratore_foto || '',
       dimostratore_id: t.dimostratore_id || null,
+      dimostratore_ospite_id: t.dimostratore_ospite_id || null,
       dimostratore_gioca: t.dimostratore_gioca !== false,
       chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
       pubblicato: t.pubblicato,
@@ -110,7 +109,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   }
 
   // Quando il tavolo ha una data, cerco se quel giorno c'è una serata
-  // e chi si è dato disponibile: sono i primi nomi da proporre.
+  // e chi si è dato disponibile, con o senza account: sono i primi
+  // nomi da proporre.
   async function caricaDisponibili(inizio) {
     if (!inizio) { setDisponibili([]); return }
     const giorno = inizio.slice(0, 10)
@@ -119,10 +119,14 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     if (!serata) { setDisponibili([]); return }
     const { data } = await supabase
       .from('disponibilita')
-      .select('profilo_id, stato, profili ( id, nome, nickname )')
+      .select('profilo_id, ospite_id, stato, profili ( id, nome, nickname ), ospiti ( id, nome )')
       .eq('serata_id', serata.id)
       .in('stato', ['si', 'forse'])
-    setDisponibili(data || [])
+    setDisponibili((data || [])
+      .map((d) => d.profilo_id
+        ? { chiave: `p:${d.profilo_id}`, tipo: 'profilo', id: d.profilo_id, nome: daMostrare(d.profili), stato: d.stato }
+        : { chiave: `o:${d.ospite_id}`, tipo: 'ospite', id: d.ospite_id, nome: d.ospiti?.nome || 'Dimostratore', stato: d.stato })
+      .sort((a, b) => (a.stato === 'si' ? 0 : 1) - (b.stato === 'si' ? 0 : 1)))
   }
 
   async function caricaFoto(file) {
@@ -167,6 +171,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         dimostratore_nome: modulo.dimostratore_nome.trim() || null,
         dimostratore_foto: modulo.dimostratore_foto || null,
         dimostratore_id: modulo.dimostratore_id,
+        dimostratore_ospite_id: modulo.dimostratore_ospite_id,
         dimostratore_gioca: modulo.dimostratore_gioca,
         chiusura_iscrizioni: modulo.chiusura_iscrizioni
           ? new Date(modulo.chiusura_iscrizioni).toISOString() : null,
@@ -225,7 +230,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       .from('iscrizioni_tavolo').select('id')
       .eq('tavolo_id', tavoloId).eq('ruolo', 'dimostratore').maybeSingle()
 
-    const serve = campi.dimostratore_gioca && (campi.dimostratore_nome || campi.dimostratore_id)
+    const serve = campi.dimostratore_gioca
+      && (campi.dimostratore_nome || campi.dimostratore_id || campi.dimostratore_ospite_id)
 
     if (!serve) {
       if (esistente) await supabase.from('iscrizioni_tavolo').delete().eq('id', esistente.id)
@@ -235,6 +241,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     const riga = {
       tavolo_id: tavoloId,
       utente_id: campi.dimostratore_id,
+      ospite_id: campi.dimostratore_ospite_id,
       nome_visibile: campi.dimostratore_nome,
       stato: 'confermato',
       ruolo: 'dimostratore',
@@ -331,7 +338,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
     const { data: is, error: e0 } = await supabase
       .from('iscrizioni_tavolo')
-      .select('id, stato, presente, nome_visibile, utente_id')
+      .select('id, stato, presente, nome_visibile, utente_id, ospite_id')
       .eq('tavolo_id', t.id)
       .neq('stato', 'annullato')
     if (e0) { setErrore(e0.message); return }
@@ -367,13 +374,18 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
       // Gli iscritti senza account diventano ospiti, riusando quelli
       // già esistenti quando il nome coincide.
-      const { data: ospitiEsistenti } = await supabase.from('ospiti').select('id, nome')
+      const { data: ospitiEsistenti } = await supabase
+        .from('ospiti').select('id, nome').is('utente_collegato', null)
       const mappa = new Map((ospitiEsistenti || []).map((o) => [o.nome.toLowerCase(), o.id]))
 
       const righe = []
       for (const i of partecipanti) {
         if (i.utente_id) {
           righe.push({ partita_id: partita.id, utente_id: i.utente_id })
+          continue
+        }
+        if (i.ospite_id) {
+          righe.push({ partita_id: partita.id, ospite_id: i.ospite_id })
           continue
         }
         const nome = (i.nome_visibile || 'Ospite').trim()
@@ -618,10 +630,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   // --- Modulo ---
   if (modulo) {
-    const trovati = filtroGioco.trim()
-      ? catalogo.filter((g) => g.nome.toLowerCase().includes(filtroGioco.toLowerCase())).slice(0, 8)
-      : []
-    const giocoScelto = catalogo.find((g) => g.id === modulo.gioco_id)
+    const giocoScelto = modulo.gioco
+    const dimScelto = modulo.dimostratore_id || modulo.dimostratore_ospite_id || modulo.dimostratore_nome
 
     return (
       <div className="scheda">
@@ -629,7 +639,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         {errore && <div className="avviso errore">{errore}</div>}
 
         <div className="campo">
-          <label htmlFor="t-gioco">Gioco</label>
+          <label>Gioco</label>
           {giocoScelto ? (
             <div className="gioco-scelto">
               {giocoScelto.immagine_url && <img src={giocoScelto.immagine_url} alt="" className="copertina" />}
@@ -637,28 +647,16 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
                 <strong>{giocoScelto.nome}</strong>
                 <p className="aiuto">
                   <button className="bottone-piatto"
-                    onClick={() => setModulo({ ...modulo, gioco_id: null })}>cambia</button>
+                    onClick={() => setModulo({ ...modulo, gioco_id: null, gioco: null })}>cambia</button>
                 </p>
               </div>
             </div>
           ) : (
-            <>
-              <input id="t-gioco" value={filtroGioco} onChange={(e) => setFiltroGioco(e.target.value)}
-                placeholder="Scrivi le prime lettere" />
-              {trovati.length > 0 && (
-                <ul className="elenco">
-                  {trovati.map((g) => (
-                    <li key={g.id}>
-                      <span>{g.nome}</span>
-                      <button className="bottone-piatto"
-                        onClick={() => { setModulo({ ...modulo, gioco_id: g.id }); setFiltroGioco('') }}>
-                        Scegli
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
+            <CercaGiocoBgg profilo={profilo}
+              onScegli={(g) => setModulo((m) => ({
+                ...m, gioco_id: g.id, gioco: g,
+                posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
+              }))} />
           )}
         </div>
 
@@ -702,57 +700,33 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         </div>
 
         <div className="campo">
-          <label htmlFor="t-dim">Chi spiega il gioco</label>
-          <input id="t-dim" value={modulo.dimostratore_nome}
-            onChange={(e) => setModulo({ ...modulo, dimostratore_nome: e.target.value, dimostratore_id: null })}
-            placeholder="Nome del dimostratore" />
-
-          {disponibili.length > 0 && !modulo.dimostratore_id && (
+          <label>Chi spiega il gioco</label>
+          {dimScelto ? (
             <>
-              <p className="aiuto">Si sono dati disponibili per questa serata:</p>
               <div className="pastiglie-persone">
-                {disponibili.map((d) => (
-                  <button key={d.profilo_id}
-                    className={`pastiglia-nome${d.stato === 'forse' ? ' ospite' : ''}`}
-                    onClick={() => setModulo({
-                      ...modulo, dimostratore_id: d.profilo_id, dimostratore_nome: daMostrare(d.profili),
-                    })}>
-                    {daMostrare(d.profili)}{d.stato === 'forse' ? ' (forse)' : ''}
-                  </button>
-                ))}
+                <button className="pastiglia-nome nuovo" aria-label="Cambia dimostratore"
+                  onClick={() => setModulo({
+                    ...modulo, dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_nome: '',
+                  })}>
+                  {modulo.dimostratore_nome || 'Dimostratore'} ✕
+                </button>
               </div>
+              <p className="aiuto">
+                {modulo.dimostratore_id
+                  ? 'Ha un account: la partita entrerà nelle sue statistiche.'
+                  : modulo.dimostratore_ospite_id
+                    ? 'Senza account: quando si registra e si collega, il tavolo passa a lui.'
+                    : 'Nome scritto a mano, non collegato a nessuno: toccalo e sceglilo fra i dimostratori.'}
+              </p>
             </>
-          )}
-
-          <input className="campo-cerca" value={cercaDim}
-            onChange={(e) => setCercaDim(e.target.value)}
-            placeholder="…oppure cercalo fra chi ha un account" />
-
-          {cercaDim.trim() && (
-            <div className="pastiglie-persone">
-              {persone
-                .filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(cercaDim.toLowerCase()))
-                .sort((a, b) => Number(b.dimostratore) - Number(a.dimostratore))
-                .slice(0, 8)
-                .map((p) => (
-                  <button key={p.id} className="pastiglia-nome"
-                    onClick={() => {
-                      setModulo({ ...modulo, dimostratore_id: p.id, dimostratore_nome: daMostrare(p) })
-                      setCercaDim('')
-                    }}>
-                    {daMostrare(p)}
-                    {p.dimostratore && <span className="stellina" aria-label="dimostratore"> ★</span>}
-                  </button>
-                ))}
-            </div>
-          )}
-
-          {modulo.dimostratore_id && (
-            <p className="aiuto">
-              Collegato a un account: la partita entrerà nelle sue statistiche.{' '}
-              <button className="bottone-piatto"
-                onClick={() => setModulo({ ...modulo, dimostratore_id: null })}>scollega</button>
-            </p>
+          ) : (
+            <CercaDimostratore profilo={profilo} disponibili={disponibili} onErrore={setErrore}
+              onScegli={(p) => setModulo((m) => ({
+                ...m,
+                dimostratore_nome: p.nome,
+                dimostratore_id: p.tipo === 'profilo' ? p.id : null,
+                dimostratore_ospite_id: p.tipo === 'ospite' ? p.id : null,
+              }))} />
           )}
 
           <label className="consenso">

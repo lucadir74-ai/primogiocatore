@@ -134,7 +134,8 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
   const senzaBgg = [...perNome.values()]
 
   for (const blocco of aBlocchi(conBgg, 200)) {
-    const { error } = await supabase.from('giochi').upsert(blocco, { onConflict: 'bgg_id' })
+    // I giochi già presenti non si toccano: possono essere di altri.
+    const { error } = await supabase.from('giochi').upsert(blocco, { onConflict: 'bgg_id', ignoreDuplicates: true })
     if (error) throw error
   }
   for (const g of senzaBgg) {

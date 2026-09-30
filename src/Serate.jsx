@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.4.0 - 202609282200
+// v4.5.0 - 202609301500
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
+import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 
 const GIORNI_CORTI = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
@@ -64,7 +65,6 @@ export default function Serate({ profilo }) {
   const [trovatiSerata, setTrovatiSerata] = useState([])
   const [inScelta, setInScelta] = useState(null)  // persona di cui segno la risposta
   const [assegna, setAssegna] = useState(null)    // modulo del tavolo da assegnare
-  const [giochiTrovati, setGiochiTrovati] = useState([])
   const [bozzeNote, setBozzeNote] = useState({})  // id disponibilità -> testo
   const [pannello, setPannello] = useState(false) // elenco dimostratori aperto
   const [cercaDim, setCercaDim] = useState('')
@@ -120,20 +120,6 @@ export default function Serate({ profilo }) {
     const attesa = setTimeout(async () => setTrovatiSerata(await cercaNonDimostratori(cercaSerata)), 250)
     return () => clearTimeout(attesa)
   }, [cercaSerata])
-
-  // Il gioco del tavolo si cerca nel catalogo condiviso.
-  useEffect(() => {
-    const q = (assegna?.cercaGioco || '').trim().replace(/[%*]/g, '')
-    if (q.length < 2) { setGiochiTrovati([]); return }
-    const attesa = setTimeout(async () => {
-      const { data } = await supabase.from('giochi')
-        .select('id, nome, immagine_url, max_giocatori')
-        .ilike('nome', `%${q}%`)
-        .order('nome').limit(8)
-      setGiochiTrovati(data || [])
-    }, 250)
-    return () => clearTimeout(attesa)
-  }, [assegna?.cercaGioco])
 
   async function nomina(persona, valore) {
     setErrore(''); setMessaggio('')
@@ -206,6 +192,7 @@ export default function Serate({ profilo }) {
     const { error: e2 } = await supabase.from('iscrizioni_tavolo').insert({
       tavolo_id: data.id,
       [ospite ? 'ospite_id' : 'utente_id']: a.persona.id,
+      nome_visibile: a.persona.nome,
       ruolo: 'dimostratore',
       stato: 'confermato',
     })
@@ -755,7 +742,7 @@ export default function Serate({ profilo }) {
                           {!aperto ? (
                             <button className="bottone-piatto"
                               onClick={() => setAssegna({
-                                persona: pers, gioco: null, cercaGioco: '',
+                                persona: pers, gioco: null,
                                 ora: serataScelta.ora_inizio.slice(0, 5), posti: '', pubblica: true,
                               })}>
                               {suoi.length ? 'Assegna un altro tavolo' : 'Assegna un tavolo'}
@@ -771,25 +758,11 @@ export default function Serate({ profilo }) {
                                   </button>
                                 </div>
                               ) : (
-                                <>
-                                  <input className="campo-cerca" autoFocus value={assegna.cercaGioco}
-                                    onChange={(e) => setAssegna({ ...assegna, cercaGioco: e.target.value })}
-                                    placeholder="Cerca il gioco…" aria-label="Cerca il gioco" />
-                                  <div className="pastiglie-persone">
-                                    {giochiTrovati.map((g) => (
-                                      <button key={g.id} className="pastiglia-nome"
-                                        onClick={() => setAssegna({
-                                          ...assegna, gioco: g, cercaGioco: '',
-                                          posti: assegna.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
-                                        })}>
-                                        {g.nome}
-                                      </button>
-                                    ))}
-                                  </div>
-                                  {assegna.cercaGioco.trim().length >= 2 && giochiTrovati.length === 0 && (
-                                    <p className="aiuto">Nessun gioco con questo nome. Aggiungilo prima dalla scheda Giochi.</p>
-                                  )}
-                                </>
+                                <CercaGiocoBgg profilo={profilo} autoFocus
+                                  onScegli={(g) => setAssegna((x) => ({
+                                    ...x, gioco: g,
+                                    posti: x.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
+                                  }))} />
                               )}
 
                               <div className="riga-campi">

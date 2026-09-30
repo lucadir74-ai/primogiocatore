@@ -1,4 +1,4 @@
-// Primo Giocatore v4.8.0 - 202609202300
+// Primo Giocatore v4.9.0 - 202609301500
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -16,6 +16,18 @@ import Luoghi from './Luoghi.jsx'
 import GiochiDoppi from './GiochiDoppi.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import Organizzatori from './Organizzatori.jsx'
+import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
+
+// Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
+const SEZIONI_PROFILO = [
+  ['profilo', 'Profilo'],
+  ['dati', 'Dati e import'],
+  ['ospiti', 'Ospiti'],
+  ['luoghi', 'Luoghi'],
+  ['giochi', 'Giochi doppi', true],   // mostra tutto il catalogo
+  ['ruoli', 'Ruoli', true],   // solo per chi organizza
+]
+const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
 
 /* Icone: tracciati semplici, si colorano da sole col testo. */
 const ICONE = {
@@ -512,6 +524,22 @@ export default function App() {
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
   const [cambioPassword, setCambioPassword] = useState(false)
+  const [sezioneProfilo, setSezioneProfilo] = useState(() => {
+    try { return localStorage.getItem(CHIAVE_SEZIONE) || 'profilo' } catch { return 'profilo' }
+  })
+  const [daApprovare, setDaApprovare] = useState(0)
+
+  function apriSezione(id) {
+    setSezioneProfilo(id)
+    try { localStorage.setItem(CHIAVE_SEZIONE, id) } catch { /* resta solo per ora */ }
+    window.scrollTo({ top: 0 })
+  }
+
+  // Chi organizza vede quante richieste "sono io" aspettano.
+  useEffect(() => {
+    if (!profilo) return
+    contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)
+  }, [profilo?.id, scheda])
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -604,6 +632,20 @@ export default function App() {
             ))}
           </nav>
 
+          {scheda !== 'profilo' && <SeiTu profilo={profilo} compatto />}
+
+          {scheda !== 'profilo' && daApprovare > 0 && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {daApprovare === 1
+                  ? 'C\u2019è una richiesta «sono io» da guardare.'
+                  : `Ci sono ${daApprovare} richieste «sono io» da guardare.`}{' '}
+                <button className="bottone-piatto"
+                  onClick={() => { apriSezione('ospiti'); setScheda('profilo') }}>Guarda</button>
+              </p>
+            </div>
+          )}
+
           {scheda === 'partita' ? (
             <Partita
               key={partitaId || 'nuova'}
@@ -657,14 +699,43 @@ export default function App() {
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : (
-            <>
-              <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
-              <Organizzatori profilo={profilo} />
-              <UnisciOspiti profilo={profilo} />
-              <Luoghi profilo={profilo} />
-              <GiochiDoppi profilo={profilo} />
-              <Dati profilo={profilo} />
-            </>
+            (() => {
+              const sezioni = SEZIONI_PROFILO.filter(([, , soloOrg]) => !soloOrg || profilo.organizzatore)
+              const attiva = sezioni.some(([id]) => id === sezioneProfilo) ? sezioneProfilo : 'profilo'
+              return (
+                <>
+                  <div className="menu-profilo">
+                    <nav className="sottoschede" aria-label="Sezioni del profilo">
+                      {sezioni.map(([id, etichetta]) => (
+                        <button key={id} className={attiva === id ? 'attiva' : ''}
+                          aria-current={attiva === id ? 'page' : undefined}
+                          onClick={() => apriSezione(id)}>
+                          {etichetta}
+                          {id === 'ospiti' && daApprovare > 0 && <span className="stellina"> ●</span>}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+
+                  {attiva === 'profilo' ? (
+                    <>
+                      <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
+                      <SeiTu profilo={profilo} />
+                    </>
+                  ) : attiva === 'dati' ? (
+                    <Dati profilo={profilo} />
+                  ) : attiva === 'ospiti' ? (
+                    <UnisciOspiti profilo={profilo} />
+                  ) : attiva === 'luoghi' ? (
+                    <Luoghi profilo={profilo} />
+                  ) : attiva === 'giochi' ? (
+                    <GiochiDoppi profilo={profilo} />
+                  ) : (
+                    <Organizzatori profilo={profilo} />
+                  )}
+                </>
+              )
+            })()
           )}
         </>
       )}
