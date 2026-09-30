@@ -1,10 +1,11 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.10.0 - 202609301600
+// v4.11.0 - 202609302330
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { impronta } from './impronta'
 import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
+import Cronometro from './Cronometro.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
@@ -28,13 +29,6 @@ function cancellaBozza() {
 }
 
 // Orologio della partita: ore, minuti e secondi, come 0:12:34.
-function orologio(secondi) {
-  const o = Math.floor(secondi / 3600)
-  const m = Math.floor((secondi % 3600) / 60)
-  const s = secondi % 60
-  return `${o}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
 // "2026-09-14T21:30" per il campo data/ora del browser.
 function perCampo(d) {
   const x = new Date(d)
@@ -783,25 +777,15 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           </div>
 
           <div className="campo">
-            <label htmlFor="minuti">Durata</label>
-            <div className="barra-durata">
-              <button
-                className={`tasto-timer${inCorso ? ' attivo' : ''}`}
-                onClick={avviaOFerma}
-                aria-label={inCorso ? 'Ferma il timer' : 'Avvia il timer'}
-              >
-                {inCorso ? '❚❚' : '▶'}
-              </button>
-              <span className={`orologio${inCorso ? ' acceso' : ''}`}>{orologio(secondi)}</span>
-              {secondi > 0 && (
-                <button className="azzera-timer" onClick={azzeraTimer}
-                  aria-label="Azzera il timer">↺</button>
-              )}
-              <span className="separatore-durata" aria-hidden="true" />
-              <input id="minuti" type="number" min="1" className="mini minuti" value={minuti}
-                onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
-              <span className="unita">min</span>
+            <label>Durata</label>
+            <Cronometro secondi={secondi} inCorso={inCorso}
+              onAvviaFerma={avviaOFerma} onAzzera={azzeraTimer} />
+            <div className="riga-minuti">
+              <label htmlFor="minuti">Minuti da registrare</label>
+              <input id="minuti" type="number" min="1" inputMode="numeric" className="mini minuti"
+                value={minuti} onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
             </div>
+            <p className="aiuto">Il cronometro li aggiorna da solo; puoi anche scriverli a mano.</p>
           </div>
 
           {gioco.usa_fazioni && (
