@@ -1580,3 +1580,37 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   text-align: right;
   padding-right: 0.5rem;
 }
+
+/* ---------- Serata: una riga per persona, compatta ---------- */
+
+.riga-serata {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nome-serata {
+  font: inherit;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bottone-assegna {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex: 0 0 auto;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--bordo-forte);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  cursor: pointer;
+  white-space: nowrap;
+}

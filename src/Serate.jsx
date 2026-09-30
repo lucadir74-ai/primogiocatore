@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.6.0 - 202609301800
+// v4.7.0 - 202609302130
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -67,6 +67,8 @@ export default function Serate({ profilo }) {
   const [inScelta, setInScelta] = useState(null)  // persona di cui segno la risposta
   const [assegna, setAssegna] = useState(null)    // modulo del tavolo da assegnare
   const [bozzeNote, setBozzeNote] = useState({})  // id disponibilità -> testo
+  const [rigaAperta, setRigaAperta] = useState(null)  // chiave della persona con la nota aperta
+  const [aggiungendo, setAggiungendo] = useState(false) // ricerca per aggiungere qualcuno
   const [pannello, setPannello] = useState(false) // elenco dimostratori aperto
   const [cercaDim, setCercaDim] = useState('')
   const [trovati, setTrovati] = useState([])
@@ -154,6 +156,7 @@ export default function Serate({ profilo }) {
     if (!giaDimostratore && !(await nomina(persona, true))) return
     setInScelta(persona)
     setCercaSerata('')
+    setAggiungendo(false)
   }
 
   async function aggiungiDaSerata() {
@@ -161,6 +164,7 @@ export default function Serate({ profilo }) {
     if (!persona) return
     setInScelta(persona)
     setCercaSerata('')
+    setAggiungendo(false)
   }
 
   async function creaTavolo(serata) {
@@ -555,6 +559,7 @@ export default function Serate({ profilo }) {
 
               {serataScelta.note && <p className="aiuto note-partita">{serataScelta.note}</p>}
 
+              {!(profilo.organizzatore && !serataScelta.annullata) && <>
               {!serataScelta.annullata && (
                 <>
                   <label>La tua disponibilità</label>
@@ -617,6 +622,8 @@ export default function Serate({ profilo }) {
                 </ul>
               )}
 
+              </>}
+
               <h4 className="titolo-sezione">
                 Chi c&rsquo;è <span className="conteggio">{(serataScelta.disponibilita || []).length}</span>
               </h4>
@@ -646,9 +653,22 @@ export default function Serate({ profilo }) {
 
                 return (
                   <>
-                    <input className="campo-cerca" value={cercaSerata}
-                      onChange={(e) => setCercaSerata(e.target.value)}
-                      placeholder="Cerca chi c'è…" aria-label="Cerca un dimostratore" />
+                    {aggiungendo || risposte.length === 0 ? (
+                      <div className="riga-bottoni" style={{ alignItems: 'center' }}>
+                        <input className="campo-cerca" style={{ flex: 1, margin: 0 }} value={cercaSerata}
+                          autoFocus={aggiungendo}
+                          onChange={(e) => setCercaSerata(e.target.value)}
+                          placeholder="Chi vuoi aggiungere?" aria-label="Cerca un dimostratore" />
+                        {aggiungendo && (
+                          <button className="bottone-piatto"
+                            onClick={() => { setAggiungendo(false); setCercaSerata('') }}>chiudi</button>
+                        )}
+                      </div>
+                    ) : (
+                      <button className="bottone-piatto" onClick={() => setAggiungendo(true)}>
+                        + Aggiungi qualcuno alla serata
+                      </button>
+                    )}
 
                     {q.length >= 2 && (
                       <div className="pastiglie-persone">
@@ -699,56 +719,64 @@ export default function Serate({ profilo }) {
                     )}
 
                     {disponibili.length === 0 ? (
-                      <p className="aiuto">Nessun disponibile. Cerca un nome qui sopra.</p>
+                      <p className="aiuto">Nessuno ancora. Scrivi un nome qui sopra per aggiungerlo.</p>
                     ) : disponibili.map((d) => {
                       const pers = personaDi(d)
                       const suoi = tavoliDi(pers)
                       const aperto = assegna?.persona.chiave === pers.chiave
                       return (
                         <div key={d.id} style={RIGA}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                            <strong>
-                              {pers.nome}
+                          <div className="riga-serata">
+                            <button type="button" className="nome-serata"
+                              onClick={() => setRigaAperta(rigaAperta === pers.chiave ? null : pers.chiave)}
+                              aria-expanded={rigaAperta === pers.chiave}>
+                              <strong>{pers.nome}</strong>
                               {pers.tipo === 'ospite' && <span className="anno"> · senza account</span>}
-                            </strong>
+                              {suoi.length > 0 && (
+                                <span className="anno block">
+                                  {suoi.map((t) =>
+                                    `${t.giochi?.nome || t.titolo || 'Tavolo'} alle ${new Date(t.inizio)
+                                      .toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
+                                    + (t.pubblicato === false ? ' (bozza)' : ''),
+                                  ).join(' · ')}
+                                </span>
+                              )}
+                              {d.note && rigaAperta !== pers.chiave && (
+                                <span className="anno block">{d.note}</span>
+                              )}
+                            </button>
                             <button className={`pastiglia-stato piccola ${d.stato}`}
                               style={{ cursor: 'pointer' }}
                               onClick={() => setInScelta(pers)}
                               aria-label={`Cambia la risposta di ${pers.nome}`}>
                               {etichettaDi(d.stato)}
                             </button>
+                            {!aperto && (
+                              <button className="bottone-assegna"
+                                onClick={() => setAssegna({
+                                  persona: pers, gioco: null,
+                                  ora: serataScelta.ora_inizio.slice(0, 5), posti: '', pubblica: true,
+                                })}>
+                                {suoi.length ? '+ tavolo' : 'Assegna tavolo'}
+                              </button>
+                            )}
                           </div>
 
-                          <input
-                            className="campo-cerca"
-                            style={{ marginTop: '0.4rem' }}
-                            value={bozzeNote[d.id] ?? d.note ?? ''}
-                            onChange={(e) => setBozzeNote({ ...bozzeNote, [d.id]: e.target.value })}
-                            onBlur={() => salvaNota(d.id)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="Nota: arriva alle 22…"
-                            aria-label={`Nota per ${pers.nome}`}
-                          />
-
-                          {suoi.length > 0 && (
-                            <p className="anno" style={{ margin: '0.4rem 0 0' }}>
-                              {suoi.map((t) =>
-                                `${t.giochi?.nome || t.titolo || 'Tavolo'} alle ${new Date(t.inizio)
-                                  .toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
-                                + (t.pubblicato === false ? ' (bozza)' : ''),
-                              ).join(' · ')}
-                            </p>
+                          {rigaAperta === pers.chiave && (
+                            <input
+                              className="campo-cerca"
+                              style={{ marginTop: '0.4rem' }}
+                              autoFocus
+                              value={bozzeNote[d.id] ?? d.note ?? ''}
+                              onChange={(e) => setBozzeNote({ ...bozzeNote, [d.id]: e.target.value })}
+                              onBlur={() => salvaNota(d.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                              placeholder="Nota: arriva alle 22…"
+                              aria-label={`Nota per ${pers.nome}`}
+                            />
                           )}
 
-                          {!aperto ? (
-                            <button className="bottone-piatto"
-                              onClick={() => setAssegna({
-                                persona: pers, gioco: null,
-                                ora: serataScelta.ora_inizio.slice(0, 5), posti: '', pubblica: true,
-                              })}>
-                              {suoi.length ? 'Assegna un altro tavolo' : 'Assegna un tavolo'}
-                            </button>
-                          ) : (
+                          {!aperto ? null : (
                             <div style={{ marginTop: '0.5rem' }}>
                               {assegna.gioco ? (
                                 <div className="pastiglie-persone">
@@ -812,6 +840,63 @@ export default function Serate({ profilo }) {
                         ))}
                       </p>
                     )}
+                    {tavoliDelGiorno(scelto).length > 0 && <h4 className="titolo-sezione">
+                      Tavoli previsti{' '}
+                      <span className="conteggio">{tavoliDelGiorno(scelto).length}</span>
+                    </h4>}
+                    {tavoliDelGiorno(scelto).length === 0 ? null : (
+                      <ul className="elenco">
+                        {tavoliDelGiorno(scelto).map((t) => {
+                          const iscritti = (t.iscrizioni_tavolo || [])
+                            .filter((i) => i.stato === 'confermato').length
+                          return (
+                            <li key={t.id}>
+                              <div className="gioco">
+                                {t.giochi?.immagine_url && (
+                                  <img src={t.giochi.immagine_url} alt="" className="copertina" />
+                                )}
+                                <div className="nome-giocatore">
+                                  <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+                                  <span className="anno block">
+                                    {new Date(t.inizio).toLocaleTimeString('it-IT', {
+                                      hour: '2-digit', minute: '2-digit',
+                                    })}
+                                    {t.dimostratore_nome ? ` · ${t.dimostratore_nome}` : ''}
+                                    {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="anno">
+                                {iscritti}{t.posti_max ? `/${t.posti_max}` : ''}
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+
+
+                    {!serataScelta.annullata && (
+                      <>
+                        <h4 className="titolo-sezione">La tua disponibilità</h4>
+                        <div className="scelte-disponibilita">
+                          {STATI.map((st) => {
+                            const mia = (serataScelta.disponibilita || [])
+                              .find((d) => d.profilo_id === profilo.id)
+                            return (
+                              <button key={st.id}
+                                className={`pastiglia-stato ${st.id}${mia?.stato === st.id ? ' scelto' : ''}`}
+                                onClick={() => (mia?.stato === st.id
+                                  ? ritira(serataScelta.id)
+                                  : dai(serataScelta.id, st.id))}>
+                                {st.etichetta}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+
                   </>
                 )
               })() : (serataScelta.disponibilita || []).length === 0 ? (
