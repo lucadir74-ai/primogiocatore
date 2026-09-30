@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.10.0 - 202609302100
+// v2.11.0 - 202609302200
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -24,7 +24,7 @@ const perCampo = (d) => {
 }
 
 const VUOTO = {
-  titolo: '', gioco_id: null, gioco: null, luogo: '', inizio: '', posti_min: '', posti_max: '',
+  titolo: '', gioco_id: null, gioco: null, libero: false, luogo: '', inizio: '', posti_min: '', posti_max: '',
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
   dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
@@ -98,6 +98,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       titolo: t.titolo || '',
       gioco_id: t.gioco_id,
       gioco: t.giochi || null,
+      // Senza gioco è un tavolo libero: ognuno porta o sceglie sul momento.
+      libero: !t.gioco_id,
       luogo: t.luoghi?.nome || '',
       inizio: perCampo(t.inizio),
       posti_min: t.posti_min || '',
@@ -148,15 +150,15 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   async function salva() {
     setErrore(''); setMessaggio('')
-    if (!modulo.gioco_id) { setErrore('Scegli il gioco.'); return }
+    if (!modulo.gioco_id && !modulo.libero) { setErrore('Scegli il gioco, oppure segna «tavolo libero».'); return }
     if (!modulo.inizio) { setErrore('Metti data e ora.'); return }
 
     try {
       const luogoId = await trovaOCreaLuogo(modulo.luogo, profilo.id, 'sede')
 
       const campi = {
-        titolo: modulo.titolo.trim() || null,
-        gioco_id: modulo.gioco_id,
+        titolo: modulo.titolo.trim() || (modulo.libero ? 'Tavolo libero' : null),
+        gioco_id: modulo.libero ? null : modulo.gioco_id,
         luogo_id: luogoId,
         inizio: new Date(modulo.inizio).toISOString(),
         posti_min: modulo.posti_min ? Number(modulo.posti_min) : null,
@@ -188,7 +190,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
       }
 
       await sistemaDimostratore(tavoloId, campi)
-      await recuperaImmagineGrande(modulo.gioco_id)
+      if (!modulo.libero && modulo.gioco_id) await recuperaImmagineGrande(modulo.gioco_id)
       setModulo(null)
       carica()
     } catch (e) {
@@ -634,7 +636,14 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
         <div className="campo">
           <label>Gioco</label>
-          {giocoScelto ? (
+          {modulo.libero ? (
+            <div className="pastiglie-persone">
+              <button className="pastiglia-nome nuovo" aria-label="Scegli un gioco"
+                onClick={() => setModulo({ ...modulo, libero: false })}>
+                Tavolo libero ✕
+              </button>
+            </div>
+          ) : giocoScelto ? (
             <div className="gioco-scelto">
               {giocoScelto.immagine_url && <img src={giocoScelto.immagine_url} alt="" className="copertina" />}
               <div>
@@ -646,11 +655,19 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
               </div>
             </div>
           ) : (
-            <CercaGiocoBgg profilo={profilo}
-              onScegli={(g) => setModulo((m) => ({
-                ...m, gioco_id: g.id, gioco: g,
-                posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
-              }))} />
+            <>
+              <div className="pastiglie-persone">
+                <button className="pastiglia-nome ospite"
+                  onClick={() => setModulo({ ...modulo, libero: true, gioco_id: null, gioco: null })}>
+                  Tavolo libero (senza gioco)
+                </button>
+              </div>
+              <CercaGiocoBgg profilo={profilo}
+                onScegli={(g) => setModulo((m) => ({
+                  ...m, gioco_id: g.id, gioco: g,
+                  posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
+                }))} />
+            </>
           )}
         </div>
 
@@ -826,7 +843,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           <button className="bottone-piatto" onClick={() => setLocandina(t)}>Locandina</button>
           {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
           {mio && <button className="bottone-piatto" onClick={() => apriModifica(t)}>Modifica</button>}
-          {mio && !t.partita_id && new Date(t.inizio) < new Date() && (
+          {mio && t.gioco_id && !t.partita_id && new Date(t.inizio) < new Date() && (
             <button className="bottone-piatto" onClick={() => registraPartita(t)}>Registra partita</button>
           )}
           {t.partita_id && (

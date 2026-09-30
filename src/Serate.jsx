@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.7.0 - 202609302130
+// v4.8.0 - 202609302200
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -170,7 +170,7 @@ export default function Serate({ profilo }) {
   async function creaTavolo(serata) {
     setErrore(''); setMessaggio('')
     const a = assegna
-    if (!a.gioco) { setErrore('Scegli il gioco.'); return }
+    if (!a.gioco && !a.libero) { setErrore('Scegli il gioco, oppure segna «tavolo libero».'); return }
 
     // La data è quella della serata, l'ora quella scelta: il browser la
     // interpreta come ora italiana e la converte per il database.
@@ -178,7 +178,8 @@ export default function Serate({ profilo }) {
     const ospite = a.persona.tipo === 'ospite'
 
     const { data, error } = await supabase.from('tavoli').insert({
-      gioco_id: a.gioco.id,
+      gioco_id: a.libero ? null : a.gioco.id,
+      titolo: a.libero ? 'Tavolo libero' : null,
       host_id: profilo.id,
       inizio: inizio.toISOString(),
       posti_max: a.posti ? Number(a.posti) : null,
@@ -205,7 +206,7 @@ export default function Serate({ profilo }) {
     setAssegna(null)
     setMessaggio(e2
       ? `Tavolo creato, ma ${a.persona.nome} non è stato iscritto come giocatore. Aprilo da Tavoli e salvalo.`
-      : `Tavolo di ${a.gioco.nome} assegnato a ${a.persona.nome}${a.pubblica ? ' e pubblicato' : ' (bozza)'}.`)
+      : `${a.libero ? 'Tavolo libero' : `Tavolo di ${a.gioco.nome}`} assegnato a ${a.persona.nome}${a.pubblica ? ' e pubblicato' : ' (bozza)'}.`)
     carica()
   }
 
@@ -778,7 +779,15 @@ export default function Serate({ profilo }) {
 
                           {!aperto ? null : (
                             <div style={{ marginTop: '0.5rem' }}>
-                              {assegna.gioco ? (
+                              {assegna.libero ? (
+                                <div className="pastiglie-persone">
+                                  <button className="pastiglia-nome nuovo"
+                                    onClick={() => setAssegna({ ...assegna, libero: false })}
+                                    aria-label="Scegli un gioco">
+                                    Tavolo libero ✕
+                                  </button>
+                                </div>
+                              ) : assegna.gioco ? (
                                 <div className="pastiglie-persone">
                                   <button className="pastiglia-nome nuovo"
                                     onClick={() => setAssegna({ ...assegna, gioco: null })}
@@ -787,11 +796,19 @@ export default function Serate({ profilo }) {
                                   </button>
                                 </div>
                               ) : (
-                                <CercaGiocoBgg profilo={profilo} autoFocus
-                                  onScegli={(g) => setAssegna((x) => ({
-                                    ...x, gioco: g,
-                                    posti: x.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
-                                  }))} />
+                                <>
+                                  <div className="pastiglie-persone">
+                                    <button className="pastiglia-nome ospite"
+                                      onClick={() => setAssegna({ ...assegna, libero: true, gioco: null })}>
+                                      Tavolo libero (senza gioco)
+                                    </button>
+                                  </div>
+                                  <CercaGiocoBgg profilo={profilo}
+                                    onScegli={(g) => setAssegna((x) => ({
+                                      ...x, gioco: g,
+                                      posti: x.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
+                                    }))} />
+                                </>
                               )}
 
                               <div className="campo">
