@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.9.0 - 202609302000
+// v2.10.0 - 202609302100
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -793,7 +793,11 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   const scheda = (t) => {
     const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
-    const mio = t.host_id === profilo.id || profilo.organizzatore
+    // Chi l'ha pubblicato, chi organizza e il dimostratore del tavolo lo
+    // gestiscono: iscritti, modifiche, partita. Eliminarlo no, il
+    // dimostratore non può.
+    const proprietario = t.host_id === profilo.id || profilo.organizzatore
+    const mio = proprietario || t.dimostratore_id === profilo.id
     return (
       <div className="tavolo-scheda" key={t.id}>
         <div className="tavolo-testa">
@@ -833,7 +837,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           {mio && t.stato === 'aperto' && (
             <button className="bottone-piatto" onClick={() => cambiaStato(t, 'annullato')}>Annulla</button>
           )}
-          {mio && <button className="bottone-piatto pericolo" onClick={() => elimina(t)}>Elimina</button>}
+          {proprietario && <button className="bottone-piatto pericolo" onClick={() => elimina(t)}>Elimina</button>}
         </div>
       </div>
     )
