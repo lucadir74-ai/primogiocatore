@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.8.0 - 202609302200
+// v4.9.0 - 202609302230
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import { SceltaOra } from './SceltaQuando.jsx'
+import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 
 const GIORNI_CORTI = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
@@ -600,8 +601,8 @@ export default function Serate({ profilo }) {
                     return (
                       <li key={t.id}>
                         <div className="gioco">
-                          {t.giochi?.immagine_url && (
-                            <img src={t.giochi.immagine_url} alt="" className="copertina" />
+                          {copertinaTavolo(t) && (
+                            <img src={copertinaTavolo(t)} alt="" className="copertina" />
                           )}
                           <div className="nome-giocatore">
                             <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
@@ -780,12 +781,15 @@ export default function Serate({ profilo }) {
                           {!aperto ? null : (
                             <div style={{ marginTop: '0.5rem' }}>
                               {assegna.libero ? (
-                                <div className="pastiglie-persone">
-                                  <button className="pastiglia-nome nuovo"
-                                    onClick={() => setAssegna({ ...assegna, libero: false })}
-                                    aria-label="Scegli un gioco">
-                                    Tavolo libero ✕
-                                  </button>
+                                <div className="gioco-scelto">
+                                  <img src={IMMAGINE_TAVOLO_LIBERO} alt="" className="copertina" />
+                                  <div>
+                                    <strong>Tavolo libero</strong>
+                                    <p className="aiuto">
+                                      <button className="bottone-piatto"
+                                        onClick={() => setAssegna({ ...assegna, libero: false })}>cambia</button>
+                                    </p>
+                                  </div>
                                 </div>
                               ) : assegna.gioco ? (
                                 <div className="pastiglie-persone">
@@ -796,19 +800,12 @@ export default function Serate({ profilo }) {
                                   </button>
                                 </div>
                               ) : (
-                                <>
-                                  <div className="pastiglie-persone">
-                                    <button className="pastiglia-nome ospite"
-                                      onClick={() => setAssegna({ ...assegna, libero: true, gioco: null })}>
-                                      Tavolo libero (senza gioco)
-                                    </button>
-                                  </div>
-                                  <CercaGiocoBgg profilo={profilo}
-                                    onScegli={(g) => setAssegna((x) => ({
-                                      ...x, gioco: g,
-                                      posti: x.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
-                                    }))} />
-                                </>
+                                <CercaGiocoBgg profilo={profilo}
+                                  onLibero={() => setAssegna((x) => ({ ...x, libero: true, gioco: null }))}
+                                  onScegli={(g) => setAssegna((x) => ({
+                                    ...x, gioco: g,
+                                    posti: x.posti || (g.max_giocatori ? String(g.max_giocatori) : ''),
+                                  }))} />
                               )}
 
                               <div className="campo">
@@ -869,8 +866,8 @@ export default function Serate({ profilo }) {
                           return (
                             <li key={t.id}>
                               <div className="gioco">
-                                {t.giochi?.immagine_url && (
-                                  <img src={t.giochi.immagine_url} alt="" className="copertina" />
+                                {copertinaTavolo(t) && (
+                                  <img src={copertinaTavolo(t)} alt="" className="copertina" />
                                 )}
                                 <div className="nome-giocatore">
                                   <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>

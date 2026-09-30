@@ -1614,3 +1614,20 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   cursor: pointer;
   white-space: nowrap;
 }
+
+/* ---------- Tavolo libero ---------- */
+
+/* La scelta "Tavolo libero" deve sembrare un tasto: riquadro con bordo. */
+.opzione-riquadro {
+  border: 1px solid var(--bordo-forte);
+  border-radius: 12px;
+  padding: 0 0.5rem;
+  margin: 0;
+}
+.opzione-riquadro li { border: 0; }
+
+/* Il logo non va ritagliato come una copertina. */
+.copertina-generica {
+  object-fit: contain;
+  background: #131C26;
+}

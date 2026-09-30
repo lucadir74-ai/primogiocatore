@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.3.0 - 202609221700
+// v4.4.0 - 202609302230
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { copertinaTavolo } from './immagini'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -121,11 +122,11 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
   return (
     <div className="scheda">
-      {(tavolo.giochi?.immagine_grande || tavolo.giochi?.immagine_url) && (
+      {copertinaTavolo(tavolo, true) && (
         <img
-          src={tavolo.giochi.immagine_grande || tavolo.giochi.immagine_url}
+          src={copertinaTavolo(tavolo, true)}
           alt=""
-          className="copertina-grande"
+          className={`copertina-grande${tavolo.giochi ? '' : ' copertina-generica'}`}
         />
       )}
 

@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.11.0 - 202609302200
+// v2.12.0 - 202609302230
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -11,6 +11,7 @@ import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
 import { trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
+import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -637,11 +638,15 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         <div className="campo">
           <label>Gioco</label>
           {modulo.libero ? (
-            <div className="pastiglie-persone">
-              <button className="pastiglia-nome nuovo" aria-label="Scegli un gioco"
-                onClick={() => setModulo({ ...modulo, libero: false })}>
-                Tavolo libero ✕
-              </button>
+            <div className="gioco-scelto">
+              <img src={IMMAGINE_TAVOLO_LIBERO} alt="" className="copertina" />
+              <div>
+                <strong>Tavolo libero</strong>
+                <p className="aiuto">
+                  <button className="bottone-piatto"
+                    onClick={() => setModulo({ ...modulo, libero: false })}>cambia</button>
+                </p>
+              </div>
             </div>
           ) : giocoScelto ? (
             <div className="gioco-scelto">
@@ -655,19 +660,12 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
               </div>
             </div>
           ) : (
-            <>
-              <div className="pastiglie-persone">
-                <button className="pastiglia-nome ospite"
-                  onClick={() => setModulo({ ...modulo, libero: true, gioco_id: null, gioco: null })}>
-                  Tavolo libero (senza gioco)
-                </button>
-              </div>
-              <CercaGiocoBgg profilo={profilo}
-                onScegli={(g) => setModulo((m) => ({
-                  ...m, gioco_id: g.id, gioco: g,
-                  posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
-                }))} />
-            </>
+            <CercaGiocoBgg profilo={profilo}
+              onLibero={() => setModulo((m) => ({ ...m, libero: true, gioco_id: null, gioco: null }))}
+              onScegli={(g) => setModulo((m) => ({
+                ...m, gioco_id: g.id, gioco: g,
+                posti_max: m.posti_max || (g.max_giocatori ? String(g.max_giocatori) : ''),
+              }))} />
           )}
         </div>
 
@@ -818,7 +816,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
     return (
       <div className="tavolo-scheda" key={t.id}>
         <div className="tavolo-testa">
-          {t.giochi?.immagine_url && <img src={t.giochi.immagine_url} alt="" className="copertina" />}
+          {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
           <div className="nome-giocatore">
             <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
             <span className="anno block">{quando(t.inizio)}</span>

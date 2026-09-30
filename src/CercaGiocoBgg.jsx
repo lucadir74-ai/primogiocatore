@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del gioco di un tavolo
-// v1.2.0 - 202609302000
+// v1.3.0 - 202609302230
 //
 // Il gioco di un tavolo non viene dalla collezione di chi lo pubblica:
 // il gioco lo porta il dimostratore. Mentre scrivi cerca fra tutti i
@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { assicuraGiocoBgg } from './giochiMiei'
+import { IMMAGINE_TAVOLO_LIBERO } from './immagini'
 
 const CAMPI = 'id, bgg_id, nome, anno, immagine_url, max_giocatori'
 
@@ -46,7 +47,8 @@ function Voce({ gioco, onClick, disabled, nota }) {
   )
 }
 
-export default function CercaGiocoBgg({ profilo, onScegli, autoFocus = false }) {
+// onLibero: se c'è, in cima compare la scelta "Tavolo libero".
+export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus = false }) {
   const [testo, setTesto] = useState('')
   const [locali, setLocali] = useState([])
   const [suBgg, setSuBgg] = useState(null)          // null = ricerca BGG non fatta
@@ -104,6 +106,22 @@ export default function CercaGiocoBgg({ profilo, onScegli, autoFocus = false }) 
 
   return (
     <div>
+      {onLibero && (
+        <>
+          <ul className="elenco opzione-riquadro">
+            <li>
+              <button type="button" className="voce-scelta" onClick={onLibero}>
+                <img src={IMMAGINE_TAVOLO_LIBERO} alt="" className="copertina" />
+                <span className="voce-testo">
+                  <strong>Tavolo libero</strong>
+                  <span className="anno block">Senza un gioco fisso: si sceglie al tavolo</span>
+                </span>
+              </button>
+            </li>
+          </ul>
+          <p className="aiuto" style={{ margin: '0.6rem 0 0.3rem' }}>oppure cerca il gioco:</p>
+        </>
+      )}
       <input className="campo-cerca" value={testo} autoFocus={autoFocus}
         onChange={(e) => setTesto(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); cercaSuBgg() } }}
