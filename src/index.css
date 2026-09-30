@@ -1467,3 +1467,116 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 
 .menu-profilo .sottoschede button { flex: 0 0 auto; }
 .menu-profilo .sottoschede button.attiva { background: var(--carta); }
+
+/* ---------- Voci toccabili: si tocca il nome, niente tasto "Scegli" ---------- */
+
+.elenco li:has(> .voce-scelta) { padding: 0; }
+
+.voce-scelta {
+  font: inherit;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.55rem 0.3rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voce-scelta::after {
+  content: '\203A';
+  margin-left: auto;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--inchiostro-tenue);
+}
+
+.voce-scelta:hover, .voce-scelta:active { background: var(--carta); }
+.voce-scelta:disabled { opacity: 0.55; cursor: default; }
+.voce-scelta .voce-testo { min-width: 0; }
+.voce-scelta .copertina { flex: 0 0 auto; }
+.copertina-vuota { display: inline-block; background: var(--carta); }
+
+/* ---------- Scelta di giorno e ora ---------- */
+
+.pastiglia-nome.scelta {
+  background: var(--inchiostro);
+  border-color: var(--inchiostro);
+  color: var(--superficie);
+  font-weight: 600;
+}
+
+.pastiglia-nome.con-serata { border-color: var(--bordo-forte); }
+.segno-serata { color: var(--verde, #3E8E5A); }
+.pastiglia-nome.scelta .segno-serata { color: inherit; }
+
+.giorni-scorrevoli {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.2rem 0 0.5rem;
+  margin-bottom: 0.3rem;
+  scrollbar-width: none;
+}
+.giorni-scorrevoli::-webkit-scrollbar { display: none; }
+.giorni-scorrevoli .pastiglia-nome { flex: 0 0 auto; white-space: nowrap; }
+
+.riepilogo-quando {
+  margin: 0 0 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--verde, #3E8E5A) 14%, var(--superficie));
+  font-weight: 600;
+}
+.riepilogo-quando.vuoto {
+  background: var(--carta);
+  color: var(--inchiostro-tenue);
+  font-weight: 400;
+}
+
+.campo-ora {
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--bordo-forte);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--inchiostro);
+}
+
+/* ---------- Menu che scorre di lato, con le frecce ---------- */
+
+.menu-scorrevole { position: relative; }
+
+.freccia-menu {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 2.2rem;
+  border: 0;
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--inchiostro);
+  cursor: pointer;
+}
+.freccia-menu.sinistra {
+  left: 0;
+  border-radius: 999px 0 0 999px;
+  background: linear-gradient(to right, var(--superficie) 60%, transparent);
+  text-align: left;
+  padding-left: 0.5rem;
+}
+.freccia-menu.destra {
+  right: 0;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(to left, var(--superficie) 60%, transparent);
+  text-align: right;
+  padding-right: 0.5rem;
+}

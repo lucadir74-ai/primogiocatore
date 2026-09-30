@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.5.0 - 202609301500
+// v4.6.0 - 202609301800
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
+import { SceltaOra } from './SceltaQuando.jsx'
 
 const GIORNI_CORTI = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
@@ -765,12 +766,14 @@ export default function Serate({ profilo }) {
                                   }))} />
                               )}
 
+                              <div className="campo">
+                                <label>Alle</label>
+                                <SceltaOra valore={assegna.ora}
+                                  ore={[...new Set([serataScelta.ora_inizio.slice(0, 5), '15:00', '18:00', '20:30', '21:00', '21:30'])].sort()}
+                                  onCambia={(o) => setAssegna((x) => ({ ...x, ora: o }))} />
+                              </div>
+
                               <div className="riga-campi">
-                                <div className="campo">
-                                  <label htmlFor="a-ora">Alle</label>
-                                  <input id="a-ora" type="time" value={assegna.ora}
-                                    onChange={(e) => setAssegna({ ...assegna, ora: e.target.value })} />
-                                </div>
                                 <div className="campo">
                                   <label htmlFor="a-posti">Posti</label>
                                   <input id="a-posti" type="number" min="1" inputMode="numeric"

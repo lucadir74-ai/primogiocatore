@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.7.0 - 202609301500
+// v2.8.0 - 202609301800
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -9,6 +9,7 @@ import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
+import SceltaQuando from './SceltaQuando.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -42,6 +43,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [sezione, setSezione] = useState('tavoli')
   const [disponibili, setDisponibili] = useState([])
   const [luoghiNoti, setLuoghiNoti] = useState([])
+  const [serateFuture, setSerateFuture] = useState([])
   const [miaPosizione, setMiaPosizione] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
@@ -55,7 +57,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
 
   async function carica() {
     setCaricamento(true)
-    const [t, pr, lu] = await Promise.all([
+    const [t, pr, lu, se] = await Promise.all([
       supabase
         .from('tavoli')
         .select(`
@@ -66,11 +68,15 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         .order('inizio', { ascending: true }),
       supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
       supabase.from('luoghi').select('nome').order('nome'),
+      // Le prossime serate: nella scelta del giorno sono segnate.
+      supabase.from('serate').select('data, ora_inizio')
+        .gte('data', new Date().toISOString().slice(0, 10)).eq('annullata', false).order('data'),
     ])
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
     if (pr.data) setPersone(pr.data)
     if (lu.data) setLuoghiNoti(lu.data.map((x) => x.nome))
+    if (se.data) setSerateFuture(se.data)
     setCaricamento(false)
   }
 
@@ -668,11 +674,11 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         </div>
 
         <div className="campo">
-          <label htmlFor="t-inizio">Quando</label>
-          <input id="t-inizio" type="datetime-local" value={modulo.inizio}
-            onChange={(e) => {
-              setModulo({ ...modulo, inizio: e.target.value })
-              caricaDisponibili(e.target.value)
+          <label>Quando</label>
+          <SceltaQuando valore={modulo.inizio} serate={serateFuture}
+            onCambia={(v) => {
+              setModulo((m) => ({ ...m, inizio: v }))
+              if (v.slice(0, 10) !== modulo.inizio.slice(0, 10)) caricaDisponibili(v)
             }} />
         </div>
 
@@ -753,10 +759,19 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         </div>
 
         <div className="campo">
-          <label htmlFor="t-chiusura">Iscrizioni aperte fino a</label>
-          <input id="t-chiusura" type="datetime-local" value={modulo.chiusura_iscrizioni}
-            onChange={(e) => setModulo({ ...modulo, chiusura_iscrizioni: e.target.value })} />
-          <p className="aiuto">Facoltativo: se vuoto restano aperte fino all'inizio.</p>
+          <label>Iscrizioni aperte fino a</label>
+          {modulo.chiusura_iscrizioni ? (
+            <SceltaQuando valore={modulo.chiusura_iscrizioni} facoltativo giorni={10}
+              onCambia={(v) => setModulo((m) => ({ ...m, chiusura_iscrizioni: v }))} />
+          ) : (
+            <p className="aiuto">
+              Restano aperte fino all&rsquo;inizio del tavolo.{' '}
+              <button type="button" className="bottone-piatto"
+                onClick={() => setModulo((m) => ({
+                  ...m, chiusura_iscrizioni: `${(m.inizio || perCampo(new Date())).slice(0, 10)}T12:00`,
+                }))}>metti una scadenza</button>
+            </p>
+          )}
         </div>
 
         <label className="consenso">

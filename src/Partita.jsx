@@ -680,16 +680,20 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             <ul className="elenco">
               {trovati.map((g) => (
                 <li key={g.id}>
-                  <div className="nome-giocatore">
-                    <span>{g.nome}</span>
-                    {g.anno ? <span className="anno"> {g.anno}</span> : null}
-                    {miaCollezione.has(g.id)
-                      ? <span className="anno"> · tuo</span>
-                      : nomeDoppio(g) && (
-                        <span className="anno"> · {g.bgg_id ? 'da BGG' : 'aggiunto a mano'}</span>
-                      )}
-                  </div>
-                  <button className="bottone-piatto" onClick={() => scegliGioco(g)}>Scegli</button>
+                  <button type="button" className="voce-scelta" onClick={() => scegliGioco(g)}>
+                    {g.immagine_url
+                      ? <img src={g.immagine_url} alt="" className="copertina" />
+                      : <span className="copertina copertina-vuota" aria-hidden="true" />}
+                    <span className="voce-testo">
+                      <strong>{g.nome}</strong>
+                      {g.anno ? <span className="anno"> {g.anno}</span> : null}
+                      {miaCollezione.has(g.id)
+                        ? <span className="anno"> · tuo</span>
+                        : nomeDoppio(g) && (
+                          <span className="anno"> · {g.bgg_id ? 'da BGG' : 'aggiunto a mano'}</span>
+                        )}
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -719,12 +723,11 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   <ul className="elenco elenco-scorrevole">
                     {suBgg.righe.map((r) => (
                       <li key={r.bgg_id}>
-                        <div className="nome-giocatore">
-                          <strong>{r.nome}</strong>
-                          {r.anno && <span className="anno"> {r.anno}</span>}
-                        </div>
-                        <button className="bottone-piatto" onClick={() => aggiungiDaBgg(r.bgg_id)}>
-                          Aggiungi
+                        <button type="button" className="voce-scelta" onClick={() => aggiungiDaBgg(r.bgg_id)}>
+                          <span className="voce-testo">
+                            <strong>{r.nome}</strong>
+                            {r.anno && <span className="anno"> {r.anno}</span>}
+                          </span>
                         </button>
                       </li>
                     ))}

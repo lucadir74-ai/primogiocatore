@@ -1,9 +1,9 @@
-// Primo Giocatore v4.9.0 - 202609301500
+// Primo Giocatore v4.10.0 - 202609301800
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare } from './supabase'
 import Giochi from './Giochi.jsx'
 import Partita from './Partita.jsx'
@@ -28,6 +28,60 @@ const SEZIONI_PROFILO = [
   ['ruoli', 'Ruoli', true],   // solo per chi organizza
 ]
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
+
+// Il riquadro "Sei tu?" serve a chi si è appena registrato: dopo due
+// mesi, o per chi organizza, resta solo nel profilo.
+const GIORNI_SEI_TU = 60
+
+// Menu orizzontale che non sta nello schermo: le frecce ai lati dicono
+// che c'è altro e lo fanno scorrere.
+function MenuScorrevole({ voci, attiva, onScegli, etichetta }) {
+  const fila = useRef(null)
+  const [bordi, setBordi] = useState({ sinistra: false, destra: false })
+
+  function misura() {
+    const el = fila.current
+    if (!el) return
+    setBordi({
+      sinistra: el.scrollLeft > 4,
+      destra: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    })
+  }
+
+  useEffect(() => {
+    misura()
+    window.addEventListener('resize', misura)
+    return () => window.removeEventListener('resize', misura)
+  }, [voci.length])
+
+  // La voce scelta resta sempre in vista.
+  useEffect(() => {
+    fila.current?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+  }, [attiva])
+
+  const sposta = (verso) => fila.current?.scrollBy({ left: verso * fila.current.clientWidth * 0.7, behavior: 'smooth' })
+
+  return (
+    <div className="menu-scorrevole">
+      {bordi.sinistra && (
+        <button type="button" className="freccia-menu sinistra" onClick={() => sposta(-1)} aria-label="Voci precedenti">‹</button>
+      )}
+      <nav className="sottoschede" aria-label={etichetta} ref={fila} onScroll={misura}>
+        {voci.map(([id, testo, segno]) => (
+          <button key={id} className={attiva === id ? 'attiva' : ''}
+            aria-current={attiva === id ? 'page' : undefined}
+            onClick={() => onScegli(id)}>
+            {testo}{segno && <span className="stellina"> ●</span>}
+          </button>
+        ))}
+      </nav>
+      {bordi.destra && (
+        <button type="button" className="freccia-menu destra" onClick={() => sposta(1)} aria-label="Altre voci">›</button>
+      )}
+    </div>
+  )
+}
 
 /* Icone: tracciati semplici, si colorano da sole col testo. */
 const ICONE = {
@@ -632,8 +686,6 @@ export default function App() {
             ))}
           </nav>
 
-          {scheda !== 'profilo' && <SeiTu profilo={profilo} compatto />}
-
           {scheda !== 'profilo' && daApprovare > 0 && (
             <div className="scheda scheda-sottile">
               <p className="aiuto" style={{ margin: 0 }}>
@@ -705,16 +757,8 @@ export default function App() {
               return (
                 <>
                   <div className="menu-profilo">
-                    <nav className="sottoschede" aria-label="Sezioni del profilo">
-                      {sezioni.map(([id, etichetta]) => (
-                        <button key={id} className={attiva === id ? 'attiva' : ''}
-                          aria-current={attiva === id ? 'page' : undefined}
-                          onClick={() => apriSezione(id)}>
-                          {etichetta}
-                          {id === 'ospiti' && daApprovare > 0 && <span className="stellina"> ●</span>}
-                        </button>
-                      ))}
-                    </nav>
+                    <MenuScorrevole etichetta="Sezioni del profilo" attiva={attiva} onScegli={apriSezione}
+                      voci={sezioni.map(([id, testo]) => [id, testo, id === 'ospiti' && daApprovare > 0])} />
                   </div>
 
                   {attiva === 'profilo' ? (
@@ -736,6 +780,11 @@ export default function App() {
                 </>
               )
             })()
+          )}
+
+          {scheda !== 'profilo' && !profilo.organizzatore && profilo.creato_il
+            && Date.now() - new Date(profilo.creato_il) < GIORNI_SEI_TU * 86400000 && (
+            <SeiTu profilo={profilo} compatto />
           )}
         </>
       )}
