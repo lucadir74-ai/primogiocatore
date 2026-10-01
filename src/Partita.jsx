@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.11.0 - 202609302330
+// v4.12.0 - 202609301830
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -777,15 +777,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           </div>
 
           <div className="campo">
-            <label>Durata</label>
-            <Cronometro secondi={secondi} inCorso={inCorso}
-              onAvviaFerma={avviaOFerma} onAzzera={azzeraTimer} />
+            <label htmlFor="minuti">Durata</label>
             <div className="riga-minuti">
-              <label htmlFor="minuti">Minuti da registrare</label>
-              <input id="minuti" type="number" min="1" inputMode="numeric" className="mini minuti"
-                value={minuti} onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
+              <Cronometro secondi={secondi} inCorso={inCorso}
+                onAvviaFerma={avviaOFerma} onAzzera={azzeraTimer} />
+              <span className="minuti-scritti">
+                <input id="minuti" type="number" min="1" inputMode="numeric" className="mini minuti"
+                  value={minuti} onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
+                <span className="unita">min</span>
+              </span>
             </div>
-            <p className="aiuto">Il cronometro li aggiorna da solo; puoi anche scriverli a mano.</p>
           </div>
 
           {gioco.usa_fazioni && (

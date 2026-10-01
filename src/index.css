@@ -1632,102 +1632,76 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   background: #131C26;
 }
 
-/* ---------- Cronometro della partita: un quadrante, non un lettore ---------- */
 
-.cronometro {
-  display: grid;
-  justify-items: center;
-  gap: 0.9rem;
-  padding: 1rem 0.75rem 1.1rem;
-  background: var(--carta);
-  border: 1px solid var(--bordo);
-  border-radius: 16px;
-}
+/* ---------- Cronometro della partita: un tasto con il tempo, come su BG Stats ---------- */
 
-.quadrante {
-  position: relative;
-  width: min(13rem, 70vw);
-  aspect-ratio: 1;
-}
-.quadrante svg { width: 100%; height: 100%; display: block; }
-
-.quadrante .tacca { stroke: var(--bordo); stroke-width: 1; stroke-linecap: round; }
-.quadrante .tacca.lunga { stroke: var(--inchiostro-tenue); stroke-width: 1.6; }
-
-.quadrante .pista { fill: none; stroke: var(--bordo); stroke-width: 3; opacity: 0.5; }
-.quadrante .arco {
-  fill: none;
-  stroke: var(--inchiostro-tenue);
-  stroke-width: 3;
-  stroke-linecap: round;
-  transition: stroke-dasharray 0.35s linear;
-}
-.cronometro.corre .arco { stroke: var(--giallo); }
-
-.quadrante .cifre {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 0.2rem;
-}
-
-.quadrante .tempo {
-  font-family: var(--display);
-  font-size: clamp(2rem, 11vw, 2.6rem);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  color: var(--inchiostro-tenue);
-}
-.cronometro.corre .tempo { color: var(--inchiostro); }
-
-.stato-cronometro {
-  font-size: 0.8rem;
-  color: var(--inchiostro-tenue);
-}
-.cronometro.corre .stato-cronometro { color: var(--inchiostro); font-weight: 600; }
-
-.comandi-cronometro {
+.cronometro-riga {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .tasto-cronometro {
   font: inherit;
-  font-weight: 600;
-  min-width: 7rem;
-  padding: 0.6rem 1.2rem;
-  border: 1px solid var(--bordo-forte);
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1rem 0.55rem 0.8rem;
+  border: 1.5px solid var(--bordo-forte);
+  border-radius: 12px;
   background: var(--superficie);
-  color: var(--inchiostro);
+  color: var(--inchiostro-tenue);
   cursor: pointer;
 }
-.tasto-cronometro.principale {
-  background: var(--giallo);
+.tasto-cronometro.corre {
   border-color: var(--giallo);
-  color: #131C26;
-}
-.cronometro.corre .tasto-cronometro.principale {
-  background: var(--superficie);
-  border-color: var(--bordo-forte);
+  background: color-mix(in srgb, var(--giallo) 16%, var(--superficie));
   color: var(--inchiostro);
 }
 .tasto-cronometro:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
 
+.icona-cronometro {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icona-cronometro .pieno { fill: currentColor; stroke: none; }
+.tasto-cronometro.corre .icona-cronometro { color: var(--giallo); }
+
+.tempo-cronometro {
+  font-family: var(--display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.azzera-cronometro {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--inchiostro-tenue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.minuti-scritti { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* Riga della durata: il cronometro a sinistra, i minuti a destra. */
 .riga-minuti {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  margin-top: 0.7rem;
+  flex-wrap: wrap;
 }
-.riga-minuti label { margin: 0; font-weight: 500; }
-
-@media (prefers-reduced-motion: reduce) {
-  .quadrante .arco { transition: none; }
-}
-.quadrante .tempo.con-ore { font-size: clamp(1.5rem, 8vw, 1.9rem); }
+.cronometro { display: flex; align-items: center; gap: 0.5rem; }
+.tasto-cronometro { min-height: 3rem; }
+.riga-minuti .mini.minuti { width: 4.2rem; }
