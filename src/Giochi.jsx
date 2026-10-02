@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.13.0 - 202609302000
+// v4.14.0 - 202610021730
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -122,15 +122,19 @@ export default function Giochi({ profilo }) {
       // completano quando servono) e segna quali possiedi.
       // Quelli già presenti nell'app (anche aggiunti da altri) si
       // riusano senza toccarli; gli altri si creano.
-      const salvati = await assicuraGiochi(dati.giochi.map((g) => ({
+      // BGG elenca lo stesso gioco più volte se ne hai più copie o più
+      // edizioni: una riga ripetuta nello stesso invio fa fallire tutto
+      // ("cannot affect row a second time"). Si tiene una riga per gioco.
+      const unici = [...new Map(dati.giochi.map((g) => [g.bgg_id, g])).values()]
+      const salvati = await assicuraGiochi(unici.map((g) => ({
         bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
       })))
 
-      const possedute = salvati.map((g) => ({
+      const possedute = [...new Map(salvati.filter(Boolean).map((g) => [g.id, {
         utente_id: profilo.id,
         gioco_id: g.id,
         origine: 'bgg',
-      }))
+      }])).values()]
       for (let i = 0; i < possedute.length; i += 200) {
         const { error } = await supabase
           .from('collezioni')
@@ -138,7 +142,7 @@ export default function Giochi({ profilo }) {
         if (error) throw error
       }
 
-      setMessaggio(`Collezione importata: ${dati.totale} giochi.`)
+      setMessaggio(`Collezione importata: ${possedute.length} giochi.`)
       caricaCatalogo()
       caricaMiei()
     } catch (e) {
