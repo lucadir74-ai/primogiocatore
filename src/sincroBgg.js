@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.0.0 - 202609302000
+// v1.1.0 - 202610021800
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -37,7 +37,10 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
   const tutte = []
   let pagina = 1
   let totale = 0
-  while (pagina <= 30) {
+  // BGG dà cento partite per pagina. Prima ci si fermava a 3000: chi
+  // ne ha di più perdeva le più vecchie. Ora si legge tutto, fino a
+  // 50.000 partite, cioè ben oltre qualsiasi archivio reale.
+  while (pagina <= 500) {
     avanzamento({ fase: 'Leggo da BGG', fatto: tutte.length, totale: totale || 100 })
     const r = await fetch(`/api/bgg?azione=partite&utente=${encodeURIComponent(utente)}&pagina=${pagina}`
       + (dal ? `&dal=${dal}` : ''))
