@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.1.0 - 202610021800
+// v1.2.0 - 202610021900
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -52,6 +52,14 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     pagina++
   }
 
+  // Una lettura lunga dura minuti: se intanto su BGG entrano partite
+  // nuove (per esempio BG Stats che sta pubblicando), le pagine
+  // scorrono e alcune partite compaiono due volte. Una per numero BGG.
+  const uniche = [...new Map(tutte.map((p) => [p.bgg_play_id, p])).values()]
+  const doppie = tutte.length - uniche.length
+  tutte.length = 0
+  tutte.push(...uniche)
+
   // Quelle già arrivate da BGG si riconoscono dal numero BGG.
   const gia = await tutteLeRighe(() => supabase.from('partite')
     .select('chiave_esterna').eq('registrata_da', profiloId).like('chiave_esterna', 'bgg:%'))
@@ -83,6 +91,7 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     deboli: conStato.filter((p) => p.debole).length,
     senzaGioco: conStato.filter((p) => !perBgg.has(p.gioco?.bgg_id)).length,
     giaImportate: tutte.length - daGuardare.length,
+    doppieInLettura: doppie,
     utente,
   }
 }
@@ -129,6 +138,9 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
       impronta: impronta({ giocoId, giocataIl: p.data, punteggi }),
       registrata_da: profiloId,
     }).select('id').single()
+    // Già entrata (un import interrotto, o una lettura con doppioni):
+    // si salta, non si ferma tutto.
+    if (e1?.code === '23505') continue
     if (e1) throw e1
 
     // Il proprietario dell'archivio si riconosce dal nome utente BGG;
