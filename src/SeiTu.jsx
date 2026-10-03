@@ -1,5 +1,5 @@
 // Primo Giocatore - "Sei tu?"
-// v1.0.0 - 202609301500
+// v1.1.0 - 202610031200 (organizzatori: approvano le proprie richieste)
 //
 // Chi si registra spesso ha già giocato come ospite. L'app cerca gli
 // ospiti con lo stesso nome (o la stessa email usata per un tavolo) e
@@ -58,6 +58,17 @@ export default function SeiTu({ profilo, compatto = false }) {
     setMessaggio(data === 'collegato'
       ? `Fatto: le partite di «${o.nome}» ora sono tue.`
       : `Richiesta inviata. Quando viene approvata, le partite di «${o.nome}» passano a te.`)
+    carica()
+  }
+
+  // Chi organizza può approvare le proprie richieste (decidi_richiesta lo consente).
+  async function approvaMia(r) {
+    if (!confirm(`Collegare «${r.ospite_nome}» al tuo account? Le sue partite diventano tue.`)) return
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    const { error } = await supabase.rpc('decidi_richiesta', { p_richiesta: r.id, p_approva: true })
+    setLavorando(false)
+    if (error) { setErrore(error.message); return }
+    setMessaggio(`Fatto: le partite di «${r.ospite_nome}» ora sono tue.`)
     carica()
   }
 
@@ -136,13 +147,17 @@ export default function SeiTu({ profilo, compatto = false }) {
             {richieste.map((r) => (
               <li key={r.id}>
                 <span>{r.ospite_nome}</span>
-                <span className="anno">
-                  {r.stato === 'attesa' ? 'in attesa' : r.stato === 'approvata' ? 'collegato' : 'non approvata'}
-                </span>
+                {r.stato === 'attesa' && profilo.organizzatore ? (
+                  <button className="bottone-piatto" onClick={() => approvaMia(r)} disabled={lavorando}>approva</button>
+                ) : (
+                  <span className="anno">
+                    {r.stato === 'attesa' ? 'in attesa' : r.stato === 'approvata' ? 'collegato' : 'non approvata'}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
-          {inAttesa.length > 0 && (
+          {inAttesa.length > 0 && !profilo.organizzatore && (
             <p className="aiuto">Le richieste in attesa le approva chi organizza.</p>
           )}
         </>
