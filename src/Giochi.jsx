@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.14.0 - 202610021730
+// v4.15.0 - 202610031500
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -183,13 +183,19 @@ export default function Giochi({ profilo }) {
             durata_minuti: g.durata_minuti,
             immagine_url: g.immagine_url, immagine_grande: g.immagine_grande,
           }))
-          const { error } = await supabase.from('giochi').upsert(righe, { onConflict: 'bgg_id' })
-          if (error) continue
+          // Passa dal database, che riempie solo i campi vuoti anche sui
+          // giochi aggiunti da altri. Prima l'aggiornamento diretto poteva
+          // fallire in silenzio e la copertina non arrivava mai.
+          await assicuraGiochi(righe)
           if (!vivo) return
           // Aggiorno solo le righe toccate: niente ricarica dell'intero elenco.
           const perBgg = new Map(righe.map((x) => [x.bgg_id, x]))
           setCatalogo((c) => c.map((x) => (perBgg.has(x.bgg_id) ? { ...x, ...perBgg.get(x.bgg_id) } : x)))
-        } catch { /* rete assente: si riprova alla prossima apertura */ }
+        } catch (e) {
+          // Rete assente o BGG occupato: si riprova alla prossima apertura.
+          gruppo.forEach((g) => giaTentati.current.delete(g.bgg_id))
+          console.warn('Copertine non aggiornate:', e?.message)
+        }
         if (vivo) setCompletando((n) => Math.max(0, n - gruppo.length))
       }
       inCorso.current = false
