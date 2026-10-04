@@ -1,9 +1,10 @@
 // Primo Giocatore - Statistiche
-// v3.8.0 - 202609210010
+// v3.9.0 - 202610041700
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { unisciCondivise } from './condivise'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -81,11 +82,16 @@ export default function Statistiche({ profilo, onModifica, mira }) {
 
   // Dal vivo e a distanza sono due cose diverse: mescolarle nei numeri
   // significa non poter leggere né le une né le altre.
-  const partite = dove === 'tutte'
-    ? tuttePartite
+  // La stessa serata registrata da più persone conta una volta sola.
+  // Si unisce prima di filtrare: le due copie possono avere luoghi
+  // diversi (uno scritto, l'altro no). Fra le copie vince la tua.
+  const uniche = useMemo(() => unisciCondivise(tuttePartite, [profilo.id]), [tuttePartite, profilo.id])
+  const filtra = (lista) => (dove === 'tutte'
+    ? lista
     : dove === 'online'
-      ? tuttePartite.filter((p) => p.luoghi?.tipo === 'online')
-      : tuttePartite.filter((p) => p.luoghi?.tipo !== 'online')
+      ? lista.filter((p) => p.luoghi?.tipo === 'online')
+      : lista.filter((p) => p.luoghi?.tipo !== 'online'))
+  const partite = filtra(uniche)
 
   const quanteOnline = tuttePartite.filter((p) => p.luoghi?.tipo === 'online').length
 
@@ -121,7 +127,13 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   // Statistiche di una persona, chiunque essa sia.
   function dellaPersona(chiave) {
     const suaRiga = (p) => (p.partecipazioni || []).find((x) => identita(x) === chiave)
-    const sue = partite.filter((p) => suaRiga(p))
+    // Guardando un'altra persona con un account, fra le copie della
+    // stessa partita vince la sua: è lei che l'ha registrata con i
+    // suoi dati (posizione, fazione, punteggio).
+    const base = chiave !== profilo.id && !String(chiave).startsWith('ospite:')
+      ? filtra(unisciCondivise(tuttePartite, [chiave, profilo.id]))
+      : partite
+    const sue = base.filter((p) => suaRiga(p))
     const competitive = sue.filter((p) => p.tipo_punteggio !== 'coop')
     const cooperative = sue.filter((p) => p.tipo_punteggio === 'coop')
     const vinte = competitive.filter((p) => suaRiga(p)?.vincitore).length

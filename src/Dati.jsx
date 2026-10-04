@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v3.10.0 - 202610041200
+// v3.10.1 - 202610041630
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -147,6 +147,11 @@ export default function Dati({ profilo }) {
 
     setLavorando(true)
     try {
+      // Il nome utente serve anche all'aggiornamento automatico: si
+      // salva con qualunque dei due tasti, non solo con «Aggiorna».
+      if (utente !== (profilo.bgg_username || '')) {
+        await supabase.from('profili').update({ bgg_username: utente }).eq('id', profilo.id)
+      }
       // Rapido: solo le partite recenti. Completo: tutto l'archivio.
       const dal = opzioni.automatico ? await dataDiPartenza(profilo.id) : null
       const anteprima = await leggiPartiteBgg({ utente, profiloId: profilo.id, dal, avanzamento: setAvanzamento })
@@ -171,10 +176,6 @@ export default function Dati({ profilo }) {
   async function sincronizzaBgg() {
     setErrore(''); setMessaggio('')
     if (!utenteBgg.trim()) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
-    // Il nome utente serve anche all'aggiornamento automatico.
-    if (utenteBgg.trim() !== (profilo.bgg_username || '')) {
-      await supabase.from('profili').update({ bgg_username: utenteBgg.trim() }).eq('id', profilo.id)
-    }
     await leggiDaBgg({ automatico: true })
   }
 
