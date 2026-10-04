@@ -1,11 +1,11 @@
 // Primo Giocatore - Esporta e importa
-// v3.9.0 - 202609302000
+// v3.10.0 - 202610041200
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
 import { impronta, improntePresenti, giaPresente } from './impronta'
-import { leggiPartiteBgg, importaPartiteBgg, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
+import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
 import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -147,7 +147,9 @@ export default function Dati({ profilo }) {
 
     setLavorando(true)
     try {
-      const anteprima = await leggiPartiteBgg({ utente, profiloId: profilo.id, avanzamento: setAvanzamento })
+      // Rapido: solo le partite recenti. Completo: tutto l'archivio.
+      const dal = opzioni.automatico ? await dataDiPartenza(profilo.id) : null
+      const anteprima = await leggiPartiteBgg({ utente, profiloId: profilo.id, dal, avanzamento: setAvanzamento })
 
       // In modalità rapida, se non c'è niente di nuovo, si chiude qui.
       if (opzioni.automatico && anteprima.partite.length === 0) {
@@ -553,8 +555,14 @@ export default function Dati({ profilo }) {
         {lavorando ? 'Aggiorno…' : 'Aggiorna da BGG'}
       </button>
       <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
-        Guarda prima cosa c'è
+        Controllo completo
       </button>
+      <p className="aiuto">
+        «Aggiorna» legge solo le partite dell'ultimo mese rispetto all'ultima arrivata:
+        bastano pochi secondi. Il controllo completo rilegge tutto l'archivio BGG e serve
+        quando pubblichi partite vecchie, per esempio un blocco importato da Board Game
+        Arena; parte comunque da solo una volta a settimana.
+      </p>
 
       {ultimaSincro && (
         <p className="aiuto">

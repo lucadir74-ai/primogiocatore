@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.2.0 - 202610021900
+// v1.3.0 - 202610041200
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -15,14 +15,48 @@ import { impronta, improntePresenti, giaPresente } from './impronta'
 import { assicuraGiochi, trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
 
 const CHIAVE_ULTIMA = 'primo-giocatore:ultima-sincro-bgg'
+const CHIAVE_COMPLETA = 'primo-giocatore:ultimo-controllo-completo-bgg'
 const CHIAVE_IN_CORSO = 'primo-giocatore:sincro-bgg-in-corso'
-const OGNI_ORE = 12
-const INDIETRO_GIORNI = 30   // le partite pubblicate in ritardo hanno date vecchie
+// Il controllo rapido legge una pagina sola: si può fare spesso.
+const OGNI_ORE = 1
+// Il margine all'indietro: una partita pubblicata in ritardo ha una
+// data vecchia, e BGG filtra per data della partita, non di pubblicazione.
+const INDIETRO_GIORNI = 30
+// Le partite più vecchie del margine (per esempio un blocco di partite
+// BGA importate in BG Stats mesi dopo) le trova solo il controllo
+// completo, che parte da solo una volta a settimana.
+const COMPLETO_OGNI_GIORNI = 7
 
 const PAROLE_ONLINE = ['arena', 'bga', 'yucata', 'tabletopia', 'boiteajeux', 'online', 'steam']
 
 export function ultimaSincro() {
   try { return localStorage.getItem(CHIAVE_ULTIMA) } catch { return null }
+}
+
+function segnaCompleto() {
+  try { localStorage.setItem(CHIAVE_COMPLETA, new Date().toISOString()) } catch { /* niente */ }
+}
+
+function serveCompleto() {
+  try {
+    const c = localStorage.getItem(CHIAVE_COMPLETA)
+    return !c || Date.now() - new Date(c) > COMPLETO_OGNI_GIORNI * 86400000
+  } catch { return false }
+}
+
+// Da che giorno leggere: l'ultima partita arrivata da BGG, meno il
+// margine. Sta nel database, quindi vale su ogni dispositivo.
+// null se da BGG non è mai arrivato niente: allora si legge tutto.
+export async function dataDiPartenza(profiloId) {
+  const { data, error } = await supabase.from('partite')
+    .select('giocata_il')
+    .eq('registrata_da', profiloId)
+    .like('chiave_esterna', 'bgg:%')
+    .order('giocata_il', { ascending: false })
+    .limit(1)
+  if (error || !data?.length) return null
+  const d = new Date(new Date(data[0].giocata_il).getTime() - INDIETRO_GIORNI * 86400000)
+  return d.toISOString().slice(0, 10)
 }
 
 function segnaSincro() {
@@ -55,6 +89,9 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
   // Una lettura lunga dura minuti: se intanto su BGG entrano partite
   // nuove (per esempio BG Stats che sta pubblicando), le pagine
   // scorrono e alcune partite compaiono due volte. Una per numero BGG.
+  // Letto tutto l'archivio: il controllo completo è fatto.
+  if (!dal) segnaCompleto()
+
   const uniche = [...new Map(tutte.map((p) => [p.bgg_play_id, p])).values()]
   const doppie = tutte.length - uniche.length
   tutte.length = 0
@@ -181,15 +218,17 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   return { fatte, saltate: partite.length - fatte }
 }
 
-// All'apertura dell'app: se è passato abbastanza tempo importa da sola
-// le partite nuove. Quelle che sembrano già presenti non le tocca:
-// restano da guardare con il tasto. La prima volta non parte: il primo
-// import completo si fa a mano, dove si vede cosa succede.
+// All'apertura dell'app: legge solo le partite recenti (una pagina,
+// pochi secondi) e importa da sola quelle nuove. Una volta a settimana
+// rilegge tutto l'archivio, per le partite pubblicate con date vecchie.
+// Quelle che sembrano già presenti non le tocca: restano da guardare
+// con il tasto. Se da BGG non è mai arrivato niente non parte: il
+// primo import completo si fa a mano, dove si vede cosa succede.
 export async function sincronizzaSeServe(profilo) {
   const utente = profilo?.bgg_username?.trim()
+  if (!utente) return null
   const ultima = ultimaSincro()
-  if (!utente || !ultima) return null
-  if (Date.now() - new Date(ultima) < OGNI_ORE * 3600000) return null
+  if (ultima && Date.now() - new Date(ultima) < OGNI_ORE * 3600000) return null
 
   try {
     const inCorso = Number(localStorage.getItem(CHIAVE_IN_CORSO) || 0)
@@ -198,9 +237,9 @@ export async function sincronizzaSeServe(profilo) {
   } catch { /* senza memoria si prova lo stesso */ }
 
   try {
-    const d = new Date(new Date(ultima).getTime() - INDIETRO_GIORNI * 86400000)
-    const dal = d.toISOString().slice(0, 10)
-    const letto = await leggiPartiteBgg({ utente, profiloId: profilo.id, dal })
+    const dal = await dataDiPartenza(profilo.id)
+    if (!dal) return null
+    const letto = await leggiPartiteBgg({ utente, profiloId: profilo.id, dal: serveCompleto() ? null : dal })
     const nuove = letto.partite.filter((p) => !p.sospetta)
     const { fatte } = nuove.length
       ? await importaPartiteBgg({ partite: nuove, utente, profiloId: profilo.id })
