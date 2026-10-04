@@ -136,6 +136,7 @@ body {
 
 .barra-basso button {
   flex: 1;
+  min-width: 0;   /* senza, con sette schede la barra allarga la pagina */
   max-width: 6rem;
   display: flex;
   flex-direction: column;
@@ -1705,3 +1706,6 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 .cronometro { display: flex; align-items: center; gap: 0.5rem; }
 .tasto-cronometro { min-height: 3rem; }
 .riga-minuti .mini.minuti { width: 4.2rem; }
+
+/* ---------- Liste comprimibili delle statistiche ---------- */
+.mostra-tutti { display: block; margin: -0.6rem auto 1.2rem; }

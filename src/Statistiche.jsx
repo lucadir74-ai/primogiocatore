@@ -1,8 +1,8 @@
 // Primo Giocatore - Statistiche
-// v3.10.0 - 202610041900
+// v3.11.0 - 202610042000
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
-import { useEffect, useMemo, useState } from 'react'
+import { Children, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 
@@ -17,7 +17,25 @@ function mediana(numeri) {
   return o.length % 2 ? o[m] : Math.round((o[m - 1] + o[m]) / 2)
 }
 
+const MIN_CLASSIFICA = 5
+
 const durata = (min) => (min >= 60 ? `${Math.round(min / 60)} h` : `${min} min`)
+
+/* Una lista lunga mostra le prime voci; il resto a richiesta. */
+function ElencoCorto({ children, quante = 5 }) {
+  const [tutte, setTutte] = useState(false)
+  const voci = Children.toArray(children).flat()
+  return (
+    <>
+      <ul className="elenco">{tutte ? voci : voci.slice(0, quante)}</ul>
+      {voci.length > quante && (
+        <button className="bottone-piatto mostra-tutti" onClick={() => setTutte(!tutte)}>
+          {tutte ? 'Mostra meno' : `Mostra tutti (${voci.length})`}
+        </button>
+      )}
+    </>
+  )
+}
 
 /* Riepilogo dei punteggi: il valore tipico e gli estremi toccati. */
 function riepilogoPunteggi(punteggi) {
@@ -167,8 +185,9 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     for (const p of sue) {
       if (!p.giochi) continue
       const r = suaRiga(p)
-      const v = perGioco.get(p.giochi.id) || { id: p.giochi.id, nome: p.giochi.nome, partite: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
+      const v = perGioco.get(p.giochi.id) || { id: p.giochi.id, nome: p.giochi.nome, partite: 0, competitive: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
       v.partite++
+      if (p.tipo_punteggio !== 'coop') v.competitive++
       if (r.vincitore) v.vinte++
       if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
       if (r.punteggio_totale != null) v.punteggi.push(r.punteggio_totale)
@@ -216,6 +235,12 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       minuti: sue.reduce((t, p) => t + (p.durata_minuti || 0), 0),
       giochiDiversi: new Set(sue.map((p) => p.giochi?.id).filter(Boolean)).size,
       perGioco: [...perGioco.values()].sort((a, b) => b.partite - a.partite),
+      // I giochi dove rende di più rispetto al caso. Sotto le cinque
+      // partite competitive il numero balla troppo per fare classifica.
+      piuForte: [...perGioco.values()]
+        .filter((g) => g.competitive >= MIN_CLASSIFICA && g.attese > 0)
+        .map((g) => ({ ...g, rendimento: g.vinte / g.attese }))
+        .sort((a, b) => b.rendimento - a.rendimento || b.competitive - a.competitive),
       contro: [...contro.values()].sort((a, b) => b.insieme - a.insieme),
     }
   }
@@ -557,8 +582,32 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
 
       <Istogramma dati={istogramma(d.sue)} />
 
+      {d.piuForte.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Dove sei più forte</h3>
+          <p className="aiuto">
+            I giochi ordinati per vittorie rispetto all'atteso, con almeno {MIN_CLASSIFICA} partite
+            competitive: sotto quella soglia il numero dipende troppo dal caso.
+          </p>
+          <ElencoCorto>
+            {d.piuForte.map((g, i) => (
+              <li key={g.id}>
+                <span className="posto">{i + 1}°</span>
+                <div className="nome-giocatore">
+                  <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
+                  <span className="anno block">{g.competitive} partite · {g.vinte} vinte</span>
+                </div>
+                <span className={`bilancio${g.rendimento >= 1 ? ' avanti' : ' indietro'}`}>
+                  {g.rendimento.toFixed(2)}×
+                </span>
+              </li>
+            ))}
+          </ElencoCorto>
+        </>
+      )}
+
       <h3 className="titolo-sezione">Gioco per gioco</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.perGioco.map((g) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
           const rip = riepilogoPunteggi(g.punteggi)
@@ -585,10 +634,10 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
             </li>
           )
         })}
-      </ul>
+      </ElencoCorto>
 
       <h3 className="titolo-sezione">Testa a testa</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.contro.map((a) => (
           <li key={a.nome}>
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
@@ -601,7 +650,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
             </span>
           </li>
         ))}
-      </ul>
+      </ElencoCorto>
     </>
   )
 }
@@ -783,6 +832,17 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
       <div className="numeroni">
         <Numerone cifra={d.sue.length} testo="partite" />
         <Numerone cifra={d.giocatori.length} testo="giocatori" />
+        {io && io.competitive.length > 0 && (
+          <>
+            <Numerone cifra={io.vinte} testo={`le tue vinte (${perc(io.vinte, io.competitive.length)})`} />
+            <Numerone
+              cifra={io.rendimento != null ? `${io.rendimento.toFixed(2)}×` : '—'}
+              testo="il tuo rispetto all'atteso"
+              tono={io.rendimento != null ? (io.rendimento >= 1 ? 'sopra' : 'sotto') : null}
+            />
+            <Numerone cifra={io.piazz != null ? Math.round(io.piazz * 100) : '—'} testo="il tuo piazzamento su 100" />
+          </>
+        )}
         {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="tipico al tavolo" />}
         {d.mioTipico != null && <Numerone cifra={d.mioTipico} testo="il tuo tipico" />}
         {d.mioMax != null && <Numerone cifra={d.mioMax} testo="il tuo migliore" tono="sopra" />}
@@ -805,16 +865,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
 
       {io && io.competitive.length > 0 && (
         <>
-          <h3 className="titolo-sezione">Tu a questo gioco</h3>
-          <div className="numeroni">
-            <Numerone cifra={io.vinte} testo={`vinte (${perc(io.vinte, io.competitive.length)})`} />
-            <Numerone
-              cifra={io.rendimento != null ? `${io.rendimento.toFixed(2)}×` : '—'}
-              testo="rispetto all'atteso"
-              tono={io.rendimento != null ? (io.rendimento >= 1 ? 'sopra' : 'sotto') : null}
-            />
-            <Numerone cifra={io.piazz != null ? Math.round(io.piazz * 100) : '—'} testo="piazzamento su 100" />
-          </div>
+          <h3 className="titolo-sezione">I tuoi dettagli</h3>
           <Dettagli d={io} />
         </>
       )}
@@ -829,7 +880,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
         restano fuori. Con poche partite il numero balla parecchio: 0,00&times; su due
         partite non vuol dire quasi niente.
       </p>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.giocatori.map((g) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
           const rip = riepilogoPunteggi(g.punteggi)
@@ -849,7 +900,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
             </li>
           )
         })}
-      </ul>
+      </ElencoCorto>
 
 
       <Istogramma dati={istogramma(d.sue)} />
@@ -857,7 +908,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
       {d.turni.length > 1 && (
         <>
           <h3 className="titolo-sezione">Ordine di turno</h3>
-          <ul className="elenco">
+          <ElencoCorto>
             {d.turni.map((t) => {
               const r = t.attese > 0 ? t.vinte / t.attese : null
               const rip = riepilogoPunteggi(t.punteggi)
@@ -877,7 +928,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
                 </li>
               )
             })}
-          </ul>
+          </ElencoCorto>
           <p className="aiuto">
             Sopra 1,00 significa che da quella posizione si vince più del dovuto. Serve
             parecchie partite prima che il dato smetta di essere rumore.
@@ -890,7 +941,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
           <h3 className="titolo-sezione">
             Fazioni <span className="conteggio">{d.fazioni.length}</span>
           </h3>
-          <ul className="elenco">
+          <ElencoCorto>
             {d.fazioni.map((f) => {
               const r = f.attese > 0 ? f.vinte / f.attese : null
               const rip = riepilogoPunteggi(f.punteggi)
@@ -909,7 +960,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
                 </li>
               )
             })}
-          </ul>
+          </ElencoCorto>
           <p className="aiuto">
             Con poche partite questi numeri dicono poco: una fazione vista due volte
             può sembrare fortissima per caso.
@@ -941,17 +992,17 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
       <Istogramma dati={istogramma(d.sue)} />
 
       <h3 className="titolo-sezione">Cosa ci si gioca</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.giochi.map((g) => (
           <li key={g.nome}>
             <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
         ))}
-      </ul>
+      </ElencoCorto>
 
       <h3 className="titolo-sezione">Chi ci viene</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.persone.map((p) => (
           <li key={p.nome}>
             <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
@@ -961,7 +1012,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
             <span className="anno">{p.n}</span>
           </li>
         ))}
-      </ul>
+      </ElencoCorto>
     </>
   )
 }
@@ -981,17 +1032,17 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
       <Istogramma dati={istogramma(partite)} />
 
       <h3 className="titolo-sezione">Giochi più giocati</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.giochi.slice(0, 25).map((g) => (
           <li key={g.nome}>
             <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
         ))}
-      </ul>
+      </ElencoCorto>
 
       <h3 className="titolo-sezione">Classifica</h3>
-      <ul className="elenco">
+      <ElencoCorto>
         {d.persone
           .filter((p) => p.attese > 0)
           .sort((a, b) => b.vinte / b.attese - a.vinte / a.attese)
@@ -1008,7 +1059,7 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
               </li>
             )
           })}
-      </ul>
+      </ElencoCorto>
       <p className="aiuto">
         La classifica ordina per rendimento rispetto all'atteso, non per numero di vittorie:
         così chi gioca sempre in due non parte avvantaggiato su chi gioca in cinque.
