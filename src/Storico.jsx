@@ -1,6 +1,7 @@
 // Primo Giocatore - Storico
-// v3.7.0 - 202609202345
+// v3.8.0 - 202610042130
 
+import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 
@@ -48,7 +49,9 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
         )
       `)
       .order('giocata_il', { ascending: false }))
-      setPartite(righe)
+      // La stessa partita registrata da te e da un altro giocatore
+      // compare una volta sola, e fra le due copie resta la tua.
+      setPartite(unisciCondivise(righe, [profilo.id]))
     } catch (e) {
       setErrore(e.message)
     } finally {

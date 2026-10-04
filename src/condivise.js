@@ -1,19 +1,23 @@
 // Primo Giocatore - partite condivise
-// v1.0.0 - 202610041700
+// v1.1.0 - 202610042130
 //
 // La stessa serata registrata da due persone (ognuna nel proprio
 // archivio, per esempio importando BG Stats o sincronizzando BGG)
-// deve contare una volta sola. Le partite restano tutte nel database:
-// l'unione avviene solo nel calcolo delle statistiche.
+// deve contare e comparire una volta sola. Le partite restano tutte
+// nel database: l'unione avviene solo quando si mostrano.
 //
-// Due partite di archivi diversi sono la stessa quando coincidono
-// gioco e giorno e poi:
-// - se entrambe hanno i punteggi, gli stessi punteggi;
-// - se a una mancano, lo stesso numero di giocatori.
+// Due partite di archivi diversi sono la stessa quando hanno lo stesso
+// gioco e poi:
+// - entrambe con i punteggi: gli stessi punteggi, nello stesso giorno
+//   o in giorni vicini. Il giorno vicino serve per le serate che
+//   finiscono dopo mezzanotte: BG Stats salva l'ora, BGG solo la data,
+//   e la stessa partita può cadere su due date diverse;
+// - a una mancano i punteggi: stesso giorno e stesso numero di giocatori.
 // L'accoppiamento è uno a uno: tre partite uguali nello stesso giorno
 // in due archivi restano tre, non una.
 
 const giornoDi = (p) => String(p.giocata_il || '').slice(0, 10)
+const numeroGiorno = (g) => Math.floor(Date.parse(`${g}T00:00:00Z`) / 86400000)
 
 const punteggiDi = (p) => (p.partecipazioni || [])
   .map((x) => x.punteggio_totale)
@@ -21,48 +25,57 @@ const punteggiDi = (p) => (p.partecipazioni || [])
   .map(Number)
   .sort((a, b) => a - b)
 
-function compatibili(a, b) {
-  const pa = punteggiDi(a)
-  const pb = punteggiDi(b)
+function compatibili(a, b, stessoGiorno) {
+  const pa = a._punti
+  const pb = b._punti
   if (pa.length && pb.length) return pa.length === pb.length && pa.every((v, i) => v === pb[i])
-  return (a.partecipazioni || []).length === (b.partecipazioni || []).length
+  return stessoGiorno && (a.p.partecipazioni || []).length === (b.p.partecipazioni || []).length
 }
 
 // preferiti: chi registra le copie da tenere, in ordine di preferenza
-// (di solito la persona di cui si guardano le statistiche, poi chi
-// sta usando l'app). Restituisce le partite nell'ordine originale.
+// (di solito la persona di cui si guardano i dati, poi chi sta usando
+// l'app). Restituisce le partite nell'ordine originale.
 export function unisciCondivise(partite, preferiti = []) {
   const rango = (p) => {
     const i = preferiti.indexOf(p.registrata_da)
     return i === -1 ? preferiti.length : i
   }
 
-  const gruppi = new Map()
+  // Si guarda solo dove ci sono almeno due archivi per lo stesso gioco.
+  const perGioco = new Map()
   partite.forEach((p, i) => {
     if (!p.giochi?.id) return
-    const k = `${p.giochi.id}|${giornoDi(p)}`
-    const g = gruppi.get(k) || []
+    const g = perGioco.get(p.giochi.id) || []
     g.push({ p, i })
-    gruppi.set(k, g)
+    perGioco.set(p.giochi.id, g)
   })
 
   const scartate = new Set()
-  for (const g of gruppi.values()) {
-    // Un solo archivio: niente da unire.
-    if (new Set(g.map((x) => x.p.registrata_da)).size < 2) continue
+  for (const gruppo of perGioco.values()) {
+    if (new Set(gruppo.map((x) => x.p.registrata_da)).size < 2) continue
 
-    const ordinate = [...g].sort((a, b) => rango(a.p) - rango(b.p) || a.i - b.i)
-    const tenute = []   // { p, assorbiti: Set di chi ha registrato le copie unite }
+    const ordinate = gruppo
+      .map((x) => ({ ...x, _giorno: numeroGiorno(giornoDi(x.p)), _punti: punteggiDi(x.p) }))
+      .sort((a, b) => rango(a.p) - rango(b.p) || a.i - b.i)
+
+    const tenutePerGiorno = new Map()   // numero giorno -> [{ ..., assorbiti }]
     for (const x of ordinate) {
-      const gemella = tenute.find((t) =>
-        t.p.registrata_da !== x.p.registrata_da &&
-        !t.assorbiti.has(x.p.registrata_da) &&
-        compatibili(t.p, x.p))
+      let gemella = null
+      for (const d of [0, -1, 1]) {
+        const candidate = tenutePerGiorno.get(x._giorno + d) || []
+        gemella = candidate.find((t) =>
+          t.p.registrata_da !== x.p.registrata_da &&
+          !t.assorbiti.has(x.p.registrata_da) &&
+          compatibili(t, x, d === 0))
+        if (gemella) break
+      }
       if (gemella) {
         gemella.assorbiti.add(x.p.registrata_da)
         scartate.add(x.i)
       } else {
-        tenute.push({ p: x.p, assorbiti: new Set() })
+        const l = tenutePerGiorno.get(x._giorno) || []
+        l.push({ ...x, assorbiti: new Set() })
+        tenutePerGiorno.set(x._giorno, l)
       }
     }
   }
