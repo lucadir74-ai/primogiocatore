@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.5.0 - 202610042130
+// v1.5.1 - 202610042200
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -225,9 +225,18 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
         primo_giocatore: g.posizione === 1,
       })
     }
-    if (righe.length) {
-      const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
-      if (e2) throw e2
+    // Una partita registrata su BGG senza giocatori è comunque di chi
+    // l'ha registrata: senza nessuno al tavolo non conterebbe per
+    // nessuno, mentre BGG e BG Stats la contano.
+    if (!righe.length) {
+      righe.push({ partita_id: partita.id, utente_id: profiloId, ospite_id: null })
+    }
+    const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
+    if (e2) {
+      // Senza giocatori la partita resterebbe orfana: si toglie, così
+      // alla prossima sincronizzazione viene reimportata intera.
+      await supabase.from('partite').delete().eq('id', partita.id)
+      throw e2
     }
     fatte++
   }
