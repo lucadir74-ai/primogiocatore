@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.9.0 - 202610041700
+// v3.10.0 - 202610041900
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -125,7 +125,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   const quanti = (p) => (p.partecipazioni || []).length
 
   // Statistiche di una persona, chiunque essa sia.
-  function dellaPersona(chiave) {
+  // Con idGioco: le stesse statistiche, ma solo a quel gioco.
+  function dellaPersona(chiave, idGioco = null) {
     const suaRiga = (p) => (p.partecipazioni || []).find((x) => identita(x) === chiave)
     // Guardando un'altra persona con un account, fra le copie della
     // stessa partita vince la sua: è lei che l'ha registrata con i
@@ -133,7 +134,7 @@ export default function Statistiche({ profilo, onModifica, mira }) {
     const base = chiave !== profilo.id && !String(chiave).startsWith('ospite:')
       ? filtra(unisciCondivise(tuttePartite, [chiave, profilo.id]))
       : partite
-    const sue = base.filter((p) => suaRiga(p))
+    const sue = base.filter((p) => suaRiga(p) && (!idGioco || p.giochi?.id === idGioco))
     const competitive = sue.filter((p) => p.tipo_punteggio !== 'coop')
     const cooperative = sue.filter((p) => p.tipo_punteggio === 'coop')
     const vinte = competitive.filter((p) => suaRiga(p)?.vincitore).length
@@ -463,6 +464,7 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       ) : tipo === 'gioco' ? (
         <SchedaGioco
           d={delGioco(attivo)}
+          io={dellaPersona(profilo.id, attivo)}
           nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]}
           istogramma={istogramma}
           profilo={profilo}
@@ -549,37 +551,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
       </div>
 
       <h3 className="titolo-sezione">Dettagli</h3>
-      <ul className="elenco">
-        {d.distanza != null && (
-          <li>
-            <div className="nome-giocatore">
-              <strong>Quando perde</strong>
-              <span className="anno block">distanza media dal vincitore</span>
-            </div>
-            <span className="punti-finali">−{Math.round(d.distanza * 100)}%</span>
-          </li>
-        )}
-        {d.serie.record > 0 && (
-          <li>
-            <div className="nome-giocatore">
-              <strong>Vittorie di fila</strong>
-              <span className="anno block">
-                {d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'}
-              </span>
-            </div>
-            <span className="punti-finali">{d.serie.record}</span>
-          </li>
-        )}
-        {d.cooperative.length > 0 && (
-          <li>
-            <div className="nome-giocatore">
-              <strong>Cooperativi</strong>
-              <span className="anno block">contati a parte: non c'è nessuno da battere</span>
-            </div>
-            <span className="punti-finali">{d.coopVinte}/{d.cooperative.length}</span>
-          </li>
-        )}
-      </ul>
+      <Dettagli d={d} />
 
       <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} mostraGioco />
 
@@ -634,10 +606,52 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
   )
 }
 
+// Quando perde, vittorie di fila, cooperativi: per il giocatore e,
+// nella scheda di un gioco, per te a quel gioco.
+function Dettagli({ d }) {
+  return (
+    <ul className="elenco">
+      {d.distanza != null && (
+        <li>
+          <div className="nome-giocatore">
+            <strong>Quando perde</strong>
+            <span className="anno block">distanza media dal vincitore</span>
+          </div>
+          <span className="punti-finali">−{Math.round(d.distanza * 100)}%</span>
+        </li>
+      )}
+      {d.serie.record > 0 && (
+        <li>
+          <div className="nome-giocatore">
+            <strong>Vittorie di fila</strong>
+            <span className="anno block">
+              {d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'}
+            </span>
+          </div>
+          <span className="punti-finali">{d.serie.record}</span>
+        </li>
+      )}
+      {d.cooperative.length > 0 && (
+        <li>
+          <div className="nome-giocatore">
+            <strong>Cooperativi</strong>
+            <span className="anno block">contati a parte: non c'è nessuno da battere</span>
+          </div>
+          <span className="punti-finali">{d.coopVinte}/{d.cooperative.length}</span>
+        </li>
+      )}
+    </ul>
+  )
+}
+
 /* ---------- Gioco ---------- */
 
 function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella }) {
   const [aperta, setAperta] = useState(null)
+  // Chiusa all'inizio: con centinaia di partite la lista copriva
+  // tutto quello che c'è sotto. Aperta, mostra dieci serate alla volta.
+  const [visibile, setVisibile] = useState(false)
+  const [giorni, setGiorni] = useState(10)
 
   // Raggruppate per giorno: le serate di gioco stanno insieme.
   const perGiorno = new Map()
@@ -655,8 +669,12 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
       <h3 className="titolo-sezione">
         Tutte le partite <span className="conteggio">{partite.length}</span>
       </h3>
+      <button className="bottone bottone-secondario"
+        onClick={() => { setVisibile(!visibile); setGiorni(10) }} aria-expanded={visibile}>
+        {visibile ? 'Nascondi le partite' : 'Mostra le partite'}
+      </button>
 
-      {[...perGiorno.entries()].map(([data, delGiorno]) => (
+      {visibile && [...perGiorno.entries()].slice(0, giorni).map(([data, delGiorno]) => (
         <div className="gruppo-giorno" key={data}>
           <h4 className="giorno">
             {giorno(data)}
@@ -748,11 +766,17 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
           })}
         </div>
       ))}
+
+      {visibile && perGiorno.size > giorni && (
+        <button className="bottone bottone-secondario" onClick={() => setGiorni(giorni + 10)}>
+          Mostra altre serate ({perGiorno.size - giorni})
+        </button>
+      )}
     </>
   )
 }
 
-function SchedaGioco({ d, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
+function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
     <>
@@ -778,6 +802,22 @@ function SchedaGioco({ d, nome, istogramma, profilo, onModifica, onCancella, vai
         </p>
         {d.ultima && <p>Ultima volta: {giorno(d.ultima)}.</p>}
       </div>
+
+      {io && io.competitive.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Tu a questo gioco</h3>
+          <div className="numeroni">
+            <Numerone cifra={io.vinte} testo={`vinte (${perc(io.vinte, io.competitive.length)})`} />
+            <Numerone
+              cifra={io.rendimento != null ? `${io.rendimento.toFixed(2)}×` : '—'}
+              testo="rispetto all'atteso"
+              tono={io.rendimento != null ? (io.rendimento >= 1 ? 'sopra' : 'sotto') : null}
+            />
+            <Numerone cifra={io.piazz != null ? Math.round(io.piazz * 100) : '—'} testo="piazzamento su 100" />
+          </div>
+          <Dettagli d={io} />
+        </>
+      )}
 
       <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} />
 
