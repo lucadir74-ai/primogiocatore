@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.3.0 - 202610041200
+// v1.4.0 - 202610042100
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -147,6 +147,18 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   const ospiti = mappaPerNome(esistenti, profiloId)
   const luoghi = new Map()
 
+  // Gli altri nomi con cui compari: le partite di Board Game Arena che
+  // BG Stats pubblica su BGG portano il nome BGA, non il nome utente BGG.
+  // Valgono il nome BGA del profilo e gli ospiti già collegati a te
+  // con «sono io».
+  const mieiNomi = new Set()
+  const [{ data: io }, { data: collegati }] = await Promise.all([
+    supabase.from('profili').select('bga_username').eq('id', profiloId).single(),
+    supabase.from('ospiti').select('nome').eq('utente_collegato', profiloId),
+  ])
+  if (io?.bga_username?.trim()) mieiNomi.add(io.bga_username.trim().toLowerCase())
+  for (const o of collegati || []) if (o.nome?.trim()) mieiNomi.add(o.nome.trim().toLowerCase())
+
   let fatte = 0
   for (const p of conGioco) {
     avanzamento({ fase: 'Importo', fatto: fatte, totale: conGioco.length })
@@ -180,11 +192,17 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
     if (e1?.code === '23505') continue
     if (e1) throw e1
 
-    // Il proprietario dell'archivio si riconosce dal nome utente BGG;
-    // gli altri entrano come ospiti, riusando i tuoi quando il nome coincide.
+    // Il proprietario dell'archivio si riconosce dal nome utente BGG o
+    // da uno dei suoi altri nomi; gli altri entrano come ospiti,
+    // riusando i tuoi quando il nome coincide. Una volta sola per
+    // partita: se due righe sembrano te, la seconda resta ospite.
     const righe = []
+    let giaIo = false
     for (const g of p.giocatori) {
-      const sonoIo = g.username && g.username.toLowerCase() === utente.toLowerCase()
+      const sonoIo = !giaIo && (
+        (g.username && g.username.toLowerCase() === utente.toLowerCase()) ||
+        mieiNomi.has((g.nome || '').trim().toLowerCase()))
+      if (sonoIo) giaIo = true
       let ospiteId = null
       if (!sonoIo) {
         const nome = (g.nome || 'Sconosciuto').trim()
