@@ -1,4 +1,4 @@
-// Primo Giocatore v4.11.0 - 202609302000
+// Primo Giocatore v4.12.0 - 202610041800
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -11,6 +11,7 @@ import Storico from './Storico.jsx'
 import Statistiche from './Statistiche.jsx'
 import Dati from './Dati.jsx'
 import UnisciOspiti from './UnisciOspiti.jsx'
+import Giocatori from './Giocatori.jsx'
 import Tavoli from './Tavoli.jsx'
 import Luoghi from './Luoghi.jsx'
 import GiochiDoppi from './GiochiDoppi.jsx'
@@ -91,6 +92,7 @@ const ICONE = {
   statistiche: 'M5 20V10 M12 20V4 M19 20v-7',
   giochi: 'M4 7l8-4 8 4v10l-8 4-8-4z M4 7l8 4 8-4 M12 11v10',
   profilo: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4 3.6-6 8-6s8 2 8 6',
+  giocatori: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7z M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6 M16 4.5a3.2 3.2 0 010 6.3 M18 14.3c2.2.6 3.5 2.6 3.5 5.7',
   tavoli: 'M3 10h18 M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3 M6 10v9 M18 10v9',
 }
 
@@ -683,6 +685,7 @@ export default function App() {
               ['storico', 'Storico'],
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
+              ['giocatori', 'Giocatori'],
               ['profilo', 'Profilo'],
             ].map(([id, etichetta]) => (
               <button
@@ -771,6 +774,14 @@ export default function App() {
             />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
+          ) : scheda === 'giocatori' ? (
+            <Giocatori
+              profilo={profilo}
+              onStatistiche={(id) => {
+                setMira({ tipo: 'persona', id, quando: Date.now() })
+                setScheda('statistiche')
+              }}
+            />
           ) : (
             (() => {
               const sezioni = SEZIONI_PROFILO.filter(([, , soloOrg]) => !soloOrg || profilo.organizzatore)
