@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.11.0 - 202610042000
+// v3.11.1 - 202610042030
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -360,8 +360,9 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       if (p.giochi) giochi.set(p.giochi.id, { id: p.giochi.id, nome: p.giochi.nome, n: (giochi.get(p.giochi.id)?.n || 0) + 1 })
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
-        const v = persone.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: 0, vinte: 0, attese: 0 }
+        const v = persone.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: 0, competitive: 0, vinte: 0, attese: 0 }
         v.n++
+        if (p.tipo_punteggio !== 'coop') v.competitive++
         if (x.vincitore) v.vinte++
         if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
         persone.set(k, v)
@@ -595,7 +596,7 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
                 <span className="posto">{i + 1}°</span>
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
-                  <span className="anno block">{g.competitive} partite · {g.vinte} vinte</span>
+                  <span className="anno block">{g.competitive} partite · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}</span>
                 </div>
                 <span className={`bilancio${g.rendimento >= 1 ? ' avanti' : ' indietro'}`}>
                   {g.rendimento.toFixed(2)}×
@@ -890,7 +891,7 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
                 <span className="anno block">
-                  {g.partite} giocate · {g.vinte} vinte
+                  {g.partite} {g.partite === 1 ? 'giocata' : 'giocate'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
                 </span>
                 {rip && <span className="anno block">{rip}</span>}
               </div>
@@ -1044,8 +1045,10 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
       <h3 className="titolo-sezione">Classifica</h3>
       <ElencoCorto>
         {d.persone
-          .filter((p) => p.attese > 0)
-          .sort((a, b) => b.vinte / b.attese - a.vinte / a.attese)
+          // Con una partita sola il numero non vuol dire niente: chi vince
+          // l'unica partita in dodici risulta 12,00× e finisce in cima.
+          .filter((p) => p.attese > 0 && p.competitive >= MIN_CLASSIFICA)
+          .sort((a, b) => b.vinte / b.attese - a.vinte / a.attese || b.competitive - a.competitive)
           .map((p) => {
             const r = p.vinte / p.attese
             return (
@@ -1053,7 +1056,9 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
                 <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
-                  <span className="anno block">{p.n} partite · {p.vinte} vinte</span>
+                  <span className="anno block">
+                    {p.competitive} {p.competitive === 1 ? 'partita' : 'partite'} · {p.vinte} {p.vinte === 1 ? 'vinta' : 'vinte'}
+                  </span>
                 </div>
                 <span className={`bilancio${r >= 1 ? ' avanti' : ' indietro'}`}>{r.toFixed(2)}×</span>
               </li>
@@ -1062,7 +1067,9 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
       </ElencoCorto>
       <p className="aiuto">
         La classifica ordina per rendimento rispetto all'atteso, non per numero di vittorie:
-        così chi gioca sempre in due non parte avvantaggiato su chi gioca in cinque.
+        così chi gioca sempre in due non parte avvantaggiato su chi gioca in cinque. Entra
+        solo chi ha almeno {MIN_CLASSIFICA} partite competitive: con meno, una vittoria
+        fortunata basta per finire in cima.
       </p>
     </>
   )
