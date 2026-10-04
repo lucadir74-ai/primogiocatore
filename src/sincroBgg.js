@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.4.0 - 202610042100
+// v1.5.0 - 202610042130
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -266,5 +266,87 @@ export async function sincronizzaSeServe(profilo) {
     return { fatte, daControllare: letto.sospette }
   } finally {
     try { localStorage.removeItem(CHIAVE_IN_CORSO) } catch { /* niente */ }
+  }
+}
+
+// ---------------------------------------------------------------
+// Il tuo nome su Board Game Arena, riconosciuto dalle partite.
+//
+// Le partite BGA che BG Stats pubblica su BGG portano il nome BGA,
+// non lo username BGG: l'import non ti riconosce e ti mette come
+// ospite. Qui si cercano le tue partite da BGG in cui non compari: se
+// un nome ospite c'è in quasi tutte, quasi certamente sei tu. Non si
+// decide da soli: l'app chiede, e con un sì sposta le partite.
+
+const CHIAVE_SCARTATI = (id) => `primo-giocatore:nomi-bga-scartati:${id}`
+const MIN_PARTITE_NOME = 3     // sotto, può essere un avversario abituale
+const QUOTA_NOME = 0.8         // il nome deve stare in 8 partite su 10
+
+function nomiScartati(profiloId) {
+  try { return new Set(JSON.parse(localStorage.getItem(CHIAVE_SCARTATI(profiloId)) || '[]')) } catch { return new Set() }
+}
+
+export function scartaNomeBga(profiloId, nome) {
+  const s = nomiScartati(profiloId)
+  s.add(nome.toLowerCase())
+  try { localStorage.setItem(CHIAVE_SCARTATI(profiloId), JSON.stringify([...s])) } catch { /* niente */ }
+}
+
+// { nome, partite, righe: [id partecipazione], ospiti: [id] } oppure null
+export async function cercaNomeBga(profiloId) {
+  const righe = await tutteLeRighe(() => supabase.from('partite')
+    .select('id, partecipazioni ( id, utente_id, ospite_id, ospiti:ospite_id ( nome, utente_collegato ) )')
+    .eq('registrata_da', profiloId)
+    .like('chiave_esterna', 'bgg:%'))
+
+  const sonoIo = (x) => x.utente_id === profiloId || x.ospiti?.utente_collegato === profiloId
+  const senzaMe = righe.filter((p) => !(p.partecipazioni || []).some(sonoIo))
+  if (senzaMe.length < MIN_PARTITE_NOME) return null
+
+  const scartati = nomiScartati(profiloId)
+  const perNome = new Map()
+  for (const p of senzaMe) {
+    const visti = new Set()
+    for (const x of p.partecipazioni || []) {
+      const nome = x.ospiti?.nome?.trim()
+      if (!nome || x.ospiti.utente_collegato) continue
+      const k = nome.toLowerCase()
+      if (scartati.has(k)) continue
+      const v = perNome.get(k) || { nome, partite: 0, righe: [], ospiti: new Set() }
+      if (!visti.has(k)) { v.partite++; visti.add(k) }
+      v.righe.push(x.id)
+      v.ospiti.add(x.ospite_id)
+      perNome.set(k, v)
+    }
+  }
+
+  const migliore = [...perNome.values()].sort((a, b) => b.partite - a.partite)[0]
+  if (!migliore || migliore.partite < MIN_PARTITE_NOME) return null
+  if (migliore.partite < senzaMe.length * QUOTA_NOME) return null
+  return { ...migliore, ospiti: [...migliore.ospiti] }
+}
+
+// Con il sì: il nome BGA va nel profilo (così le prossime partite ti
+// riconoscono da sole) e le partite trovate passano a te. Si toccano
+// solo le partite del tuo archivio.
+export async function confermaNomeBga(profiloId, trovato) {
+  const { data: io } = await supabase.from('profili').select('bga_username').eq('id', profiloId).single()
+  if (!io?.bga_username?.trim()) {
+    const { error } = await supabase.from('profili').update({ bga_username: trovato.nome }).eq('id', profiloId)
+    if (error) throw error
+  }
+
+  for (let i = 0; i < trovato.righe.length; i += 200) {
+    const { error } = await supabase.from('partecipazioni')
+      .update({ utente_id: profiloId, ospite_id: null })
+      .in('id', trovato.righe.slice(i, i + 200))
+    if (error) throw error
+  }
+
+  // L'ospite rimasto senza partite non serve più: si toglie se è tuo.
+  for (const id of trovato.ospiti) {
+    const { count } = await supabase.from('partecipazioni')
+      .select('id', { count: 'exact', head: true }).eq('ospite_id', id)
+    if (count === 0) await supabase.from('ospiti').delete().eq('id', id).eq('creato_da', profiloId)
   }
 }

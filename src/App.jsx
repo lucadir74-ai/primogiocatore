@@ -1,4 +1,4 @@
-// Primo Giocatore v4.12.0 - 202610041800
+// Primo Giocatore v4.13.0 - 202610042130
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -12,6 +12,7 @@ import Statistiche from './Statistiche.jsx'
 import Dati from './Dati.jsx'
 import UnisciOspiti from './UnisciOspiti.jsx'
 import Giocatori from './Giocatori.jsx'
+import NomeBga from './NomeBga.jsx'
 import Tavoli from './Tavoli.jsx'
 import Luoghi from './Luoghi.jsx'
 import GiochiDoppi from './GiochiDoppi.jsx'
@@ -586,13 +587,14 @@ export default function App() {
   })
   const [daApprovare, setDaApprovare] = useState(0)
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
+  const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
 
   // Partite nuove su BGG (anche quelle che BG Stats ci pubblica, comprese
   // quelle di Board Game Arena): arrivano da sole all'apertura.
   useEffect(() => {
     if (!profilo?.bgg_username) return
     sincronizzaSeServe(profilo)
-      .then((r) => { if (r?.fatte) setDaBgg(r) })
+      .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
       .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
   }, [profilo?.id])
 
@@ -709,6 +711,8 @@ export default function App() {
               </p>
             </div>
           )}
+
+          <NomeBga profilo={profilo} quando={controlloBga} />
 
           {scheda !== 'profilo' && daApprovare > 0 && (
             <div className="scheda scheda-sottile">
