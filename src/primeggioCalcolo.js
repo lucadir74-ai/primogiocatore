@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il calcolo dell'IPG
-// v1.0.0 - 202610042300
+// v1.1.0 - 202610061200
 //
 // Primeggio è il sistema di classifica; IPG (Indice Primo Giocatore)
 // è il numero di ciascuno, per gioco e globale.
@@ -19,6 +19,14 @@ import { unisciCondivise } from './condivise.js'
 
 export const MIN_PARTITE_GIOCO = 5
 export const MIN_PARTITE_GLOBALE = 20
+
+// IPG globale: ogni gioco conta in proporzione a peso BGG × partite.
+// Le partite contano fino a un tetto, così chi gioca centinaia di volte
+// lo stesso gioco non schiaccia tutto il resto. Un gioco senza peso
+// (fatto a mano, o mai votato su BGG) vale come un gioco medio.
+export const TETTO_PARTITE = 20
+export const PESO_NEUTRO = 2.5
+export const pesoEffettivo = (peso) => (Number(peso) > 0 ? Number(peso) : PESO_NEUTRO)
 
 // Scala: chi non ha mai giocato vale 1000; un giocatore medio con
 // molte partite si assesta intorno ai 1500.
@@ -54,7 +62,7 @@ export function posti(righe) {
   return null   // nessuna informazione su chi ha vinto: la partita non conta
 }
 
-// partite: [{ id, giocata_il, registrata_da, tipo_punteggio, giochi: { id },
+// partite: [{ id, giocata_il, registrata_da, tipo_punteggio, giochi: { id, peso_bgg },
 //             partecipazioni: [{ utente_id, ospite_id, punteggio_totale,
 //                                posizione, vincitore, ospiti: { utente_collegato } }] }]
 // Restituisce le righe della tabella ipg (solo account).
@@ -64,6 +72,7 @@ export function calcolaPrimeggio(partite) {
     .sort((a, b) => String(a.giocata_il).localeCompare(String(b.giocata_il)))
 
   const perGioco = new Map()   // gioco -> Map(identità -> { r, partite })
+  const pesi = new Map()       // gioco -> peso effettivo
   for (const p of valide) {
     // Una persona una volta sola per partita.
     const viste = new Set()
@@ -79,6 +88,7 @@ export function calcolaPrimeggio(partite) {
     if (!rank) continue
 
     const gioco = String(p.giochi.id)
+    pesi.set(gioco, pesoEffettivo(p.giochi.peso_bgg))
     const tab = perGioco.get(gioco) || new Map()
     perGioco.set(gioco, tab)
     const voci = righe.map((r) => {
@@ -91,7 +101,7 @@ export function calcolaPrimeggio(partite) {
   }
 
   const righeIpg = []
-  const globale = new Map()   // account -> { somma, partite }
+  const globale = new Map()   // account -> { somma, pesoTot, partite }
 
   for (const [gioco, tab] of perGioco) {
     const qui = []
@@ -99,8 +109,10 @@ export function calcolaPrimeggio(partite) {
       if (!eAccount(k)) continue
       const ipg = ipgDa(v.r)
       qui.push({ profilo_id: k, gioco_id: gioco, ipg, mu: v.r.mu, sigma: v.r.sigma, partite: v.partite })
-      const g = globale.get(k) || { somma: 0, partite: 0 }
-      g.somma += ipg * v.partite
+      const g = globale.get(k) || { somma: 0, pesoTot: 0, partite: 0 }
+      const w = pesi.get(gioco) * Math.min(v.partite, TETTO_PARTITE)
+      g.somma += ipg * w
+      g.pesoTot += w
       g.partite += v.partite
       globale.set(k, g)
     }
@@ -111,9 +123,10 @@ export function calcolaPrimeggio(partite) {
     righeIpg.push(...qui)
   }
 
-  // Globale: media degli IPG per gioco, pesata sulle partite.
+  // Globale: media degli IPG per gioco, pesata su peso BGG × partite
+  // (con il tetto). Per entrare in classifica contano le partite vere.
   const glob = [...globale].map(([k, g]) => ({
-    profilo_id: k, gioco_id: '', ipg: Math.round(g.somma / g.partite),
+    profilo_id: k, gioco_id: '', ipg: Math.round(g.somma / g.pesoTot),
     mu: null, sigma: null, partite: g.partite,
   }))
   glob.filter((r) => r.partite >= MIN_PARTITE_GLOBALE)
