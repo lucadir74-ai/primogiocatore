@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.11.1 - 202610042030
+// v3.12.0 - 202610042300
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -18,6 +18,42 @@ function mediana(numeri) {
 }
 
 const MIN_CLASSIFICA = 5
+// Le stesse soglie del calcolo sul server (src/primeggioCalcolo.js).
+const MIN_GIOCO = 5
+const MIN_GLOBALE = 20
+
+/* Primeggio: la classifica per IPG (Indice Primo Giocatore). */
+function ClassificaPrimeggio({ righe, vaiAlGiocatore, profilo }) {
+  return (
+    <ElencoCorto quante={10}>
+      {righe.map((r) => (
+        <li key={r.profilo_id} className={r.profilo_id === profilo.id ? 'io' : ''}>
+          <span className="posto">{r.posizione}°</span>
+          <span className="pallino" style={{ background: COLORI.find((c) => c.id === r.colore)?.hex || '#C9D1D8' }} aria-hidden="true" />
+          <div className="nome-giocatore">
+            <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(r.profilo_id)}>{r.nome}</button>
+            <span className="anno block">{r.partite} {r.partite === 1 ? 'partita' : 'partite'}</span>
+          </div>
+          <span className="punti-finali">{r.ipg}</span>
+        </li>
+      ))}
+    </ElencoCorto>
+  )
+}
+
+function SpiegaPrimeggio() {
+  const [aperta, setAperta] = useState(false)
+  if (!aperta) return <button className="bottone-piatto" onClick={() => setAperta(true)}>Come funziona?</button>
+  return (
+    <span className="block">
+      Il Primeggio stima la forza di ognuno dalla posizione finale in ogni partita e dalla forza
+      degli avversari: battere chi è forte vale di più. Dopo ogni partita l'app è anche più sicura
+      della stima, e l'IPG (Indice Primo Giocatore) è il valore prudente: per questo nelle prime
+      partite tende a salire. Si parte da 1000; un giocatore medio con molte partite sta intorno ai
+      1500. Le cooperative non contano, e la stessa partita registrata da più persone conta una volta.
+    </span>
+  )
+}
 
 const durata = (min) => (min >= 60 ? `${Math.round(min / 60)} h` : `${min} min`)
 
@@ -63,6 +99,35 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   const [dove, setDove] = useState('tutte')   // tutte | vivo | online
 
   useEffect(() => { carica() }, [])
+
+  // Primeggio: gli IPG calcolati sul server, uguali per tutti.
+  const [primeggio, setPrimeggio] = useState([])
+  const [ricalcolo, setRicalcolo] = useState('')
+  useEffect(() => { caricaPrimeggio() }, [])
+  async function caricaPrimeggio() {
+    try {
+      const righe = await tutteLeRighe(() => supabase.from('ipg')
+        .select('profilo_id, gioco_id, ipg, partite, posizione, nome, colore, aggiornato_il'))
+      setPrimeggio(righe)
+    } catch { /* tabella non ancora creata: il Primeggio resta nascosto */ }
+  }
+  async function ricalcolaPrimeggio() {
+    setRicalcolo('Ricalcolo in corso…')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/api/primeggio', { headers: { Authorization: `Bearer ${session?.access_token}` } })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.errore || 'errore')
+      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.`)
+      await caricaPrimeggio()
+    } catch (e) {
+      setRicalcolo(`Non riuscito: ${e.message}`)
+    }
+  }
+  const ipgDi = (id, gioco = '') => primeggio.find((r) => r.profilo_id === id && r.gioco_id === String(gioco || ''))
+  const classificaDi = (gioco = '') => primeggio
+    .filter((r) => r.gioco_id === String(gioco || '') && r.posizione != null)
+    .sort((a, b) => a.posizione - b.posizione)
 
   // Arrivo da un'altra scheda: apro direttamente su quel soggetto.
   useEffect(() => {
@@ -480,6 +545,9 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       ) : tipo === 'persona' ? (
         <SchedaPersona
           d={dellaPersona(attivo)}
+          ipg={ipgDi(attivo)}
+          ipgGioco={(g) => ipgDi(attivo, g)}
+          inClassifica={classificaDi().length}
           istogramma={istogramma}
           vaiAlGioco={vaiAlGioco}
           vaiAlGiocatore={vaiAlGiocatore}
@@ -491,6 +559,8 @@ export default function Statistiche({ profilo, onModifica, mira }) {
         <SchedaGioco
           d={delGioco(attivo)}
           io={dellaPersona(profilo.id, attivo)}
+          classifica={classificaDi(attivo)}
+          mioIpg={ipgDi(profilo.id, attivo)}
           nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]}
           istogramma={istogramma}
           profilo={profilo}
@@ -509,7 +579,13 @@ export default function Statistiche({ profilo, onModifica, mira }) {
           onCancella={cancellaPartita}
         />
       ) : (
-        <SchedaGruppo d={delGruppo()} partite={partite} istogramma={istogramma} vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco} />
+        <SchedaGruppo
+          d={delGruppo()} partite={partite} istogramma={istogramma}
+          vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco}
+          classifica={classificaDi()} profilo={profilo}
+          aggiornato={primeggio[0]?.aggiornato_il}
+          onRicalcola={profilo.organizzatore ? ricalcolaPrimeggio : null} ricalcolo={ricalcolo}
+        />
       )}
     </div>
   )
@@ -546,12 +622,18 @@ function Istogramma({ dati }) {
 
 /* ---------- Giocatore ---------- */
 
-function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onModifica, onCancella }) {
+function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onModifica, onCancella }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita per questo giocatore.</p>
   return (
     <>
       <div className="numeroni">
         <Numerone cifra={d.sue.length} testo="partite" />
+        {ipg && (
+          <Numerone
+            cifra={ipg.ipg}
+            testo={ipg.posizione ? `IPG · ${ipg.posizione}° su ${inClassifica}` : `IPG · in classifica da ${MIN_GLOBALE} partite`}
+          />
+        )}
         <Numerone cifra={d.vinte} testo={`vinte (${perc(d.vinte, d.competitive.length)})`} />
         <Numerone
           cifra={d.rendimento != null ? `${d.rendimento.toFixed(2)}×` : '—'}
@@ -596,7 +678,10 @@ function SchedaPersona({ d, istogramma, vaiAlGioco, vaiAlGiocatore, profilo, onM
                 <span className="posto">{i + 1}°</span>
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
-                  <span className="anno block">{g.competitive} partite · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}</span>
+                  <span className="anno block">
+                    {g.competitive} partite · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
+                    {ipgGioco(g.id) && ` · IPG ${ipgGioco(g.id).ipg}${ipgGioco(g.id).posizione ? ` (${ipgGioco(g.id).posizione}°)` : ''}`}
+                  </span>
                 </div>
                 <span className={`bilancio${g.rendimento >= 1 ? ' avanti' : ' indietro'}`}>
                   {g.rendimento.toFixed(2)}×
@@ -826,13 +911,19 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
   )
 }
 
-function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
+function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
     <>
       <div className="numeroni">
         <Numerone cifra={d.sue.length} testo="partite" />
         <Numerone cifra={d.giocatori.length} testo="giocatori" />
+        {mioIpg && (
+          <Numerone
+            cifra={mioIpg.ipg}
+            testo={mioIpg.posizione ? `il tuo IPG · ${mioIpg.posizione}° su ${classifica.length}` : `il tuo IPG · in classifica da ${MIN_GIOCO} partite`}
+          />
+        )}
         {io && io.competitive.length > 0 && (
           <>
             <Numerone cifra={io.vinte} testo={`le tue vinte (${perc(io.vinte, io.competitive.length)})`} />
@@ -872,6 +963,16 @@ function SchedaGioco({ d, io, nome, istogramma, profilo, onModifica, onCancella,
       )}
 
       <PartiteDelGioco partite={d.sue} profilo={profilo} onModifica={onModifica} onCancella={onCancella} />
+
+      {classifica.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Primeggio a {nome}</h3>
+          <ClassificaPrimeggio righe={classifica} vaiAlGiocatore={vaiAlGiocatore} profilo={profilo} />
+          <p className="aiuto">
+            Chi ha almeno {MIN_GIOCO} partite a questo gioco, fra chi ha un account. <SpiegaPrimeggio />
+          </p>
+        </>
+      )}
 
       <h3 className="titolo-sezione">Chi vince a questo gioco</h3>
       <p className="aiuto">
@@ -1020,7 +1121,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
 
 /* ---------- Tutti ---------- */
 
-function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
+function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, classifica, profilo, aggiornato, onRicalcola, ricalcolo }) {
   return (
     <>
       <div className="numeroni">
@@ -1042,7 +1143,27 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco }) {
         ))}
       </ElencoCorto>
 
-      <h3 className="titolo-sezione">Classifica</h3>
+      <h3 className="titolo-sezione">Classifica Primeggio</h3>
+      {classifica.length > 0 ? (
+        <>
+          <ClassificaPrimeggio righe={classifica} vaiAlGiocatore={vaiAlGiocatore} profilo={profilo} />
+          <p className="aiuto">
+            L'IPG globale è la media degli IPG di ogni gioco, pesata sulle partite. In classifica
+            entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.{' '}
+            <SpiegaPrimeggio />
+            {aggiornato && ` Aggiornata il ${new Date(aggiornato).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`}
+          </p>
+        </>
+      ) : (
+        <p className="aiuto">La classifica Primeggio non è ancora stata calcolata.</p>
+      )}
+      {onRicalcola && (
+        <p className="aiuto">
+          <button className="bottone-piatto" onClick={onRicalcola}>Ricalcola ora</button> {ricalcolo}
+        </p>
+      )}
+
+      <h3 className="titolo-sezione">Vittorie rispetto all'atteso</h3>
       <ElencoCorto>
         {d.persone
           // Con una partita sola il numero non vuol dire niente: chi vince

@@ -1709,3 +1709,6 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 
 /* ---------- Liste comprimibili delle statistiche ---------- */
 .mostra-tutti { display: block; margin: -0.6rem auto 1.2rem; }
+
+/* ---------- Primeggio ---------- */
+.elenco li.io { background: color-mix(in srgb, var(--verde) 12%, transparent); border-radius: 10px; }

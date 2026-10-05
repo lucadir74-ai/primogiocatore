@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/primeggio", "schedule": "0 4 * * *" }
+  ]
+}
