@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.0.0 - 202610042300
+// v1.1.0 - 202610061200
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -12,16 +12,23 @@
 // Variabili d'ambiente su Vercel (senza prefisso VITE_):
 //   SUPABASE_SERVICE_ROLE_KEY  chiave di servizio di Supabase
 //   CRON_SECRET                una stringa a caso, lunga
+//   BGG_TOKEN                  lo stesso già usato da api/bgg.js
+//
+// Prima del calcolo recupera da BGG il peso dei giochi che ancora non
+// l'hanno, entro un tempo massimo: quelli che restano arrivano al
+// ricalcolo successivo e intanto valgono come un gioco medio.
 // L'indirizzo del database è lo stesso dell'app (VITE_SUPABASE_URL).
 
 import { createClient } from '@supabase/supabase-js'
 import { calcolaPrimeggio } from '../src/primeggioCalcolo.js'
+import { leggiPesiBgg } from '../src/pesoBgg.js'
 
 export const config = { maxDuration: 60 }
 
 const URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PAGINA = 1000
+const TEMPO_PESI = 30000   // al massimo 30 secondi per i pesi, su 60 disponibili
 
 async function autorizzato(req, db) {
   const intestazione = req.headers.authorization || ''
@@ -40,7 +47,7 @@ async function tutteLePartite(db) {
     const { data, error } = await db.from('partite')
       .select(`
         id, giocata_il, registrata_da, tipo_punteggio,
-        giochi ( id ),
+        giochi ( id, bgg_id, peso_bgg ),
         partecipazioni ( utente_id, ospite_id, punteggio_totale, posizione, vincitore,
                          ospiti:ospite_id ( utente_collegato ) )
       `)
@@ -52,6 +59,35 @@ async function tutteLePartite(db) {
   }
 }
 
+// I giochi delle partite che hanno un numero BGG ma non ancora il peso.
+// Il peso trovato si salva nel database e si scrive anche nelle partite
+// già lette, così questo stesso ricalcolo lo usa subito.
+async function completaPesi(db, partite, scadenza) {
+  const senza = new Map()   // bgg_id -> [oggetti giochi da aggiornare]
+  for (const p of partite) {
+    const g = p.giochi
+    if (!g?.bgg_id || g.peso_bgg != null) continue
+    if (!senza.has(g.bgg_id)) senza.set(g.bgg_id, [])
+    senza.get(g.bgg_id).push(g)
+  }
+  if (senza.size === 0) return { recuperati: 0, mancanti: 0 }
+
+  let pesi = new Map()
+  try {
+    pesi = await leggiPesiBgg([...senza.keys()], { token: process.env.BGG_TOKEN, scadenza })
+  } catch (e) {
+    // BGG giù: il Primeggio si calcola lo stesso, con il peso neutro.
+    console.warn('Pesi BGG non recuperati:', e.message)
+  }
+
+  for (const [bggId, peso] of pesi) {
+    const { error } = await db.from('giochi').update({ peso_bgg: peso }).eq('bgg_id', bggId)
+    if (error) throw error
+    for (const g of senza.get(bggId) || []) g.peso_bgg = peso
+  }
+  return { recuperati: pesi.size, mancanti: senza.size - pesi.size }
+}
+
 export default async function handler(req, res) {
   if (!URL || !SERVIZIO) return res.status(500).json({ errore: 'Manca SUPABASE_SERVICE_ROLE_KEY su Vercel.' })
   const db = createClient(URL, SERVIZIO, { auth: { persistSession: false } })
@@ -61,6 +97,7 @@ export default async function handler(req, res) {
 
     const inizio = Date.now()
     const partite = await tutteLePartite(db)
+    const pesi = await completaPesi(db, partite, inizio + TEMPO_PESI)
     const righe = calcolaPrimeggio(partite)
 
     // Nome e colore vanno nella tabella: chi guarda la classifica può
@@ -91,6 +128,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       partite: partite.length,
       righe: righe.length,
+      pesi_recuperati: pesi.recuperati,
+      pesi_mancanti: pesi.mancanti,
       secondi: Math.round((Date.now() - inizio) / 100) / 10,
     })
   } catch (e) {
