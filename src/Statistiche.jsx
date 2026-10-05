@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.12.0 - 202610042300
+// v3.13.0 - 202610061200
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -118,7 +118,10 @@ export default function Statistiche({ profilo, onModifica, mira }) {
       const r = await fetch('/api/primeggio', { headers: { Authorization: `Bearer ${session?.access_token}` } })
       const j = await r.json()
       if (!r.ok) throw new Error(j.errore || 'errore')
-      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.`)
+      const pesi = j.pesi_mancanti > 0
+        ? ` Pesi BGG ancora da recuperare: ${j.pesi_mancanti} giochi (ripeti il ricalcolo o aspetta la notte).`
+        : ''
+      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}`)
       await caricaPrimeggio()
     } catch (e) {
       setRicalcolo(`Non riuscito: ${e.message}`)
@@ -1148,7 +1151,8 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
         <>
           <ClassificaPrimeggio righe={classifica} vaiAlGiocatore={vaiAlGiocatore} profilo={profilo} />
           <p className="aiuto">
-            L'IPG globale è la media degli IPG di ogni gioco, pesata sulle partite. In classifica
+            L'IPG globale è la media degli IPG di ogni gioco: contano di più i giochi complessi
+            (peso BoardGameGeek) e quelli che giochi spesso, fino a 20 partite per gioco. In classifica
             entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.{' '}
             <SpiegaPrimeggio />
             {aggiornato && ` Aggiornata il ${new Date(aggiornato).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`}
