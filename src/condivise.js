@@ -1,5 +1,5 @@
 // Primo Giocatore - partite condivise
-// v1.1.0 - 202610042130
+// v1.2.0 - 202610062330
 //
 // La stessa serata registrata da due persone (ognuna nel proprio
 // archivio, per esempio importando BG Stats o sincronizzando BGG)
@@ -35,7 +35,10 @@ function compatibili(a, b, stessoGiorno) {
 // preferiti: chi registra le copie da tenere, in ordine di preferenza
 // (di solito la persona di cui si guardano i dati, poi chi sta usando
 // l'app). Restituisce le partite nell'ordine originale.
-export function unisciCondivise(partite, preferiti = []) {
+// suUnione (facoltativo): chiamata con (tenuta, scartata) per ogni copia
+// assorbita; il Primeggio la usa per non perdere i giocatori con account
+// che compaiono solo nella copia scartata.
+export function unisciCondivise(partite, preferiti = [], suUnione = null) {
   const rango = (p) => {
     const i = preferiti.indexOf(p.registrata_da)
     return i === -1 ? preferiti.length : i
@@ -72,6 +75,7 @@ export function unisciCondivise(partite, preferiti = []) {
       if (gemella) {
         gemella.assorbiti.add(x.p.registrata_da)
         scartate.add(x.i)
+        if (suUnione) suUnione(gemella.p, x.p)
       } else {
         const l = tenutePerGiorno.get(x._giorno) || []
         l.push({ ...x, assorbiti: new Set() })

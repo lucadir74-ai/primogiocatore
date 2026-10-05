@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il calcolo dell'IPG
-// v1.1.0 - 202610061200
+// v1.2.0 - 202610062330
 //
 // Primeggio è il sistema di classifica; IPG (Indice Primo Giocatore)
 // è il numero di ciascuno, per gioco e globale.
@@ -35,6 +35,43 @@ export const ipgDa = (r) => Math.round(1000 + 25 * ordinal(r))
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || (x.ospite_id ? `ospite:${x.ospite_id}` : null)
 const eAccount = (k) => k && !String(k).startsWith('ospite:')
 
+const contaAccount = (p) => new Set((p.partecipazioni || []).map(identita).filter(eAccount)).size
+
+// Quando due copie della stessa partita si uniscono, chi ha l'account
+// solo nella copia scartata (nell'altra è un ospite) non deve sparire.
+// Lo si riporta sulla riga ospite della copia tenuta che gli corrisponde:
+// stessa posizione e/o stesso punteggio; se mancano entrambi, stesso
+// esito (vincitore o no). Solo se la corrispondenza è unica.
+function riportaAccount(tenuta, scartata) {
+  const presenti = new Set(tenuta.partecipazioni.map(identita).filter(eAccount))
+  const usate = new Set()
+  for (const y of scartata.partecipazioni || []) {
+    const k = identita(y)
+    if (!eAccount(k) || presenti.has(k)) continue
+    const candidate = tenuta.partecipazioni.filter((x) => {
+      if (usate.has(x) || eAccount(identita(x))) return false
+      let criteri = 0
+      if (x.posizione != null && y.posizione != null) {
+        if (Number(x.posizione) !== Number(y.posizione)) return false
+        criteri++
+      }
+      if (x.punteggio_totale != null && y.punteggio_totale != null) {
+        if (Number(x.punteggio_totale) !== Number(y.punteggio_totale)) return false
+        criteri++
+      }
+      if (!criteri) return Boolean(x.vincitore) === Boolean(y.vincitore)
+      return true
+    })
+    if (candidate.length !== 1) continue
+    const x = candidate[0]
+    x.utente_id = k
+    x.ospite_id = null
+    x.ospiti = null
+    usate.add(x)
+    presenti.add(k)
+  }
+}
+
 // La classifica di una partita come numeri di posto (1 = primo, pari
 // merito = stesso numero). In ordine di affidabilità:
 // 1. le posizioni salvate (partite registrate nell'app o da BG Stats);
@@ -67,7 +104,16 @@ export function posti(righe) {
 //                                posizione, vincitore, ospiti: { utente_collegato } }] }]
 // Restituisce le righe della tabella ipg (solo account).
 export function calcolaPrimeggio(partite) {
-  const valide = unisciCondivise(partite)
+  // Copie di lavoro: le partecipazioni vengono modificate qui sotto.
+  // Fra le copie della stessa partita si tiene quella con più account
+  // collegati (a parità, la più vecchia), e gli account presenti solo
+  // nella copia scartata vengono riportati su quella tenuta.
+  const copie = partite
+    .map((p) => ({ ...p, partecipazioni: (p.partecipazioni || []).map((x) => ({ ...x })) }))
+    .map((p, i) => ({ p, i, n: contaAccount(p) }))
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .map((x) => x.p)
+  const valide = unisciCondivise(copie, [], riportaAccount)
     .filter((p) => p.giochi?.id && p.tipo_punteggio !== 'coop')
     .sort((a, b) => String(a.giocata_il).localeCompare(String(b.giocata_il)))
 
