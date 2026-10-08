@@ -206,10 +206,38 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
         return (
           <div key={p.id} className={`riga-partita${apertaQui ? ' aperta' : ''}`}>
-            <button className="testa-partita" onClick={() => setAperta(apertaQui ? null : p.id)}>
+            {/* Testata: un div e non un <button>, perché a partita aperta
+                il nome del gioco diventa a sua volta un bottone (porta alle
+                statistiche del gioco) e i bottoni non si possono annidare. */}
+            <div
+              className="testa-partita"
+              role="button"
+              tabIndex={0}
+              aria-expanded={apertaQui}
+              onClick={() => setAperta(apertaQui ? null : p.id)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setAperta(apertaQui ? null : p.id)
+                }
+              }}
+            >
               {p.giochi?.immagine_url && <img src={p.giochi.immagine_url} alt="" className="copertina" />}
               <div className="dati-partita">
-                <strong>{p.giochi?.nome || 'Gioco'}</strong>
+                {apertaQui && p.giochi?.id ? (
+                  <button
+                    className="nome-cliccabile"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onApri?.('gioco', p.giochi.id)
+                    }}
+                  >
+                    {p.giochi.nome}
+                  </button>
+                ) : (
+                  <strong>{p.giochi?.nome || 'Gioco'}</strong>
+                )}
                 <span className="anno">
                   {data(p.giocata_il)}
                   {p.luoghi?.nome ? ` · ${p.luoghi.nome}` : ''}
@@ -224,7 +252,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
                 )}
               </div>
               <span className="freccia" aria-hidden="true">{apertaQui ? '−' : '+'}</span>
-            </button>
+            </div>
 
             {apertaQui && (
               <div className="dettaglio">
