@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.0.0 - 202610112300
+// v1.1.0 - 202610112330
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -76,21 +76,28 @@ export default function Classifiche({ profilo, onIndietro }) {
     .filter((r) => r.gioco_id === '' && r.posizione != null)
     .sort((a, b) => a.posizione - b.posizione), [righe])
 
-  // Un gioco compare se almeno una persona ha il posto in classifica.
+  // Tutti i giochi giocati da almeno un iscritto. Chi ha il posto va in
+  // classifica; gli altri compaiono sotto, con le partite che mancano.
   const giochi = useMemo(() => {
     const m = new Map()
     for (const r of righe) {
       if (r.gioco_id === '') continue
-      const g = m.get(r.gioco_id) || { id: r.gioco_id, nome: r.gioco_nome || 'Gioco', immagine: r.gioco_immagine, classifica: [], giocatori: 0 }
-      g.giocatori++
+      const g = m.get(r.gioco_id) || { id: r.gioco_id, nome: r.gioco_nome || 'Gioco', immagine: r.gioco_immagine, classifica: [], fuori: [] }
       if (r.posizione != null) g.classifica.push(r)
+      else g.fuori.push(r)
       m.set(r.gioco_id, g)
     }
     return [...m.values()]
-      .filter((g) => g.classifica.length > 0)
-      .map((g) => ({ ...g, classifica: g.classifica.sort((a, b) => a.posizione - b.posizione) }))
-      .sort((a, b) => b.classifica.length - a.classifica.length || a.nome.localeCompare(b.nome, 'it'))
+      .map((g) => ({
+        ...g,
+        classifica: g.classifica.sort((a, b) => a.posizione - b.posizione),
+        fuori: g.fuori.sort((a, b) => b.partite - a.partite || b.ipg - a.ipg),
+        giocatori: g.classifica.length + g.fuori.length,
+      }))
+      .sort((a, b) => b.classifica.length - a.classifica.length
+        || b.giocatori - a.giocatori || a.nome.localeCompare(b.nome, 'it'))
   }, [righe])
+  const senzaNomi = righe.some((r) => r.gioco_id !== '' && !r.gioco_nome)
 
   const q = cerca.trim().toLowerCase()
   const giochiTrovati = q ? giochi.filter((g) => g.nome.toLowerCase().includes(q)) : giochi.slice(0, QUANTI_GIOCHI)
@@ -157,11 +164,32 @@ export default function Classifiche({ profilo, onIndietro }) {
         <button className="bottone-piatto" onClick={() => setGiocoAperto(null)}>← Tutti i giochi</button>
         <h2>{gioco.nome}</h2>
         {gioco.immagine && <img src={gioco.immagine} alt="" className="copertina-grande" />}
-        <Classifica righe={gioco.classifica} profilo={profilo} onPersona={setPersonaAperta} />
+        {gioco.classifica.length > 0
+          ? <Classifica righe={gioco.classifica} profilo={profilo} onPersona={setPersonaAperta} />
+          : <p className="aiuto">Nessuno ha ancora {MIN_GIOCO} partite a questo gioco: la classifica parte da lì.</p>}
         <p className="aiuto">
           In classifica chi ha un account e almeno {MIN_GIOCO} partite a questo gioco
           ({gioco.classifica.length} su {gioco.giocatori} iscritti che ci hanno giocato).
         </p>
+        {gioco.fuori.length > 0 && (
+          <>
+            <h3 className="titolo-sezione">Non ancora in classifica</h3>
+            <ul className="elenco">
+              {gioco.fuori.map((r) => (
+                <li key={r.profilo_id} className={r.profilo_id === profilo.id ? 'io' : ''}>
+                  <span className="pallino" style={{ background: coloreHex(r.colore) }} aria-hidden="true" />
+                  <div className="nome-giocatore">
+                    <button className="nome-cliccabile" onClick={() => setPersonaAperta(r.profilo_id)}>{r.nome}</button>
+                    <span className="anno block">
+                      {partiteTesto(r.partite)}{vinteTesto(r)} · ne mancano {MIN_GIOCO - r.partite}
+                    </span>
+                  </div>
+                  <span className="punti-finali">{r.ipg}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     )
   }
@@ -204,7 +232,7 @@ export default function Classifiche({ profilo, onIndietro }) {
             aria-label="Cerca un gioco"
           />
           {giochiTrovati.length === 0 ? (
-            <p className="aiuto">{q ? `Nessuna classifica per «${cerca}».` : 'Nessun gioco ha ancora una classifica.'}</p>
+            <p className="aiuto">{q ? `Nessun gioco trovato per «${cerca}».` : 'Nessun gioco ancora.'}</p>
           ) : (
             <ul className="elenco">
               {giochiTrovati.map((g) => (
@@ -213,7 +241,9 @@ export default function Classifiche({ profilo, onIndietro }) {
                   <div className="nome-giocatore">
                     <button className="nome-cliccabile" onClick={() => setGiocoAperto(g.id)}>{g.nome}</button>
                     <span className="anno block">
-                      1° {g.classifica[0].nome} · {g.classifica.length} in classifica
+                      {g.classifica.length > 0
+                        ? `1° ${g.classifica[0].nome} · ${g.classifica.length} in classifica`
+                        : `${g.giocatori} ${g.giocatori === 1 ? 'iscritto' : 'iscritti'} · classifica da ${MIN_GIOCO} partite`}
                     </span>
                   </div>
                 </li>
@@ -222,6 +252,12 @@ export default function Classifiche({ profilo, onIndietro }) {
           )}
           {!q && giochi.length > QUANTI_GIOCHI && (
             <p className="aiuto">Mostrati i {QUANTI_GIOCHI} giochi con più classificati. Gli altri si trovano cercando.</p>
+          )}
+          {senzaNomi && (
+            <p className="aiuto">
+              Alcuni giochi non hanno ancora il nome: compariranno nella ricerca dopo il prossimo
+              ricalcolo del Primeggio.
+            </p>
           )}
         </>
       )}
