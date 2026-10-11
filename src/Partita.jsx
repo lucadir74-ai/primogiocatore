@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.12.0 - 202609301830
+// v4.12.1 - 202610112230
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -323,7 +323,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
   }
 
-  const [nuovoOspite, setNuovoOspite] = useState('')
   const [frequenza, setFrequenza] = useState(new Map())
   const [luoghiNoti, setLuoghiNoti] = useState([])
   const [miaCollezione, setMiaCollezione] = useState(new Set())
@@ -354,15 +353,24 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     return () => { vivo = false }
   }, [gioco?.id, gioco?.usa_fazioni])
 
+  // Chi non c'è fra i nomi trovati diventa ospite, con il nome scritto
+  // nella stessa casella di ricerca.
   async function creaOspite() {
-    const nome = nuovoOspite.trim()
+    const nome = cercaGiocatore.trim()
     if (!nome) return
     const { data, error } = await supabase
       .from('ospiti').insert({ nome, creato_da: profilo.id }).select().single()
     if (error) { setErrore(error.message); return }
     setOspiti([...ospiti, data])
     aggiungiOspite(data)
-    setNuovoOspite('')
+    setCercaGiocatore('')
+  }
+
+  // Dopo una scelta fatta cercando, la casella si svuota per il prossimo.
+  function scegliNome(x) {
+    if (x.tipo === 'utente') aggiungiPersona(x.dato)
+    else aggiungiOspite(x.dato)
+    setCercaGiocatore('')
   }
 
   const cambia = (chiave, campo, valore) =>
@@ -627,6 +635,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     : tuttiDisponibili
   const disponibili = filtroNomi ? trovatiNomi.slice(0, 30) : trovatiNomi.slice(0, LIMITE_NOMI)
   const restanti = Math.max(0, tuttiDisponibili.length - LIMITE_NOMI)
+  // Il tasto «aggiungi come ospite» compare solo se nessuno, fra chi è
+  // già al tavolo e chi si può aggiungere, ha esattamente quel nome.
+  const nomeEsatto = filtroNomi && (
+    tuttiDisponibili.some((x) => x.nome.trim().toLowerCase() === filtroNomi)
+    || righe.some((r) => (r.nome || '').trim().toLowerCase() === filtroNomi))
+  const offriOspite = Boolean(filtroNomi) && !nomeEsatto
 
   const coloreDi = (r) => {
     const p = persone.find((x) => x.id === r.utente_id)
@@ -986,20 +1000,26 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               className="campo-cerca"
               value={cercaGiocatore}
               onChange={(e) => setCercaGiocatore(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !filtroNomi) return
+                e.preventDefault()
+                if (disponibili.length === 1) scegliNome(disponibili[0])
+                else if (disponibili.length === 0 && offriOspite) creaOspite()
+              }}
               placeholder="Cerca un nome"
             />
 
             <div className="pastiglie-persone">
-              {disponibili.map((x) =>
-                x.tipo === 'utente' ? (
-                  <button key={x.chiave} className="pastiglia-nome" onClick={() => aggiungiPersona(x.dato)}>
-                    {x.nome}
-                  </button>
-                ) : (
-                  <button key={x.chiave} className="pastiglia-nome ospite" onClick={() => aggiungiOspite(x.dato)}>
-                    {x.nome}
-                  </button>
-                )
+              {disponibili.map((x) => (
+                <button key={x.chiave} className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}`}
+                  onClick={() => scegliNome(x)}>
+                  {x.nome}
+                </button>
+              ))}
+              {offriOspite && (
+                <button className="pastiglia-nome nuovo" onClick={creaOspite}>
+                  + Aggiungi «{cercaGiocatore.trim()}» come ospite
+                </button>
               )}
             </div>
 
@@ -1009,17 +1029,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                 trovano scrivendo il nome qui sopra.
               </p>
             )}
-            {cercaGiocatore.trim() && disponibili.length === 0 && (
-              <p className="aiuto">Nessuno con questo nome. Puoi aggiungerlo come ospite qui sotto.</p>
+            {offriOspite && (
+              <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
             )}
-
-            <div className="riga-ricerca riga-ospite">
-              <input value={nuovoOspite} onChange={(e) => setNuovoOspite(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && creaOspite()}
-                placeholder="Nome di chi non ha l'account" />
-              <button className="bottone bottone-stretto" onClick={creaOspite}>+</button>
-            </div>
-            <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
           </div>
 
           <div className="campo">
