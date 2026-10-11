@@ -1,4 +1,4 @@
-// Primo Giocatore v4.13.0 - 202610042130
+// Primo Giocatore v4.13.1 - 202610112230
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -693,7 +693,13 @@ export default function App() {
               <button
                 key={id}
                 className={scheda === id ? 'attiva' : ''}
-                onClick={() => { if (id === 'partita') setPartitaId(null); setScheda(id) }}
+                onClick={() => {
+                  if (id === 'partita') setPartitaId(null)
+                  // Dal menu in basso si riparte da capo: il ritorno alla
+                  // partita aperta vale solo subito dopo una modifica.
+                  setRitornoStorico(null)
+                  setScheda(id)
+                }}
                 aria-current={scheda === id ? 'page' : undefined}
               >
                 <Icona nome={id} />

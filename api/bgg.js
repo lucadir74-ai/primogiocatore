@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.7.0 - 202609302000
+// v1.7.1 - 202610112230
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -182,7 +182,9 @@ export default async function handler(req, res) {
       if (!id) return res.status(400).json({ errore: 'Manca l\u2019id del gioco.' })
       // BGG accetta al massimo 20 id per volta.
       const ids = String(id).split(',').slice(0, 20).join(',')
-      const xml = await chiamaBGG(`/thing?id=${ids}&type=boardgame`)
+      // Anche le espansioni: chi gioca un'espansione da sola (es. Hitster:
+      // Movies & TV Soundtracks) altrimenti non avrebbe mai la copertina.
+      const xml = await chiamaBGG(`/thing?id=${ids}&type=boardgame,boardgameexpansion`)
       const dati = parser.parse(xml)
       const giochi = elenco(dati?.items?.item).map(semplificaGioco).filter((g) => g.nome)
       return res.status(200).json({ giochi })
