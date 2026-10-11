@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.1.0 - 202610061200
+// v1.2.0 - 202610112300
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -47,7 +47,7 @@ async function tutteLePartite(db) {
     const { data, error } = await db.from('partite')
       .select(`
         id, giocata_il, registrata_da, tipo_punteggio,
-        giochi ( id, bgg_id, peso_bgg ),
+        giochi ( id, bgg_id, peso_bgg, nome, immagine_url ),
         partecipazioni ( utente_id, ospite_id, punteggio_totale, posizione, vincitore,
                          ospiti:ospite_id ( utente_collegato ) )
       `)
@@ -114,6 +114,16 @@ export default async function handler(req, res) {
       const p = profili.get(r.profilo_id)
       r.nome = (p?.nickname && p.nickname.trim()) || p?.nome || 'Sconosciuto'
       r.colore = p?.colore || null
+    }
+
+    // Lo stesso per il gioco: la pagina Classifiche mostra anche giochi
+    // che chi guarda non ha mai giocato, e che quindi non può leggere.
+    const giochi = new Map()
+    for (const p of partite) if (p.giochi?.id) giochi.set(String(p.giochi.id), p.giochi)
+    for (const r of righe) {
+      const g = r.gioco_id ? giochi.get(String(r.gioco_id)) : null
+      r.gioco_nome = g?.nome || null
+      r.gioco_immagine = g?.immagine_url || null
     }
     const ora = new Date().toISOString()
 

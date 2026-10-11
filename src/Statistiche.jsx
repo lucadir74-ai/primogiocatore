@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.13.0 - 202610061200
+// v3.14.0 - 202610112300
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -88,7 +88,7 @@ const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x
 const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
-export default function Statistiche({ profilo, onModifica, mira }) {
+export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
   const [tuttePartite, setPartite] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -494,6 +494,11 @@ export default function Statistiche({ profilo, onModifica, mira }) {
   return (
     <div className="scheda">
       <h2>Statistiche</h2>
+      {onClassifiche && (
+        <p className="aiuto">
+          <button className="bottone-piatto" onClick={onClassifiche}>Classifiche di tutti gli iscritti →</button>
+        </p>
+      )}
 
       {errore && <div className="avviso errore">{errore}</div>}
 

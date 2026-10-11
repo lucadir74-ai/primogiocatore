@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il calcolo dell'IPG
-// v1.2.0 - 202610062330
+// v1.3.0 - 202610112300
 //
 // Primeggio è il sistema di classifica; IPG (Indice Primo Giocatore)
 // è il numero di ciascuno, per gioco e globale.
@@ -138,12 +138,16 @@ export function calcolaPrimeggio(partite) {
     const tab = perGioco.get(gioco) || new Map()
     perGioco.set(gioco, tab)
     const voci = righe.map((r) => {
-      const v = tab.get(r.k) || { r: rating(), partite: 0 }
+      const v = tab.get(r.k) || { r: rating(), partite: 0, vittorie: 0 }
       tab.set(r.k, v)
       return v
     })
     const nuovi = rate(voci.map((v) => [v.r]), { rank })
-    voci.forEach((v, i) => { v.r = nuovi[i][0]; v.partite++ })
+    voci.forEach((v, i) => {
+      v.r = nuovi[i][0]
+      v.partite++
+      if (righe[i].vincitore) v.vittorie++
+    })
   }
 
   const righeIpg = []
@@ -154,12 +158,13 @@ export function calcolaPrimeggio(partite) {
     for (const [k, v] of tab) {
       if (!eAccount(k)) continue
       const ipg = ipgDa(v.r)
-      qui.push({ profilo_id: k, gioco_id: gioco, ipg, mu: v.r.mu, sigma: v.r.sigma, partite: v.partite })
-      const g = globale.get(k) || { somma: 0, pesoTot: 0, partite: 0 }
+      qui.push({ profilo_id: k, gioco_id: gioco, ipg, mu: v.r.mu, sigma: v.r.sigma, partite: v.partite, vittorie: v.vittorie })
+      const g = globale.get(k) || { somma: 0, pesoTot: 0, partite: 0, vittorie: 0 }
       const w = pesi.get(gioco) * Math.min(v.partite, TETTO_PARTITE)
       g.somma += ipg * w
       g.pesoTot += w
       g.partite += v.partite
+      g.vittorie += v.vittorie
       globale.set(k, g)
     }
     // Il posto in classifica solo per chi ha abbastanza partite.
@@ -173,7 +178,7 @@ export function calcolaPrimeggio(partite) {
   // (con il tetto). Per entrare in classifica contano le partite vere.
   const glob = [...globale].map(([k, g]) => ({
     profilo_id: k, gioco_id: '', ipg: Math.round(g.somma / g.pesoTot),
-    mu: null, sigma: null, partite: g.partite,
+    mu: null, sigma: null, partite: g.partite, vittorie: g.vittorie,
   }))
   glob.filter((r) => r.partite >= MIN_PARTITE_GLOBALE)
     .sort((a, b) => b.ipg - a.ipg)

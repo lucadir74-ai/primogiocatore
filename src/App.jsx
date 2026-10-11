@@ -1,4 +1,4 @@
-// Primo Giocatore v4.13.1 - 202610112230
+// Primo Giocatore v4.14.0 - 202610112300
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -17,6 +17,7 @@ import Tavoli from './Tavoli.jsx'
 import Luoghi from './Luoghi.jsx'
 import GiochiDoppi from './GiochiDoppi.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
+import Classifiche from './Classifiche.jsx'
 import Organizzatori from './Organizzatori.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
@@ -692,7 +693,7 @@ export default function App() {
             ].map(([id, etichetta]) => (
               <button
                 key={id}
-                className={scheda === id ? 'attiva' : ''}
+                className={scheda === id || (id === 'statistiche' && scheda === 'classifiche') ? 'attiva' : ''}
                 onClick={() => {
                   if (id === 'partita') setPartitaId(null)
                   // Dal menu in basso si riparte da capo: il ritorno alla
@@ -776,12 +777,15 @@ export default function App() {
             <Statistiche
               profilo={profilo}
               mira={mira}
+              onClassifiche={() => setScheda('classifiche')}
               onModifica={(id, dove) => {
                 setRitorno(dove || null)
                 setPartitaId(id)
                 setScheda('partita')
               }}
             />
+          ) : scheda === 'classifiche' ? (
+            <Classifiche profilo={profilo} onIndietro={() => setScheda('statistiche')} />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : scheda === 'giocatori' ? (
