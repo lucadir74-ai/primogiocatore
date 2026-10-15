@@ -1,11 +1,12 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.12.1 - 202610112230
+// v4.13.0 - 202610160200
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { impronta } from './impronta'
 import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
+import RiepilogoPartita from './RiepilogoPartita.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
@@ -69,6 +70,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [inCoda, setInCoda] = useState(() => leggiCoda().length)
   const [inviando, setInviando] = useState(false)
   const [ripresa, setRipresa] = useState(false)
+  // Partita appena registrata: se è a punti si mostrano i record.
+  const [riepilogo, setRiepilogo] = useState(null)
 
   useEffect(() => { caricaElenchi() }, [])
 
@@ -577,12 +580,18 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       }
 
       try {
-        await scriviPartita(supabase, profilo, dati)
+        const salvataId = await scriviPartita(supabase, profilo, dati)
         if (modifica) {
           setMessaggio('Partita aggiornata.')
           finitaModifica?.()
         } else {
-          setMessaggio('Partita registrata.')
+          const conPunti = tipo !== 'coop' && tipo !== 'posizione'
+            && dati.giocatori.some((g) => g.punteggio_totale != null)
+          if (conPunti) {
+            setRiepilogo({ id: salvataId, giocoId: gioco.id, giocoNome: gioco.nome })
+          } else {
+            setMessaggio('Partita registrata.')
+          }
           azzera()
         }
       } catch (e) {
@@ -648,6 +657,18 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   if (caricamento) return <div className="scheda"><p>Carico la partita&hellip;</p></div>
+
+  if (riepilogo) {
+    return (
+      <RiepilogoPartita
+        profilo={profilo}
+        partitaId={riepilogo.id}
+        giocoId={riepilogo.giocoId}
+        giocoNome={riepilogo.giocoNome}
+        onChiudi={() => { setRiepilogo(null); window.scrollTo?.({ top: 0 }) }}
+      />
+    )
+  }
 
   return (
     <div className="scheda">
