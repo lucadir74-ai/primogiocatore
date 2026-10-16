@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.14.0 - 202610112300
+// v3.15.0 - 202610161200
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -648,7 +648,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
           testo="rispetto all'atteso"
           tono={d.rendimento != null ? (d.rendimento >= 1 ? 'sopra' : 'sotto') : null}
         />
-        <Numerone cifra={d.piazz != null ? Math.round(d.piazz * 100) : '—'} testo="piazzamento su 100" />
+        <Numerone cifra={d.piazz != null ? `${Math.round(d.piazz * 100)}%` : '—'} testo="degli avversari finiti dietro" />
         <Numerone cifra={d.giochiDiversi} testo="giochi diversi" />
         <Numerone cifra={durata(d.minuti)} testo="al tavolo" />
       </div>
@@ -661,8 +661,10 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
           meglio del caso.
         </p>
         <p>
-          <strong>Piazzamento su 100</strong> vale 100 arrivando sempre primo e 0 sempre ultimo,
-          qualunque sia il numero di giocatori.
+          <strong>Avversari finiti dietro</strong> dice in media di quanti avversari si è fatto
+          meglio. Secondo in sei vuol dire meglio di 4 su 5, cioè 80%; secondo in tre, meglio di 1
+          su 2, cioè 50%. Così il numero tiene conto di quanti eravate al tavolo: 100% arrivando
+          sempre primo, 0% sempre ultimo.
         </p>
       </div>
 
@@ -940,7 +942,7 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
               testo="il tuo rispetto all'atteso"
               tono={io.rendimento != null ? (io.rendimento >= 1 ? 'sopra' : 'sotto') : null}
             />
-            <Numerone cifra={io.piazz != null ? Math.round(io.piazz * 100) : '—'} testo="il tuo piazzamento su 100" />
+            <Numerone cifra={io.piazz != null ? `${Math.round(io.piazz * 100)}%` : '—'} testo="degli avversari dietro di te" />
           </>
         )}
         {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="tipico al tavolo" />}
