@@ -1,10 +1,11 @@
 // Primo Giocatore - Statistiche
-// v3.15.0 - 202610161200
+// v3.16.0 - 202610181930 (casella unica per scegliere giocatore, gioco o luogo)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
+import CercaScegli from './CercaScegli.jsx'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -95,7 +96,6 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
   const [tipo, setTipo] = useState('persona')
   const [scelto, setScelto] = useState(profilo.id)
-  const [cerca, setCerca] = useState('')
   const [dove, setDove] = useState('tutte')   // tutte | vivo | online
 
   useEffect(() => { carica() }, [])
@@ -137,7 +137,6 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (!mira?.tipo || !mira?.id) return
     setTipo(mira.tipo)
     setScelto(mira.id)
-    setCerca('')
     if (mira.dove) setDove(mira.dove)
   }, [mira?.tipo, mira?.id, mira?.dove, mira?.quando])
 
@@ -459,15 +458,12 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     : tipo === 'luogo' ? [...elenchi.luoghi, ['ignoto', 'Non indicato']]
     : []
 
-  const q = cerca.trim().toLowerCase()
-  const opzioni = q ? tutteOpzioni.filter(([, nome]) => nome.toLowerCase().includes(q)) : tutteOpzioni
-
-  // Se la ricerca esclude ciò che stavi guardando, mostro il primo risultato.
+  // Se ciò che era scelto non c'è più (es. cambio di elenco), il primo.
   // Calcolato, non impostato: cambiare stato qui romperebbe il disegno.
-  const attivo = opzioni.some(([id]) => id === scelto) ? scelto : opzioni[0]?.[0] ?? null
+  const attivo = tutteOpzioni.some(([id]) => id === scelto) ? scelto : tutteOpzioni[0]?.[0] ?? null
 
-  const vaiAlGiocatore = (chiave) => { setTipo('persona'); setCerca(''); setScelto(chiave) }
-  const vaiAlGioco = (id) => { setTipo('gioco'); setCerca(''); setScelto(id) }
+  const vaiAlGiocatore = (chiave) => { setTipo('persona'); setScelto(chiave) }
+  const vaiAlGioco = (id) => { setTipo('gioco'); setScelto(id) }
 
   // Passa ad App anche il punto in cui siamo: al ritorno dalla modifica
   // si riapre qui, invece di ricominciare dalla prima schermata.
@@ -484,7 +480,6 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
   function cambiaTipo(nuovo) {
     setTipo(nuovo)
-    setCerca('')
     if (nuovo === 'persona') setScelto(profilo.id)
     else if (nuovo === 'gioco') setScelto(elenchi.giochi[0]?.[0] || null)
     else if (nuovo === 'luogo') setScelto(elenchi.luoghi[0]?.[0] || 'ignoto')
@@ -520,31 +515,15 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         </div>
       )}
 
-      {tipo !== 'gruppo' && (
+      {tipo !== 'gruppo' && tutteOpzioni.length > 0 && (
         <div className="campo">
-          {tutteOpzioni.length > 1 && (
-            <input
-              className="campo-cerca"
-              value={cerca}
-              onChange={(e) => setCerca(e.target.value)}
-              placeholder={tipo === 'persona' ? 'Cerca un giocatore' : tipo === 'gioco' ? 'Cerca un gioco' : 'Cerca un luogo'}
-              aria-label="Filtra l'elenco"
-            />
-          )}
-          {opzioni.length === 0 ? (
-            <p className="aiuto">Nessun risultato per «{cerca}».</p>
-          ) : (
-          <select
-            className="scelta-punteggio larga"
-            value={attivo || ''}
-            onChange={(e) => setScelto(e.target.value)}
-            aria-label="Scegli di chi vedere le statistiche"
-          >
-            {opzioni.map(([id, nome]) => (
-              <option key={id} value={id}>{nome}</option>
-            ))}
-          </select>
-          )}
+          <CercaScegli
+            opzioni={tutteOpzioni.map(([id, nome]) => ({ id, nome }))}
+            valore={attivo}
+            onScegli={(id) => { if (id) setScelto(id) }}
+            segnaposto={tipo === 'persona' ? 'Cerca un giocatore' : tipo === 'gioco' ? 'Cerca un gioco' : 'Cerca un luogo'}
+            etichetta={tipo === 'persona' ? 'Scegli il giocatore' : tipo === 'gioco' ? 'Scegli il gioco' : 'Scegli il luogo'}
+          />
         </div>
       )}
 

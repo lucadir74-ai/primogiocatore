@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.4.0 - 202609301500
+// v3.5.0 - 202610181930 (casella unica per unire due ospiti)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
+import CercaScegli from './CercaScegli.jsx'
 
 export default function UnisciOspiti({ profilo }) {
   const [ospiti, setOspiti] = useState([])
@@ -201,24 +202,18 @@ export default function UnisciOspiti({ profilo }) {
 
       <div className="campo">
         <label htmlFor="u-da">Questo sparisce</label>
-        <select id="u-da" className="scelta-punteggio larga" value={daUnire}
-          onChange={(e) => setDaUnire(e.target.value)}>
-          <option value="">—</option>
-          {elenco.map((o) => (
-            <option key={o.id} value={o.id}>{o.nome} ({o.partite})</option>
-          ))}
-        </select>
+        <CercaScegli id="u-da" svuotabile
+          opzioni={ospiti.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          valore={daUnire} onScegli={(id) => { setDaUnire(id); if (id === verso) setVerso('') }}
+          segnaposto="Scrivi per cercare" etichetta="Ospite che sparisce" />
       </div>
 
       <div className="campo">
         <label htmlFor="u-verso">E confluisce in questo</label>
-        <select id="u-verso" className="scelta-punteggio larga" value={verso}
-          onChange={(e) => setVerso(e.target.value)}>
-          <option value="">—</option>
-          {elenco.filter((o) => o.id !== daUnire).map((o) => (
-            <option key={o.id} value={o.id}>{o.nome} ({o.partite})</option>
-          ))}
-        </select>
+        <CercaScegli id="u-verso" svuotabile
+          opzioni={ospiti.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          valore={verso} onScegli={setVerso}
+          segnaposto="Scrivi per cercare" etichetta="Ospite in cui confluisce" />
       </div>
 
       <button className="bottone" onClick={unisci} disabled={lavorando || !daUnire || !verso}>

@@ -1,5 +1,5 @@
 // Primo Giocatore - giochi doppi
-// v3.4.0 - 202609301600
+// v3.5.0 - 202610181930 (casella unica al posto di ricerca + tendina)
 //
 // Capita quando lo stesso gioco entra due volte: una aggiunto a mano,
 // una arrivato da BGG o da un'importazione. L'aggancio avviene per
@@ -7,10 +7,10 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import CercaScegli from './CercaScegli.jsx'
 
 export default function GiochiDoppi({ profilo }) {
   const [giochi, setGiochi] = useState([])
-  const [cerca, setCerca] = useState('')
   const [daUnire, setDaUnire] = useState('')
   const [verso, setVerso] = useState('')
   const [errore, setErrore] = useState('')
@@ -89,8 +89,6 @@ export default function GiochiDoppi({ profilo }) {
     }
   }
 
-  const q = cerca.trim().toLowerCase()
-  const elenco = q ? giochi.filter((g) => g.nome.toLowerCase().includes(q)) : giochi
   const gruppi = doppioni()
 
   const descrivi = (g) =>
@@ -154,31 +152,20 @@ export default function GiochiDoppi({ profilo }) {
         Per i casi che il nome non fa riconoscere: «Scythe» e «Scythe ITA».
       </p>
 
-      {giochi.length > 8 && (
-        <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}
-          placeholder="Cerca un gioco" aria-label="Cerca fra i giochi" />
-      )}
-
       <div className="campo">
         <label htmlFor="gd-da">Questo sparisce</label>
-        <select id="gd-da" className="scelta-punteggio larga" value={daUnire}
-          onChange={(e) => setDaUnire(e.target.value)}>
-          <option value="">—</option>
-          {elenco.map((g) => (
-            <option key={g.id} value={g.id}>{g.nome} ({g.partite})</option>
-          ))}
-        </select>
+        <CercaScegli id="gd-da" svuotabile
+          opzioni={giochi.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          valore={daUnire} onScegli={(id) => { setDaUnire(id); if (id === verso) setVerso('') }}
+          segnaposto="Scrivi per cercare" etichetta="Gioco che sparisce" />
       </div>
 
       <div className="campo">
         <label htmlFor="gd-verso">E confluisce in questo</label>
-        <select id="gd-verso" className="scelta-punteggio larga" value={verso}
-          onChange={(e) => setVerso(e.target.value)}>
-          <option value="">—</option>
-          {elenco.filter((g) => g.id !== daUnire).map((g) => (
-            <option key={g.id} value={g.id}>{g.nome} ({g.partite})</option>
-          ))}
-        </select>
+        <CercaScegli id="gd-verso" svuotabile
+          opzioni={giochi.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          valore={verso} onScegli={setVerso}
+          segnaposto="Scrivi per cercare" etichetta="Gioco in cui confluisce" />
       </div>
 
       <button className="bottone" onClick={() => unisci(daUnire, verso)}

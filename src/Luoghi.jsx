@@ -1,9 +1,10 @@
 // Primo Giocatore - gestione dei luoghi
-// v4.1.0 - 202609221100
+// v4.2.0 - 202610181930 (casella unica per unire due luoghi)
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { chiediPosizione } from './posizione'
+import CercaScegli from './CercaScegli.jsx'
 
 const TIPI = [
   { id: 'sede', etichetta: 'Sede' },
@@ -240,22 +241,18 @@ export default function Luoghi({ profilo }) {
 
       <div className="campo">
         <label htmlFor="l-da">Questo sparisce</label>
-        <select id="l-da" className="scelta-punteggio larga" value={daUnire}
-          onChange={(e) => setDaUnire(e.target.value)}>
-          <option value="">—</option>
-          {elenco.map((l) => <option key={l.id} value={l.id}>{l.nome} ({l.usi})</option>)}
-        </select>
+        <CercaScegli id="l-da" svuotabile
+          opzioni={luoghi.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
+          valore={daUnire} onScegli={(id) => { setDaUnire(id); if (id === verso) setVerso('') }}
+          segnaposto="Scrivi per cercare" etichetta="Luogo che sparisce" />
       </div>
 
       <div className="campo">
         <label htmlFor="l-verso">E confluisce in questo</label>
-        <select id="l-verso" className="scelta-punteggio larga" value={verso}
-          onChange={(e) => setVerso(e.target.value)}>
-          <option value="">—</option>
-          {elenco.filter((l) => l.id !== daUnire).map((l) => (
-            <option key={l.id} value={l.id}>{l.nome} ({l.usi})</option>
-          ))}
-        </select>
+        <CercaScegli id="l-verso" svuotabile
+          opzioni={luoghi.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
+          valore={verso} onScegli={setVerso}
+          segnaposto="Scrivi per cercare" etichetta="Luogo in cui confluisce" />
       </div>
 
       <button className="bottone" onClick={unisci} disabled={lavorando || !daUnire || !verso}>
