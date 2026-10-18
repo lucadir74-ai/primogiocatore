@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v1.0.0 - 202610181500
+// v1.1.0 - 202610181400 (segnalibro: riprova le pagine rifiutate, mostra la risposta di BGA, riparte da dove si è fermato)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -45,7 +45,7 @@ export function segnalibroBga(origine) {
     "if(window.__pgBga)return alert('Importazione già in corso su questa pagina');window.__pgBga=1;",
     "const box=document.createElement('div');",
     "box.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#111;color:#fff;font:14px sans-serif;padding:12px;border-radius:10px';",
-    "box.innerHTML='<b>Primo Giocatore</b><div id=pgS style=\"margin:6px 0\">Avvio…</div><button id=pgC style=\"padding:10px 16px;font-size:15px;display:none\">Copia i dati</button> <button id=pgX style=\"padding:10px 16px;font-size:15px\">Chiudi</button>';",
+    "box.innerHTML='<b>Primo Giocatore</b><div id=pgS style=\"margin:6px 0\">Avvio…</div><button id=pgR style=\"padding:10px 16px;font-size:15px;display:none\"></button> <button id=pgC style=\"padding:10px 16px;font-size:15px;display:none\">Copia i dati</button> <button id=pgX style=\"padding:10px 16px;font-size:15px\">Chiudi</button>';",
     'document.body.appendChild(box);',
     "const S=t=>{box.querySelector('#pgS').textContent=t};",
     "box.querySelector('#pgX').onclick=()=>{box.remove();window.__pgBga=0};",
@@ -62,11 +62,17 @@ export function segnalibroBga(origine) {
     "const tok=(window.bgaConfig&&window.bgaConfig.requestToken)||'';",
     'const fino=pronto&&pronto.fino?Number(pronto.fino):0;',
     "const tavoli=[];let nome='';",
-    'for(let pag=1;pag<=1000;pag++){',
+    "const C=box.querySelector('#pgC'),R=box.querySelector('#pgR');",
+    "const leggiPagina=async pag=>{const h={'X-Requested-With':'XMLHttpRequest'};if(tok)h['X-Request-Token']=tok;const r=await fetch('/gamestats/gamestats/getGames.html?player='+id+'&opponent_id=0&finished=1&page='+pag+'&updateStats=0',{headers:h,credentials:'include'});const testo=await r.text();let j=null;try{j=JSON.parse(testo)}catch(e){}return{j:j,info:'HTTP '+r.status+' '+(j&&j.error?j.error:testo.slice(0,120))}};",
+    "const fine=()=>{dati={giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};R.style.display='none';C.style.display='inline-block';",
+    "C.onclick=()=>{const testo=JSON.stringify(Object.assign({tipo:'pg-bga-dati'},dati));navigator.clipboard.writeText(testo).then(()=>alert('Copiato: incollalo in Primo Giocatore, sezione Dati e import'),()=>prompt('Copia questo testo',testo))};",
+    "if(pronto&&w)invia();else S(tavoli.length+' partite lette. Primo Giocatore non ha risposto: tocca «Copia i dati» e incollale nell’app.')};",
+    'const leggi=async da=>{R.style.display=\'none\';',
+    'for(let pag=da;pag<=1000;pag++){',
     "S('Leggo lo storico BGA: pagina '+pag+', '+tavoli.length+' partite');",
-    "let j=null;try{const r=await fetch('/gamestats/gamestats/getGames.html?player='+id+'&opponent_id=0&finished=1&page='+pag+'&updateStats=0',{headers:{'X-Request-Token':tok,'X-Requested-With':'XMLHttpRequest'},credentials:'include'});j=await r.json()}catch(e){}",
-    "if(!j||String(j.status)!=='1'){S('BGA ha rifiutato la lettura: ricarica la pagina, controlla di essere entrato e riprova.');return}",
-    'const lista=(j.data&&j.data.tables)||[];if(!lista.length)break;',
+    "let x=null;for(let prova=0;prova<4;prova++){try{x=await leggiPagina(pag)}catch(e){x={j:null,info:String(e)}}if(x.j&&String(x.j.status)==='1')break;if(prova<3){S('Pagina '+pag+': BGA non risponde, riprovo ('+(prova+1)+'/3)…');await attendi([3000,8000,20000][prova])}}",
+    "if(!x.j||String(x.j.status)!=='1'){S('BGA ha rifiutato la pagina '+pag+' ('+tavoli.length+' partite lette finora). Risposta: '+x.info);R.textContent='Riprova da pagina '+pag;R.style.display='inline-block';R.onclick=()=>leggi(pag);return}",
+    'const lista=(x.j.data&&x.j.data.tables)||[];if(!lista.length)break;',
     'let vecchie=false;',
     'for(const t of lista){',
     'if(fino&&Number(t.end)<fino){vecchie=true;continue}',
@@ -77,12 +83,10 @@ export function segnalibroBga(origine) {
     'const io=p.find(g=>String(g[0])===id);if(io&&!nome)nome=io[1];',
     "tavoli.push({t:String(t.table_id),g:String(t.game_name),s:Number(t.start),e:Number(t.end),c:String(t.is_coop)==='1',p:p,b:(t.bot_player_ids||[]).map(Number)})",
     '}',
-    'if(vecchie)break;await attendi(600)',
+    'if(vecchie)break;await attendi(1000)',
     '}',
-    'dati={giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};',
-    "const C=box.querySelector('#pgC');C.style.display='inline-block';",
-    "C.onclick=()=>{const testo=JSON.stringify(Object.assign({tipo:'pg-bga-dati'},dati));navigator.clipboard.writeText(testo).then(()=>alert('Copiato: incollalo in Primo Giocatore, sezione Dati e import'),()=>prompt('Copia questo testo',testo))};",
-    "if(pronto&&w)invia();else S(tavoli.length+' partite lette. Primo Giocatore non ha risposto: tocca «Copia i dati» e incollale nell’app.')",
+    'fine()};',
+    'await leggi(1)',
     '})()',
   ]
   return 'javascript:' + righe.join('')
