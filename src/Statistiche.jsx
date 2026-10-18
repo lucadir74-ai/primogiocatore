@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.16.0 - 202610181930 (casella unica per scegliere giocatore, gioco o luogo)
+// v3.16.1 - 202610182040 (elenchi con chiavi uniche: due persone con lo stesso nome non si confondono)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -683,11 +683,11 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
 
       <h3 className="titolo-sezione">Gioco per gioco</h3>
       <ElencoCorto>
-        {d.perGioco.map((g) => {
+        {d.perGioco.map((g, i) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
           const rip = riepilogoPunteggi(g.punteggi)
           return (
-            <li key={g.nome}>
+            <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>
                   {g.nome}
@@ -713,8 +713,8 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
 
       <h3 className="titolo-sezione">Testa a testa</h3>
       <ElencoCorto>
-        {d.contro.map((a) => (
-          <li key={a.nome}>
+        {d.contro.map((a, i) => (
+          <li key={`${a.chiave ?? a.id ?? a.nome}|${i}`}>
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
               <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(a.chiave)}>{a.nome}</button>
@@ -972,11 +972,11 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
         partite non vuol dire quasi niente.
       </p>
       <ElencoCorto>
-        {d.giocatori.map((g) => {
+        {d.giocatori.map((g, i) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
           const rip = riepilogoPunteggi(g.punteggi)
           return (
-            <li key={g.nome}>
+            <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
@@ -1033,11 +1033,11 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
             Fazioni <span className="conteggio">{d.fazioni.length}</span>
           </h3>
           <ElencoCorto>
-            {d.fazioni.map((f) => {
+            {d.fazioni.map((f, i) => {
               const r = f.attese > 0 ? f.vinte / f.attese : null
               const rip = riepilogoPunteggi(f.punteggi)
               return (
-                <li key={f.nome}>
+                <li key={`${f.chiave ?? f.id ?? f.nome}|${i}`}>
                   <div className="nome-giocatore">
                     <strong>{f.nome}</strong>
                     <span className="anno block">
@@ -1084,8 +1084,8 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
 
       <h3 className="titolo-sezione">Cosa ci si gioca</h3>
       <ElencoCorto>
-        {d.giochi.map((g) => (
-          <li key={g.nome}>
+        {d.giochi.map((g, i) => (
+          <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
             <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
@@ -1094,8 +1094,8 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
 
       <h3 className="titolo-sezione">Chi ci viene</h3>
       <ElencoCorto>
-        {d.persone.map((p) => (
-          <li key={p.nome}>
+        {d.persone.map((p, i) => (
+          <li key={`${p.chiave ?? p.id ?? p.nome}|${i}`}>
             <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
               <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
@@ -1124,8 +1124,8 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
 
       <h3 className="titolo-sezione">Giochi più giocati</h3>
       <ElencoCorto>
-        {d.giochi.slice(0, 25).map((g) => (
-          <li key={g.nome}>
+        {d.giochi.slice(0, 25).map((g, i) => (
+          <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
             <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
             <span className="anno">{g.n}</span>
           </li>
@@ -1160,10 +1160,10 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
           // l'unica partita in dodici risulta 12,00× e finisce in cima.
           .filter((p) => p.attese > 0 && p.competitive >= MIN_CLASSIFICA)
           .sort((a, b) => b.vinte / b.attese - a.vinte / a.attese || b.competitive - a.competitive)
-          .map((p) => {
+          .map((p, i) => {
             const r = p.vinte / p.attese
             return (
-              <li key={p.nome}>
+              <li key={`${p.chiave ?? p.id ?? p.nome}|${i}`}>
                 <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>

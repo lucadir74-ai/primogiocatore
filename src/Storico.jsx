@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v3.8.0 - 202610042130
+// v3.9.0 - 202610182040 (elenchi con chiavi uniche: niente righe fantasma; la ricerca ignora spazi e accenti)
 
 import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
@@ -137,7 +137,11 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
   /* ---------- Vista ---------- */
 
-  const q = cerca.trim().toLowerCase()
+  // «Dario a», «dario-a» e «DarioA» trovano tutti «DarioAggioli»:
+  // spazi, maiuscole, accenti e segni non contano.
+  const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+  const q = piatto(cerca)
+  const contiene = (t) => piatto(t).includes(q)
   const filtrate = !q ? partite : partite.filter((p) => {
     const pezzi = [
       p.giochi?.nome,
@@ -145,10 +149,10 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       p.note,
       ...(p.partecipazioni || []).map((x) => chi(x).nome),
     ]
-    return pezzi.filter(Boolean).some((t) => t.toLowerCase().includes(q))
+    return pezzi.filter(Boolean).some(contiene)
   })
 
-  const filtraNome = (righe) => (!q ? righe : righe.filter((r) => r.nome.toLowerCase().includes(q)))
+  const filtraNome = (righe) => (!q ? righe : righe.filter((r) => contiene(r.nome)))
 
   if (caricamento) return <div className="scheda"><p>Carico lo storico&hellip;</p></div>
 
@@ -311,8 +315,8 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       {/* --- Giochi --- */}
       {sezione === 'giochi' && (
         <ul className="elenco">
-          {filtraNome(perGioco()).map((g) => (
-            <li key={g.nome}>
+          {filtraNome(perGioco()).map((g, i) => (
+            <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
               <div className="gioco">
                 {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
                 <div>
@@ -334,8 +338,8 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       {/* --- Giocatori --- */}
       {sezione === 'giocatori' && (
         <ul className="elenco">
-          {filtraNome(perGiocatore()).map((g) => (
-            <li key={g.nome}>
+          {filtraNome(perGiocatore()).map((g, i) => (
+            <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => onApri?.('persona', g.chiave)}>
@@ -362,8 +366,8 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       {/* --- Luoghi --- */}
       {sezione === 'luoghi' && (
         <ul className="elenco">
-          {filtraNome(perLuogo()).map((l) => (
-            <li key={l.nome}>
+          {filtraNome(perLuogo()).map((l, i) => (
+            <li key={`${l.chiave ?? l.id ?? l.nome}|${i}`}>
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => onApri?.('luogo', l.id)}>
                   {l.nome}
