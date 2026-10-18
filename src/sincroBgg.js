@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.5.2 - 202610181300 (ospiti collegati riusati: niente «sono io» ripetuti)
+// v1.6.0 - 202610181500 (con l'import diretto da BGA, le partite BGA non arrivano più da qui)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -26,6 +26,9 @@ const INDIETRO_GIORNI = 30
 // BGA importate in BG Stats mesi dopo) le trova solo il controllo
 // completo, che parte da solo una volta a settimana.
 const COMPLETO_OGNI_GIORNI = 7
+
+// Il luogo che BG Stats dà alle partite di Board Game Arena.
+const DA_BGA = /board\s*game\s*arena|\bbga\b/i
 
 const PAROLE_ONLINE = ['arena', 'bga', 'yucata', 'tabletopia', 'boiteajeux', 'online', 'steam']
 
@@ -92,8 +95,20 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
   // Letto tutto l'archivio: il controllo completo è fatto.
   if (!dal) segnaCompleto()
 
-  const uniche = [...new Map(tutte.map((p) => [p.bgg_play_id, p])).values()]
+  let uniche = [...new Map(tutte.map((p) => [p.bgg_play_id, p])).values()]
   const doppie = tutte.length - uniche.length
+
+  // Chi importa direttamente da Board Game Arena (numero BGA nel
+  // profilo) le partite BGA le riceve da lì: quelle che BG Stats
+  // pubblica su BGG sarebbero doppioni, con date spesso diverse.
+  let escluseBga = 0
+  const { data: ioBga } = await supabase.from('profili').select('bga_id').eq('id', profiloId).maybeSingle()
+  if (ioBga?.bga_id) {
+    const prima = uniche.length
+    uniche = uniche.filter((p) => !DA_BGA.test(p.luogo || ''))
+    escluseBga = prima - uniche.length
+  }
+
   tutte.length = 0
   tutte.push(...uniche)
 
@@ -129,6 +144,7 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     senzaGioco: conStato.filter((p) => !perBgg.has(p.gioco?.bgg_id)).length,
     giaImportate: tutte.length - daGuardare.length,
     doppieInLettura: doppie,
+    escluseBga,
     utente,
   }
 }

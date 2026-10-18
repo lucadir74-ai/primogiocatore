@@ -1,4 +1,4 @@
-// Primo Giocatore v4.14.0 - 202610112300
+// Primo Giocatore v4.15.0 - 202610181500 (import diretto da Board Game Arena)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -21,6 +21,7 @@ import Classifiche from './Classifiche.jsx'
 import Organizzatori from './Organizzatori.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
+import ImportaBga from './ImportaBga.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -571,8 +572,16 @@ function tavoloDalLink() {
   } catch { return null }
 }
 
+// La scheda aperta dal segnalibro «PG da BGA» arriva come ?bga=1.
+function bgaDalLink() {
+  try {
+    return new URLSearchParams(window.location.search).has('bga')
+  } catch { return false }
+}
+
 export default function App() {
   const [tavoloPubblico] = useState(tavoloDalLink())
+  const [daBga, setDaBga] = useState(bgaDalLink())
   const [sessione, setSessione] = useState(null)
   const [profilo, setProfilo] = useState(null)
   const [pronto, setPronto] = useState(false)
@@ -679,6 +688,11 @@ export default function App() {
         <div className="scheda">
           {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
         </div>
+      ) : daBga ? (
+        <ImportaBga profilo={profilo} daLink onChiudi={() => {
+          try { window.history.replaceState(null, '', window.location.pathname) } catch { /* niente */ }
+          setDaBga(false)
+        }} />
       ) : (
         <>
           <nav className="barra-basso">
@@ -813,7 +827,10 @@ export default function App() {
                       <SeiTu profilo={profilo} />
                     </>
                   ) : attiva === 'dati' ? (
-                    <Dati profilo={profilo} />
+                    <>
+                      <Dati profilo={profilo} />
+                      <ImportaBga profilo={profilo} />
+                    </>
                   ) : attiva === 'ospiti' ? (
                     <UnisciOspiti profilo={profilo} />
                   ) : attiva === 'luoghi' ? (
