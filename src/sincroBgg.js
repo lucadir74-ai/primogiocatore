@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.5.1 - 202610042200
+// v1.5.2 - 202610181300 (ospiti collegati riusati: niente «sono io» ripetuti)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -12,7 +12,7 @@
 
 import { supabase, tutteLeRighe } from './supabase'
 import { impronta, improntePresenti, giaPresente } from './impronta'
-import { assicuraGiochi, trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
+import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome, ospitiPerImport } from './giochiMiei'
 
 const CHIAVE_ULTIMA = 'primo-giocatore:ultima-sincro-bgg'
 const CHIAVE_COMPLETA = 'primo-giocatore:ultimo-controllo-completo-bgg'
@@ -142,9 +142,9 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   const giochi = await assicuraGiochi(unici.map((g) => ({ bgg_id: g.bgg_id, nome: g.nome || 'Senza nome' })))
   const idGioco = new Map(giochi.map((g) => [g.bgg_id, g.id]))
 
-  const esistenti = await tutteLeRighe(() => supabase.from('ospiti')
-    .select('id, nome, creato_da').is('utente_collegato', null))
-  const ospiti = mappaPerNome(esistenti, profiloId)
+  // Anche gli ospiti già collegati a un account: vedi mappaOspitiPerNome.
+  const esistenti = await ospitiPerImport()
+  const ospiti = mappaOspitiPerNome(esistenti, profiloId)
   const luoghi = new Map()
 
   // Gli altri nomi con cui compari: le partite di Board Game Arena che

@@ -1,12 +1,12 @@
 // Primo Giocatore - importazione da BG Stats
-// v3.3.0 - 202609302000
+// v3.3.1 - 202610181300 (ospiti collegati riusati: niente «sono io» ripetuti)
 //
 // Il file di BG Stats contiene array separati di games, players,
 // locations e plays, collegati fra loro dagli "id" interni al file.
 // Qui si traducono nello schema dell'app.
 
 import { supabase, tutteLeRighe } from './supabase'
-import { assicuraGiochi, mappaPerNome } from './giochiMiei'
+import { assicuraGiochi, mappaPerNome, mappaOspitiPerNome, ospitiPerImport } from './giochiMiei'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 
 /* I punteggi in BG Stats sono testo e possono essere somme scritte a
@@ -175,9 +175,9 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
     .map((id) => giocatoriFile.get(id)?.name?.trim())
     .filter(Boolean)
 
-  const ospitiEsistenti = await tutteLeRighe(() => supabase.from('ospiti')
-    .select('id, nome, creato_da').is('utente_collegato', null))
-  const mappaOspiti = mappaPerNome(ospitiEsistenti, profilo.id)
+  // Anche gli ospiti già collegati a un account: vedi mappaOspitiPerNome.
+  const ospitiEsistenti = await ospitiPerImport()
+  const mappaOspiti = mappaOspitiPerNome(ospitiEsistenti, profilo.id)
 
   // Un nome può ripetersi con maiuscole diverse: una voce sola.
   const nomiUnici = new Map()

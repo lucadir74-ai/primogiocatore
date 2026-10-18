@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.0.0 - 202609302000
+// v2.1.0 - 202610181300 (ospiti collegati riusati negli import)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -79,12 +79,38 @@ export async function trovaOCreaLuogo(nome, profiloId, tipo = 'altro') {
   return creato.id
 }
 
+// Gli ospiti per nome, per gli import (BGG, BG Stats, file).
+//
+// Contano anche gli ospiti già collegati a un account con «sono io»:
+// prima si guardavano solo quelli liberi, e così a ogni partita nuova
+// con quel nome nasceva un altro ospite uguale, la persona premeva di
+// nuovo «sono io» e la richiesta tornava da approvare. Riusando
+// l'ospite collegato la partita va subito al suo account (Storico,
+// Statistiche, Giocatori e Primeggio leggono già utente_collegato).
+// A parità di nome vince l'ospite collegato. Si escludono quelli
+// collegati a chi importa: a lui pensa il riconoscimento «sono io»
+// dell'import, e non deve comparire due volte nella stessa partita.
+// righe: { id, nome, creato_da, utente_collegato }
+export function mappaOspitiPerNome(righe, profiloId) {
+  const liberi = (righe || []).filter((r) => !r.utente_collegato)
+  const collegati = (righe || []).filter((r) => r.utente_collegato && r.utente_collegato !== profiloId)
+  const m = mappaPerNome(liberi, profiloId)
+  for (const [k, id] of mappaPerNome(collegati, profiloId)) m.set(k, id)
+  return m
+}
+
+// Tutti gli ospiti visibili, già pronti per mappaOspitiPerNome.
+export async function ospitiPerImport() {
+  return tutteLeRighe(() => supabase.from('ospiti')
+    .select('id, nome, creato_da, utente_collegato'))
+}
+
 // Lo stesso per gli ospiti.
 export async function trovaOCreaOspite(nome, profiloId) {
   const pulito = (nome || '').trim() || 'Sconosciuto'
   const { data } = await supabase.from('ospiti')
-    .select('id, nome, creato_da').ilike('nome', pulito).is('utente_collegato', null).limit(20)
-  const trovato = mappaPerNome(data, profiloId).get(pulito.toLowerCase())
+    .select('id, nome, creato_da, utente_collegato').ilike('nome', pulito).limit(20)
+  const trovato = mappaOspitiPerNome(data, profiloId).get(pulito.toLowerCase())
   if (trovato) return trovato
   const { data: creato, error } = await supabase.from('ospiti')
     .insert({ nome: pulito, creato_da: profiloId }).select('id').single()
