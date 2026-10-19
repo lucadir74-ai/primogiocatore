@@ -1,13 +1,21 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v1.1.0 - 202610181400 (segnalibro: riprova le pagine rifiutate, mostra la risposta di BGA, riparte da dove si è fermato)
+// v2.0.0 - 202610182100 (aggiornamenti rapidi: legge solo le partite nuove e le consegna con un tocco)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
-// di sessione della pagina. Un segnalibro, toccato su quella pagina,
-// fa le stesse chiamate e passa le partite a Primo Giocatore: niente
-// password BGA, niente codici. Le partite arrivano con un messaggio
-// alla scheda dell'app che il segnalibro apre; se il browser lo
-// impedisce, il segnalibro le copia e qui si incollano.
+// di sessione della pagina. Un segnalibro, toccato su BGA, fa le stesse
+// chiamate: niente password BGA, niente codici.
+//
+// Consegna: a lettura finita il segnalibro mostra «Apri in Primo
+// Giocatore», un collegamento che porta le partite nell'indirizzo
+// (dopo il #, che non viaggia verso nessun server). Funziona anche dove
+// le schede non possono parlarsi tra loro, cosa che su BGA succede.
+//
+// Aggiornamenti: il segnalibro ricorda, nella memoria del browser per
+// BGA, il tuo numero giocatore e la data dell'ultima consegna. La volta
+// dopo legge solo le partite nuove: pochi secondi invece di minuti.
+// Se quella memoria si perde rilegge tutto, e i doppioni non entrano
+// comunque (vedi sotto).
 //
 // Doppioni:
 // - ogni tavolo BGA ha un numero: si importa una volta sola per persona
@@ -22,14 +30,6 @@ import { supabase, tutteLeRighe } from './supabase'
 import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei'
 import { impronta } from './impronta'
 
-// Da dove possono arrivare i messaggi del segnalibro.
-export const ORIGINE_BGA = /^https:\/\/([a-z0-9-]+\.)?boardgamearena\.com$/
-
-// Le partite più vecchie dell'ultima importata meno questo margine non
-// si rileggono: BGA ordina per fine partita, ma una partita a turni può
-// chiudersi in ritardo rispetto a un'altra già importata.
-const MARGINE_GIORNI = 7
-
 const LUOGO_BGA = 'Board Game Arena'
 
 /* ---------------------------------------------------------------
@@ -37,56 +37,67 @@ const LUOGO_BGA = 'Board Game Arena'
    --------------------------------------------------------------- */
 
 // Il codice da salvare nei preferiti. origine: l'indirizzo dell'app.
+// base: { id, fino } dal profilo, così anche la prima volta dopo averlo
+// copiato il segnalibro sa chi sei e da dove ripartire.
 // Una riga sola, senza commenti // (in un indirizzo non esistono righe).
-export function segnalibroBga(origine) {
+export function segnalibroBga(origine, base = {}) {
   const righe = [
     '(async()=>{',
     `const PG=${JSON.stringify(origine)};`,
-    "if(window.__pgBga)return alert('Importazione già in corso su questa pagina');window.__pgBga=1;",
+    `const BASE=${JSON.stringify({ id: base.id ? String(base.id) : '', fino: Number(base.fino) || 0 })};`,
+    "if(window.__pgBga)return alert('Lettura già in corso su questa pagina');window.__pgBga=1;",
+    "const M={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};",
     "const box=document.createElement('div');",
     "box.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#111;color:#fff;font:14px sans-serif;padding:12px;border-radius:10px';",
-    "box.innerHTML='<b>Primo Giocatore</b><div id=pgS style=\"margin:6px 0\">Avvio…</div><button id=pgR style=\"padding:10px 16px;font-size:15px;display:none\"></button> <button id=pgC style=\"padding:10px 16px;font-size:15px;display:none\">Copia i dati</button> <button id=pgX style=\"padding:10px 16px;font-size:15px\">Chiudi</button>';",
+    "box.innerHTML='<b>Primo Giocatore</b><div id=pgS style=\"margin:6px 0\">Avvio…</div><a id=pgA target=_blank style=\"display:none;padding:10px 16px;font-size:15px;background:#E5A32B;color:#111;border-radius:8px;text-decoration:none;font-weight:bold;margin-right:6px\">Apri in Primo Giocatore</a><button id=pgR style=\"padding:10px 16px;font-size:15px;display:none\"></button> <button id=pgC style=\"padding:10px 16px;font-size:15px;display:none\">Copia i dati</button> <button id=pgT style=\"padding:10px 16px;font-size:15px;display:none\">Rileggi tutto</button> <button id=pgX style=\"padding:10px 16px;font-size:15px\">Chiudi</button>';",
     'document.body.appendChild(box);',
-    "const S=t=>{box.querySelector('#pgS').textContent=t};",
-    "box.querySelector('#pgX').onclick=()=>{box.remove();window.__pgBga=0};",
-    "const w=window.open(PG+'/?bga=1','pg-bga');",
-    'let pronto=null,dati=null,inviato=false;',
-    "const invia=()=>{if(dati&&pronto&&w&&!w.closed&&!inviato){w.postMessage(Object.assign({tipo:'pg-bga-dati'},dati),PG);inviato=true;S(dati.tavoli.length+' partite passate a Primo Giocatore: continua lì.')}};",
-    "window.addEventListener('message',e=>{if(e.origin!==PG||!e.data)return;if(e.data.tipo==='pg-pronto'){pronto=e.data;invia()}if(e.data.tipo==='pg-ricevuto')S('Primo Giocatore ha ricevuto '+e.data.n+' partite. Puoi chiudere questo riquadro.')});",
+    "const $=q=>box.querySelector(q);const S=t=>{$('#pgS').textContent=t};",
+    "$('#pgX').onclick=()=>{box.remove();window.__pgBga=0};",
     'const attendi=ms=>new Promise(r=>setTimeout(r,ms));',
-    "let id=new URLSearchParams(location.search).get('player')||'';",
-    "for(let i=0;i<16&&!pronto;i++){S('Apro Primo Giocatore…');await attendi(500)}",
-    'if(!id&&pronto&&pronto.bgaId)id=String(pronto.bgaId);',
+    "let id=new URLSearchParams(location.search).get('player')||M.get('pgBgaId')||BASE.id||'';",
     "if(!id)id=(prompt('Il tuo numero giocatore BGA: è il numero nell’indirizzo della tua pagina profilo BGA')||'').trim();",
     "if(!/^[0-9]+$/.test(id)){S('Manca il numero giocatore BGA: apri la tua cronologia dal tuo profilo e riprova.');return}",
+    "M.set('pgBgaId',id);",
     "const tok=(window.bgaConfig&&window.bgaConfig.requestToken)||'';",
-    'const fino=pronto&&pronto.fino?Number(pronto.fino):0;',
-    "const tavoli=[];let nome='';",
-    "const C=box.querySelector('#pgC'),R=box.querySelector('#pgR');",
-    "const leggiPagina=async pag=>{const h={'X-Requested-With':'XMLHttpRequest'};if(tok)h['X-Request-Token']=tok;const r=await fetch('/gamestats/gamestats/getGames.html?player='+id+'&opponent_id=0&finished=1&page='+pag+'&updateStats=0',{headers:h,credentials:'include'});const testo=await r.text();let j=null;try{j=JSON.parse(testo)}catch(e){}return{j:j,info:'HTTP '+r.status+' '+(j&&j.error?j.error:testo.slice(0,120))}};",
-    "const fine=()=>{dati={giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};R.style.display='none';C.style.display='inline-block';",
-    "C.onclick=()=>{const testo=JSON.stringify(Object.assign({tipo:'pg-bga-dati'},dati));navigator.clipboard.writeText(testo).then(()=>alert('Copiato: incollalo in Primo Giocatore, sezione Dati e import'),()=>prompt('Copia questo testo',testo))};",
-    "if(pronto&&w)invia();else S(tavoli.length+' partite lette. Primo Giocatore non ha risposto: tocca «Copia i dati» e incollale nell’app.')};",
-    'const leggi=async da=>{R.style.display=\'none\';',
+    "if(!tok){S('Non trovo la sessione BGA in questa pagina: apri la tua Cronologia delle partite e riprova.');return}",
+    'const leggiPagina=async pag=>{const r=await fetch(\'/gamestats/gamestats/getGames.html?player=\'+id+\'&opponent_id=0&finished=1&page=\'+pag+\'&updateStats=0\',{headers:{\'X-Requested-With\':\'XMLHttpRequest\',\'X-Request-Token\':tok},credentials:\'include\'});const testo=await r.text();let j=null;try{j=JSON.parse(testo)}catch(e){}return{j:j,info:\'HTTP \'+r.status+\' \'+(j&&j.error?j.error:testo.slice(0,120))}};',
+    'const avvia=async tutto=>{',
+    "const fino=tutto?0:Math.max(0,Math.max(Number(M.get('pgBgaFino')||0),BASE.fino)-7*86400);",
+    "const tavoli=[];let nome='';let ultimo=0;",
+    "for(const k of ['#pgA','#pgR','#pgC','#pgT'])$(k).style.display='none';",
+    'const leggi=async da=>{',
     'for(let pag=da;pag<=1000;pag++){',
-    "S('Leggo lo storico BGA: pagina '+pag+', '+tavoli.length+' partite');",
+    "S((fino?'Cerco le partite nuove':'Leggo tutto lo storico BGA')+': pagina '+pag+', '+tavoli.length+' partite');",
     "let x=null;for(let prova=0;prova<4;prova++){try{x=await leggiPagina(pag)}catch(e){x={j:null,info:String(e)}}if(x.j&&String(x.j.status)==='1')break;if(prova<3){S('Pagina '+pag+': BGA non risponde, riprovo ('+(prova+1)+'/3)…');await attendi([3000,8000,20000][prova])}}",
-    "if(!x.j||String(x.j.status)!=='1'){S('BGA ha rifiutato la pagina '+pag+' ('+tavoli.length+' partite lette finora). Risposta: '+x.info);R.textContent='Riprova da pagina '+pag;R.style.display='inline-block';R.onclick=()=>leggi(pag);return}",
+    "if(!x.j||String(x.j.status)!=='1'){S('BGA ha rifiutato la pagina '+pag+' ('+tavoli.length+' partite lette finora). Risposta: '+x.info);$('#pgR').textContent='Riprova da pagina '+pag;$('#pgR').style.display='inline-block';$('#pgR').onclick=()=>leggi(pag);return}",
     'const lista=(x.j.data&&x.j.data.tables)||[];if(!lista.length)break;',
     'let vecchie=false;',
     'for(const t of lista){',
-    'if(fino&&Number(t.end)<fino){vecchie=true;continue}',
+    'const fine=Number(t.end);if(fine>ultimo)ultimo=fine;',
+    'if(fino&&fine<fino){vecchie=true;continue}',
     "if(String(t.cancelled)==='1'||String(t.normalend)!=='1')continue;",
     'let p=[];const gr=t.gameResult&&t.gameResult.rankedTeams;',
     'if(gr&&gr.length){for(const tm of gr)for(const pl of (tm.players||[]))p.push([Number(pl.id),String(pl.name||\'\'),pl.score==null?null:Number(pl.score),tm.rank==null?null:Number(tm.rank)])}',
     "else{const a=String(t.players||'').split(','),b=String(t.player_names||'').split(','),c=String(t.scores||'').split(','),d=String(t.ranks||'').split(',');p=a.map((x,k)=>[Number(x),b[k]||'',c[k]===''||c[k]==null?null:Number(c[k]),d[k]?Number(d[k]):null])}",
     'const io=p.find(g=>String(g[0])===id);if(io&&!nome)nome=io[1];',
-    "tavoli.push({t:String(t.table_id),g:String(t.game_name),s:Number(t.start),e:Number(t.end),c:String(t.is_coop)==='1',p:p,b:(t.bot_player_ids||[]).map(Number)})",
+    "tavoli.push({t:String(t.table_id),g:String(t.game_name),s:Number(t.start),e:fine,c:String(t.is_coop)==='1',p:p,b:(t.bot_player_ids||[]).map(Number)})",
     '}',
-    'if(vecchie)break;await attendi(1000)',
+    'if(vecchie)break;await attendi(fino?400:1000)',
     '}',
-    'fine()};',
-    'await leggi(1)',
+    'consegna()};',
+    'const consegna=()=>{',
+    "$('#pgT').style.display='inline-block';$('#pgT').onclick=()=>avvia(true);",
+    "if(!tavoli.length){S('Nessuna partita nuova su BGA dall’ultimo aggiornamento.');if(ultimo)M.set('pgBgaFino',String(Math.max(ultimo,Number(M.get('pgBgaFino')||0))));return}",
+    "const dati={tipo:'pg-bga-dati',giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};",
+    'const testo=JSON.stringify(dati);',
+    "const ricorda=()=>{M.set('pgBgaFino',String(Math.max(ultimo,Number(M.get('pgBgaFino')||0))))};",
+    "const C=$('#pgC');C.style.display='inline-block';C.onclick=()=>{navigator.clipboard.writeText(testo).then(()=>{ricorda();alert('Copiato: incollalo in Primo Giocatore, sezione Dati e import')},()=>prompt('Copia questo testo',testo))};",
+    "const url=PG+'/?bga=1#bga='+encodeURIComponent(testo);",
+    "if(url.length<1800000){const A=$('#pgA');A.href=url;A.style.display='inline-block';A.onclick=()=>{ricorda();S('Aperto Primo Giocatore: continua lì. Puoi chiudere questo riquadro.')};S((fino?tavoli.length+' partite recenti: quelle già importate verranno saltate':tavoli.length+' partite lette')+'. Tocca «Apri in Primo Giocatore».')}",
+    "else S(tavoli.length+' partite lette: sono troppe per un collegamento, tocca «Copia i dati» e incollale nell’app.')",
+    '};',
+    'await leggi(1)};',
+    'await avvia(false)',
     '})()',
   ]
   return 'javascript:' + righe.join('')
@@ -120,11 +131,11 @@ function erroreMigrazione(e) {
 }
 
 /* ---------------------------------------------------------------
-   Prima dell'arrivo: cosa dire al segnalibro
+   Cosa mettere dentro il segnalibro
    --------------------------------------------------------------- */
 
-// Da che momento leggere (secondi) e il numero BGA già noto.
-export async function statoBga(profilo) {
+// Il tuo numero BGA e la fine dell'ultima partita BGA importata (secondi).
+export async function baseSegnalibro(profilo) {
   const { data, error } = await supabase.from('partite')
     .select('giocata_il')
     .eq('registrata_da', profilo.id)
@@ -133,8 +144,7 @@ export async function statoBga(profilo) {
     .limit(1)
   if (error) throw erroreMigrazione(error)
   const ultima = data?.[0]?.giocata_il
-  const fino = ultima ? Math.floor(new Date(ultima).getTime() / 1000) - MARGINE_GIORNI * 86400 : 0
-  return { fino, bgaId: profilo.bga_id || null }
+  return { id: profilo.bga_id || '', fino: ultima ? Math.floor(new Date(ultima).getTime() / 1000) : 0 }
 }
 
 /* ---------------------------------------------------------------

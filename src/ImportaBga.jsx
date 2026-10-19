@@ -1,19 +1,19 @@
 // Primo Giocatore - importa da Board Game Arena
-// v1.0.0 - 202610181500
+// v2.0.0 - 202610182100 (aggiornamento in un tocco)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
-//   casella per incollare i dati se il messaggio non passa;
-// - dalla scheda che il segnalibro apre (?bga=1): l'app risponde
-//   «pronta» alla pagina BGA, riceve le partite e parte da sola.
+//   casella per incollare i dati copiati;
+// - dal collegamento «Apri in Primo Giocatore» del segnalibro
+//   (?bga=1#bga=…): le partite sono nell'indirizzo e si parte da soli.
 //
-// Poi: abbinamento dei giochi BGA a quelli BGG (una volta per gioco,
-// vale per tutti), anteprima con i conteggi, importazione.
+// Se non ci sono giochi nuovi da abbinare né partite incerte, importa
+// subito: un aggiornamento normale è un tocco su BGA e uno qui.
 
 import { useEffect, useRef, useState } from 'react'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import {
-  ORIGINE_BGA, segnalibroBga, statoBga, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
+  segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
 } from './bga'
 
 const campoTesto = {
@@ -36,32 +36,28 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
   const [salto, setSalto] = useState([])         // giochi lasciati fuori stavolta
   const ricevuto = useRef(false)
 
-  const codice = segnalibroBga(window.location.origin)
+  const [base, setBase] = useState(null)
+  const codice = segnalibroBga(window.location.origin, base || { id: profilo.bga_id })
 
-  // Aperta dal segnalibro: si dice «pronta» alla pagina BGA finché
-  // non arrivano le partite (la pagina può essere ancora in ascolto
-  // mentre qui si fa l'accesso).
+  // Il segnalibro porta dentro il tuo numero BGA e l'ultima partita
+  // importata: anche appena copiato, legge solo le partite nuove.
   useEffect(() => {
-    if (!daLink || !window.opener) return
-    let fermo = false
-    // Si risponde solo dopo aver letto da dove ripartire: con «fino» a
-    // zero il segnalibro rileggerebbe tutto lo storico.
-    let stato = null
-    statoBga(profilo).then((s) => { stato = s }).catch((e) => setErrore(e.message))
+    baseSegnalibro(profilo).then(setBase).catch(() => {})
+  }, [profilo.id])
 
-    function alMessaggio(e) {
-      if (!ORIGINE_BGA.test(e.origin) || e.source !== window.opener) return
-      if (e.data?.tipo !== 'pg-bga-dati' || ricevuto.current) return
-      ricevuto.current = true
-      try { e.source.postMessage({ tipo: 'pg-ricevuto', n: e.data.tavoli?.length || 0 }, e.origin) } catch { /* niente */ }
-      ricevi(e.data)
+  // Arrivo dal collegamento del segnalibro: le partite sono dopo il #.
+  useEffect(() => {
+    if (!daLink || ricevuto.current) return
+    const h = window.location.hash
+    if (!h.startsWith('#bga=')) return
+    ricevuto.current = true
+    try { window.history.replaceState(null, '', window.location.pathname + '?bga=1') } catch { /* niente */ }
+    try {
+      ricevi(JSON.parse(decodeURIComponent(h.slice(5))))
+    } catch {
+      setErrore('Il collegamento da BGA è arrivato incompleto: su BGA usa «Copia i dati» e incollali qui.')
+      ricevuto.current = false
     }
-    window.addEventListener('message', alMessaggio)
-    const giro = setInterval(() => {
-      if (fermo || ricevuto.current || !stato) return
-      try { window.opener?.postMessage({ tipo: 'pg-pronto', ...stato }, '*') } catch { /* niente */ }
-    }, 1000)
-    return () => { fermo = true; clearInterval(giro); window.removeEventListener('message', alMessaggio) }
   }, [daLink, profilo.id])
 
   async function ricevi(dati) {
@@ -76,7 +72,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
         setEsito({ niente: true, giaImportati: a.giaImportati })
         setFase('fatto')
       } else if (a.giochiDaAbbinare.length) setFase('giochi')
-      else await prepara(a)
+      else await prepara(a, true)
     } catch (e) {
       setErrore(e.message); setFase('attesa'); setAvanzamento(null); ricevuto.current = false
     }
@@ -120,22 +116,25 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
     } catch (e) { setErrore(e.message) }
   }
 
-  async function prepara(a = analisi) {
+  // automatico: niente da decidere (nessuna partita incerta) = si importa subito.
+  async function prepara(a = analisi, automatico = false) {
     setErrore(''); setFase('lavoro')
     setAvanzamento({ fase: 'Cerco le partite che hai già', fatto: 0, totale: 1 })
     try {
-      setClassi(await classificaBga(a))
+      const c = await classificaBga(a)
+      setClassi(c)
       setAvanzamento(null)
-      setFase('anteprima')
-    } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('giochi') }
+      if (automatico && !c.incerte.length) await importa(a, c)
+      else setFase('anteprima')
+    } catch (e) { setErrore(e.message); setAvanzamento(null); setFase(automatico ? 'attesa' : 'giochi') }
   }
 
-  async function importa() {
+  async function importa(a = analisi, c = classi) {
     setErrore(''); setFase('lavoro')
     try {
-      const r = await importaBga({ profilo, analisi, classi, incerteNuove, avanzamento: setAvanzamento })
+      const r = await importaBga({ profilo, analisi: a, classi: c, incerteNuove, avanzamento: setAvanzamento })
       setAvanzamento(null)
-      setEsito({ ...r, senzaGioco: classi.senzaGioco, giaImportati: analisi.giaImportati })
+      setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati })
       setFase('fatto')
     } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('anteprima') }
   }
@@ -168,43 +167,38 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
         </div>
       )}
 
-      {fase === 'attesa' && (
-        daLink && window.opener ? (
+      {fase === 'attesa' && !daLink && (
+        <>
+          <h3 className="titolo-sezione">Per aggiornare</h3>
+          <ol className="aiuto" style={{ paddingLeft: '1.2rem' }}>
+            <li>Su BGA, da entrato, apri la tua <strong>Cronologia delle partite</strong>.</li>
+            <li>Tocca la barra degli indirizzi, scrivi <strong>PG da BGA</strong> e tocca il suggerimento
+              con la stellina, senza premere Invio.</li>
+            <li>Dopo pochi secondi tocca <strong>Apri in Primo Giocatore</strong>: le partite nuove
+              entrano da sole. Ti chiede qualcosa solo se c&rsquo;è un gioco mai visto da abbinare.</li>
+          </ol>
+          <h3 className="titolo-sezione">Il segnalibro</h3>
           <p className="aiuto">
-            In attesa delle partite dalla pagina di BGA&hellip; Se resta ferma, torna alla scheda di BGA
-            e usa «Copia i dati», poi incollali qui sotto.
+            Va salvato una volta nei preferiti di Chrome (⋮ → stellina → Modifica): nome
+            {' '}<strong>PG da BGA</strong>, e al posto dell&rsquo;indirizzo il segnalibro copiato da qui.
+            Deve iniziare con <code>javascript:</code>. Se l&rsquo;avevi già, sostituiscilo con questo.
           </p>
-        ) : (
-          <>
-            <h3 className="titolo-sezione">Come si fa</h3>
-            <ol className="aiuto" style={{ paddingLeft: '1.2rem' }}>
-              <li>Copia il segnalibro con il tasto qui sotto.</li>
-              <li>In Chrome salva una pagina qualsiasi nei preferiti (⋮ → stellina → Modifica), chiamalo
-                {' '}<strong>PG da BGA</strong> e al posto dell&rsquo;indirizzo incolla il segnalibro.
-                Controlla che inizi con <code>javascript:</code>. Si fa una volta sola.</li>
-              <li>Su BGA, da entrato, apri la tua <strong>Cronologia delle partite</strong>.</li>
-              <li>Tocca la barra degli indirizzi, scrivi <strong>PG da BGA</strong> e tocca il suggerimento
-                con la stellina, senza premere Invio.</li>
-              <li>Si apre Primo Giocatore e le partite arrivano da sole. La prima volta legge tutto lo
-                storico e ci vogliono alcuni minuti: lascia aperta la pagina di BGA.</li>
-            </ol>
-            <button className="bottone" onClick={copiaCodice}>
-              {copiato ? 'Segnalibro copiato' : 'Copia il segnalibro'}
-            </button>
-            {!copiato && (
-              <details>
-                <summary className="aiuto">Il tasto non copia? Il segnalibro è qui</summary>
-                <textarea readOnly value={codice} style={campoTesto} onFocus={(e) => e.target.select()} />
-              </details>
-            )}
-          </>
-        )
+          <button className="bottone" onClick={copiaCodice}>
+            {copiato ? 'Segnalibro copiato' : 'Copia il segnalibro'}
+          </button>
+          {!copiato && (
+            <details>
+              <summary className="aiuto">Il tasto non copia? Il segnalibro è qui</summary>
+              <textarea readOnly value={codice} style={campoTesto} onFocus={(e) => e.target.select()} />
+            </details>
+          )}
+        </>
       )}
 
       {fase === 'attesa' && (
         <>
-          <h3 className="titolo-sezione">Se le partite non arrivano da sole</h3>
-          <p className="aiuto">Nella pagina di BGA tocca «Copia i dati» e incolla qui.</p>
+          <h3 className="titolo-sezione">Se il collegamento non funziona</h3>
+          <p className="aiuto">Nel riquadro su BGA tocca «Copia i dati» e incolla qui.</p>
           <textarea value={incollato} onChange={(e) => setIncollato(e.target.value)} style={campoTesto}
             placeholder="Incolla qui i dati copiati da BGA" aria-label="Dati copiati da BGA" />
           <button className="bottone bottone-secondario" onClick={daIncollato} disabled={!incollato.trim()}>
@@ -289,7 +283,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
               Importa le {classi.incerte.length} incerte come partite nuove (di solito non serve: rischi doppioni)
             </label>
           )}
-          <button className="bottone" onClick={importa}>Importa</button>
+          <button className="bottone" onClick={() => importa()}>Importa</button>
           <button className="bottone bottone-secondario" onClick={ricomincia}>Annulla</button>
         </>
       )}
