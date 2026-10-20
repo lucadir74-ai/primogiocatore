@@ -1,5 +1,5 @@
 // Primo Giocatore - Giocatori
-// v1.0.0 - 202610041800
+// v1.1.0 - 202610211000 (più veloce: query più leggera, dati ricordati fra una visita e l'altra, elenco a pagine)
 //
 // Le persone con cui hai giocato: chi ha un account e chi è ospite.
 // Un ospite collegato a un account ("sono io") è la stessa persona e
@@ -13,18 +13,27 @@ import { unisciCondivise } from './condivise'
 
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
 const coloreHex = (id) => COLORI.find((c) => c.id === id)?.hex || '#C9D1D8'
+// Ricordati fra una visita e l'altra della pagina: tornando si vede
+// subito l'elenco di prima, e intanto si aggiorna dietro le quinte.
+let memoria = null   // { utente, partite, mieiOspiti, account }
+const PER_PAGINA = 60
+
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
 export default function Giocatori({ profilo, onStatistiche }) {
-  const [partite, setPartite] = useState([])
-  const [mieiOspiti, setMieiOspiti] = useState([])
-  const [account, setAccount] = useState(new Map())   // id -> profilo
-  const [caricamento, setCaricamento] = useState(true)
+  const ricordo = memoria?.utente === profilo.id ? memoria : null
+  const [partite, setPartite] = useState(ricordo?.partite || [])
+  const [mieiOspiti, setMieiOspiti] = useState(ricordo?.mieiOspiti || [])
+  const [account, setAccount] = useState(ricordo?.account || new Map())   // id -> profilo
+  const [caricamento, setCaricamento] = useState(!ricordo)
+  const [quanti, setQuanti] = useState(PER_PAGINA)
   const [errore, setErrore] = useState('')
   const [cerca, setCerca] = useState('')
   const [filtro, setFiltro] = useState('tutti')   // tutti | account | ospiti
 
   useEffect(() => { carica() }, [])
+  // Cambiando filtro o ricerca si riparte dalla prima pagina.
+  useEffect(() => { setQuanti(PER_PAGINA) }, [filtro, cerca])
 
   async function carica() {
     try {
@@ -34,7 +43,6 @@ export default function Giocatori({ profilo, onStatistiche }) {
           giochi ( id ),
           partecipazioni (
             utente_id, ospite_id, punteggio_totale,
-            profili:utente_id ( id, nome, nickname, colore, dimostratore ),
             ospiti:ospite_id ( id, nome, utente_collegato )
           )
         `)),
@@ -54,13 +62,15 @@ export default function Giocatori({ profilo, onStatistiche }) {
       for (const o of ospiti) if (o.utente_collegato) idAccount.add(o.utente_collegato)
       const ids = [...idAccount]
       const profili = new Map()
-      for (let i = 0; i < ids.length; i += 200) {
-        const { data } = await supabase.from('profili')
-          .select('id, nome, nickname, colore, dimostratore').in('id', ids.slice(i, i + 200))
-        for (const r of data || []) profili.set(r.id, r)
-      }
+      const blocchi = []
+      for (let i = 0; i < ids.length; i += 200) blocchi.push(ids.slice(i, i + 200))
+      const risposte = await Promise.all(blocchi.map((b) => supabase.from('profili')
+        .select('id, nome, nickname, colore, dimostratore').in('id', b)))
+      for (const { data } of risposte) for (const r of data || []) profili.set(r.id, r)
 
-      setPartite(unisciCondivise(righe, [profilo.id]))
+      const unite = unisciCondivise(righe, [profilo.id])
+      memoria = { utente: profilo.id, partite: unite, mieiOspiti: ospiti, account: profili }
+      setPartite(unite)
       setMieiOspiti(ospiti)
       setAccount(profili)
     } catch (e) {
@@ -160,7 +170,7 @@ export default function Giocatori({ profilo, onStatistiche }) {
         <p className="aiuto">Nessuno corrisponde alla ricerca.</p>
       ) : (
         <ul className="elenco">
-          {visibili.map((p) => (
+          {visibili.slice(0, quanti).map((p) => (
             <li key={p.chiave}>
               <button type="button" className="voce-scelta"
                 onClick={() => onStatistiche?.(p.chiave)} disabled={p.insieme === 0}>
@@ -184,6 +194,11 @@ export default function Giocatori({ profilo, onStatistiche }) {
             </li>
           ))}
         </ul>
+      )}
+      {visibili.length > quanti && (
+        <button className="bottone bottone-secondario" onClick={() => setQuanti((q) => q + PER_PAGINA * 2)}>
+          Mostra altri ({visibili.length - quanti})
+        </button>
       )}
 
       <p className="aiuto">
