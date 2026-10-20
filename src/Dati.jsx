@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v4.0.0 - 202610201000 (pagina riordinata: una sezione a scomparsa per ogni fonte; BGA dentro)
+// v4.0.1 - 202610201930 (le sezioni a scomparsa ora sono un componente comune)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -8,34 +8,10 @@ import { impronta, improntePresenti, giaPresente } from './impronta'
 import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
 import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
 import ImportaBga from './ImportaBga.jsx'
+import Sezione from './Sezione.jsx'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
-// Le sezioni a scomparsa ricordano se le avevi aperte.
-const CHIAVE_APERTE = 'primo-giocatore:dati-aperte'
-function Sezione({ id, titolo, nota, children }) {
-  const [aperta, setAperta] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(CHIAVE_APERTE) || '[]').includes(id) } catch { return false }
-  })
-  function cambia(e) {
-    const ora = e.currentTarget.open
-    setAperta(ora)
-    try {
-      const v = new Set(JSON.parse(localStorage.getItem(CHIAVE_APERTE) || '[]'))
-      if (ora) v.add(id); else v.delete(id)
-      localStorage.setItem(CHIAVE_APERTE, JSON.stringify([...v]))
-    } catch { /* resta solo per ora */ }
-  }
-  return (
-    <details className="sezione-ripiegabile" open={aperta} onToggle={cambia}>
-      <summary>
-        <span className="sezione-titolo">{titolo}</span>
-        {nota && <span className="sezione-nota">{nota}</span>}
-      </summary>
-      <div className="sezione-corpo">{children}</div>
-    </details>
-  )
-}
 
 function scarica(nomeFile, contenuto, tipo) {
   const blob = new Blob([contenuto], { type: tipo })

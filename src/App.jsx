@@ -1,4 +1,4 @@
-// Primo Giocatore v4.16.0 - 202610201000 (BGA collegato con password: partite nuove in automatico)
+// Primo Giocatore v4.17.0 - 202610201930 (accesso riservato ai soci delle Tane, pagina Soci)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -19,6 +19,7 @@ import GiochiDoppi from './GiochiDoppi.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import Classifiche from './Classifiche.jsx'
 import Organizzatori from './Organizzatori.jsx'
+import Soci from './Soci.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
@@ -32,6 +33,7 @@ const SEZIONI_PROFILO = [
   ['luoghi', 'Luoghi'],
   ['giochi', 'Giochi doppi', true],   // mostra tutto il catalogo
   ['ruoli', 'Ruoli', true],   // solo per chi organizza
+  ['soci', 'Soci', true],     // organizzatori, anche di una sola Tana
 ]
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
 
@@ -580,11 +582,41 @@ function bgaDalLink() {
   } catch { return false }
 }
 
+// Con l'accesso riservato ai soci acceso, chi non risulta socio vede
+// solo questo finché un organizzatore della Tana non decide.
+function InAttesa({ profilo, onRicontrolla }) {
+  const escluso = profilo.stato_socio === 'escluso'
+  return (
+    <div className="scheda">
+      <h2>{escluso ? 'Accesso non disponibile' : 'Iscrizione in attesa'}</h2>
+      {escluso ? (
+        <p className="sottotitolo">Questo account non è stato ammesso. Se pensi sia un errore, parlane con un organizzatore della tua Tana.</p>
+      ) : (
+        <>
+          <p className="sottotitolo">
+            Primo Giocatore è riservato ai soci della Tana dei Goblin. La tua email non risulta ancora
+            nell&rsquo;elenco soci: un organizzatore deve confermare l&rsquo;iscrizione.
+          </p>
+          <p className="aiuto">
+            Se sei socio, controlla di esserti registrato con la stessa email che hai dato alla Tana,
+            oppure scrivi a un organizzatore. Appena confermato, entri normalmente.
+          </p>
+        </>
+      )}
+      <button className="bottone" onClick={onRicontrolla}>Ricontrolla</button>
+      <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>Esci</button>
+    </div>
+  )
+}
+
 export default function App() {
   const [tavoloPubblico] = useState(tavoloDalLink())
   const [daBga, setDaBga] = useState(bgaDalLink())
   const [sessione, setSessione] = useState(null)
   const [profilo, setProfilo] = useState(null)
+  // Accesso riservato ai soci: null = sto controllando.
+  const [ammesso, setAmmesso] = useState(null)
+  const [orgTana, setOrgTana] = useState(false)
   const [pronto, setPronto] = useState(false)
   const [scheda, setScheda] = useState('partita')
   const [erroreProfilo, setErroreProfilo] = useState('')
@@ -664,6 +696,16 @@ export default function App() {
     return () => { vivo = false }
   }, [sessione])
 
+  // Socio, eccezione o organizzatore? Senza lo script SQL dei soci
+  // (funzione mancante) si entra come sempre.
+  function controllaAccesso() {
+    if (!profilo?.id) return
+    supabase.rpc('ammesso').then(({ data, error }) => setAmmesso(error ? true : data !== false))
+    supabase.from('organizzatori_tana').select('tana_id').eq('utente_id', profilo.id).limit(1)
+      .then(({ data }) => setOrgTana(Boolean(data?.length)))
+  }
+  useEffect(() => { setAmmesso(null); controllaAccesso() }, [profilo?.id])
+
   return (
     <div className="guscio">
       <header className="testata">
@@ -698,6 +740,8 @@ export default function App() {
         <div className="scheda">
           {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
         </div>
+      ) : ammesso === false ? (   // mentre controlla si entra: i dati li protegge il database
+        <InAttesa profilo={profilo} onRicontrolla={controllaAccesso} />
       ) : daBga ? (
         <ImportaBga profilo={profilo} daLink onChiudi={() => {
           try { window.history.replaceState(null, '', window.location.pathname) } catch { /* niente */ }
@@ -833,7 +877,7 @@ export default function App() {
             />
           ) : (
             (() => {
-              const sezioni = SEZIONI_PROFILO.filter(([, , soloOrg]) => !soloOrg || profilo.organizzatore)
+              const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore || (id === 'soci' && orgTana))
               const attiva = sezioni.some(([id]) => id === sezioneProfilo) ? sezioneProfilo : 'profilo'
               return (
                 <>
@@ -855,6 +899,8 @@ export default function App() {
                     <Luoghi profilo={profilo} />
                   ) : attiva === 'giochi' ? (
                     <GiochiDoppi profilo={profilo} />
+                  ) : attiva === 'soci' ? (
+                    <Soci profilo={profilo} />
                   ) : (
                     <Organizzatori profilo={profilo} />
                   )}
