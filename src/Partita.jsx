@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.14.0 - 202610202100 (segnapunti con i parziali, per voci o a mani)
+// v4.15.0 - 202610202145 (in cima chi era all'ultima partita, e un tocco per rimetterli tutti)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -192,6 +192,23 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       }
       setFrequenza(c)
     }
+
+    // Chi c'era all'ultima partita: se se ne fa subito un'altra, sono
+    // quasi sempre gli stessi.
+    const { data: ultima } = await supabase
+      .from('partite')
+      .select('id, giocata_il, partecipazioni!inner ( utente_id )')
+      .eq('partecipazioni.utente_id', profilo.id)
+      .order('giocata_il', { ascending: false })
+      .limit(1)
+    if (ultima?.[0]) {
+      const { data: chi } = await supabase
+        .from('partecipazioni')
+        .select('utente_id, ospite_id, ordine_turno')
+        .eq('partita_id', ultima[0].id)
+      setUltimaPartita((chi || [])
+        .map((x) => (x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`)))
+    }
   }
 
   async function caricaPartita(id) {
@@ -333,6 +350,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   const [frequenza, setFrequenza] = useState(new Map())
+  const [ultimaPartita, setUltimaPartita] = useState([])  // chiavi di chi c'era, nel loro ordine
   const [luoghiNoti, setLuoghiNoti] = useState([])
   const [miaCollezione, setMiaCollezione] = useState(new Set())
   const [suBgg, setSuBgg] = useState(null)      // risultati della ricerca su BGG
@@ -376,6 +394,20 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   // Dopo una scelta fatta cercando, la casella si svuota per il prossimo.
+  // Un tocco solo per rimettere al tavolo tutti quelli dell'ultima partita.
+  function aggiungiTuttiUltima() {
+    setRighe((rs) => [
+      ...rs,
+      ...ultimiDaAggiungere
+        .filter((x) => !rs.some((r) => r.chiave === x.chiave))
+        .map((x) => ({
+          chiave: x.chiave,
+          ...(x.tipo === 'utente' ? { utente_id: x.dato.id, nome: daMostrare(x.dato) } : { ospite_id: x.dato.id, nome: x.dato.nome }),
+          punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
+        })),
+    ])
+  }
+
   function scegliNome(x) {
     if (x.tipo === 'utente') aggiungiPersona(x.dato)
     else aggiungiOspite(x.dato)
@@ -614,6 +646,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         } else {
           const conPunti = tipo !== 'coop' && tipo !== 'posizione'
             && dati.giocatori.some((g) => g.punteggio_totale != null)
+          setUltimaPartita(ordinata.map((r) => r.chiave))
           if (conPunti) {
             setRiepilogo({ id: salvataId, giocoId: gioco.id, giocoNome: gioco.nome })
           } else {
@@ -633,6 +666,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             ? 'Niente rete: la partita è salvata sul telefono e partirà da sola.'
             : `Niente rete: ${quante} partite in attesa, partiranno da sole.`
         )
+        setUltimaPartita(ordinata.map((r) => r.chiave))
         azzera()
       }
     } catch (e) {
@@ -663,7 +697,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     ...ospiti
       .filter((o) => !righe.some((r) => r.ospite_id === o.id))
       .map((o) => ({ chiave: `o-${o.id}`, nome: o.nome, tipo: 'ospite', dato: o })),
-  ].sort((a, b) => (frequenza.get(b.chiave) || 0) - (frequenza.get(a.chiave) || 0))
+  ].sort((a, b) => {
+    // prima chi era all'ultima partita, poi i compagni più frequenti
+    const ua = ultimaPartita.indexOf(a.chiave), ub = ultimaPartita.indexOf(b.chiave)
+    if (ua !== -1 || ub !== -1) return (ua === -1 ? Infinity : ua) - (ub === -1 ? Infinity : ub)
+    return (frequenza.get(b.chiave) || 0) - (frequenza.get(a.chiave) || 0)
+  })
+  const ultimiDaAggiungere = tuttiDisponibili.filter((x) => ultimaPartita.includes(x.chiave))
 
   const filtroNomi = cercaGiocatore.trim().toLowerCase()
   const trovatiNomi = filtroNomi
@@ -1080,8 +1120,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             />
 
             <div className="pastiglie-persone">
+              {!filtroNomi && ultimiDaAggiungere.length > 1 && (
+                <button className="pastiglia-nome nuovo" onClick={aggiungiTuttiUltima}>
+                  + Tutti quelli dell&rsquo;ultima partita ({ultimiDaAggiungere.length})
+                </button>
+              )}
               {disponibili.map((x) => (
-                <button key={x.chiave} className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}`}
+                <button key={x.chiave}
+                  className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}${!filtroNomi && ultimaPartita.includes(x.chiave) ? ' ultima' : ''}`}
                   onClick={() => scegliNome(x)}>
                   {x.nome}
                 </button>
@@ -1095,8 +1141,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
             {!cercaGiocatore.trim() && restanti > 0 && (
               <p className="aiuto">
-                Mostrati i {LIMITE_NOMI} con cui giochi più spesso. Gli altri {restanti} si
-                trovano scrivendo il nome qui sopra.
+                {ultimiDaAggiungere.length > 0 ? 'In evidenza chi era all\u2019ultima partita. ' : ''}Poi quelli con cui giochi più spesso.
+                Gli altri {restanti} si trovano scrivendo il nome qui sopra.
               </p>
             )}
             {offriOspite && (

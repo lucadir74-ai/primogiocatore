@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.10.0 - 202610202100 (segnapunti con i parziali)
+/* Primo Giocatore - foglio di stile v1.11.0 - 202610202145 (in evidenza chi era all'ultima partita)
    Tema chiaro di giorno, scuro di sera: segue l'impostazione del telefono. */
 
 :root {
@@ -2075,4 +2075,10 @@ button.numerone:active { transform: scale(0.98); }
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Chi era all'ultima partita: stesso nome, bordo più deciso */
+.pastiglia-nome.ultima {
+  border-color: var(--verde);
+  box-shadow: inset 0 0 0 1px var(--verde);
 }
