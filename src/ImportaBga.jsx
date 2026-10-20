@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v2.0.0 - 202610182100 (aggiornamento in un tocco)
+// v2.1.0 - 202610182200 (aggiornamento in un tocco + prova di accesso con password, solo organizzatori)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
+import { supabase } from './supabase'
 import {
   segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
 } from './bga'
@@ -310,6 +311,76 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
       {daLink && fase !== 'fatto' && fase !== 'lavoro' && (
         <button className="bottone bottone-secondario" onClick={onChiudi}>Torna all&rsquo;app</button>
       )}
+      {!daLink && profilo.organizzatore && <ProvaPassword profilo={profilo} />}
     </div>
+  )
+}
+
+// PROVA: BGA accetta un accesso con password fatto dal server?
+// La password va al server solo per questa prova e non viene salvata.
+function ProvaPassword({ profilo }) {
+  const [utente, setUtente] = useState('')
+  const [password, setPassword] = useState('')
+  const [giocatore, setGiocatore] = useState(profilo.bga_id ? String(profilo.bga_id) : '')
+  const [lavoro, setLavoro] = useState(false)
+  const [risultato, setRisultato] = useState(null)
+
+  async function prova() {
+    setLavoro(true); setRisultato(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/api/bga-prova', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ utente: utente.trim(), password, giocatore: giocatore.trim() }),
+      })
+      const testo = await r.text()
+      let dati
+      try { dati = JSON.parse(testo) } catch { dati = { esito: `Risposta inattesa (HTTP ${r.status})`, passi: [{ passo: 'risposta', http: r.status, dettaglio: testo.slice(0, 200) }] } }
+      setRisultato(dati)
+    } catch (e) {
+      setRisultato({ esito: 'Errore', passi: [{ passo: 'rete', http: null, dettaglio: e.message }] })
+    } finally {
+      setPassword('')
+      setLavoro(false)
+    }
+  }
+
+  return (
+    <details style={{ marginTop: '1.5rem' }}>
+      <summary className="aiuto">Prova: accesso a BGA con password (solo organizzatori)</summary>
+      <p className="aiuto">
+        Verifica se BGA accetta un accesso fatto dal server di Primo Giocatore. La password si usa
+        solo per questa prova e non viene salvata. Dopo la prova la casella si svuota.
+      </p>
+      <div className="campo">
+        <label htmlFor="pb-utente">Nome utente o email BGA</label>
+        <input id="pb-utente" value={utente} onChange={(e) => setUtente(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="campo">
+        <label htmlFor="pb-password">Password BGA</label>
+        <input id="pb-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+      </div>
+      <div className="campo">
+        <label htmlFor="pb-numero">Numero giocatore BGA</label>
+        <input id="pb-numero" inputMode="numeric" value={giocatore} onChange={(e) => setGiocatore(e.target.value)} />
+      </div>
+      <button className="bottone" onClick={prova} disabled={lavoro || !utente.trim() || !password}>
+        {lavoro ? 'Provo…' : 'Prova l’accesso'}
+      </button>
+      {risultato && (
+        <>
+          <div className={`avviso ${risultato.esito === 'FUNZIONA' ? 'ok' : 'errore'}`}>Esito: {risultato.esito || risultato.errore}</div>
+          <ul className="elenco">
+            {(risultato.passi || []).map((p, i) => (
+              <li key={i} style={{ display: 'block' }}>
+                <strong>{p.passo}</strong>{p.http != null ? ` · HTTP ${p.http}` : ''}
+                <span className="anno block" style={{ overflowWrap: 'anywhere' }}>{p.dettaglio}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </details>
   )
 }
