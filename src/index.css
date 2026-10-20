@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.7.0 - 202610201000 (sezioni a scomparsa)
+/* Primo Giocatore - foglio di stile v1.8.0 - 202610201400 (serie record nelle statistiche)
    Tema chiaro di giorno, scuro di sera: segue l'impostazione del telefono. */
 
 :root {
@@ -1806,3 +1806,34 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   font-size: 0.92rem;
   padding: 0.4rem 0;
 }
+
+/* ---------- Statistiche: riga che si apre, serie record ---------- */
+.riga-cliccabile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.serie-record {
+  margin: 0.7rem 0 0.2rem;
+  padding-left: 1.6rem;
+  font-size: 0.92rem;
+}
+.serie-record li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 35%, transparent);
+}
+.serie-record li:last-child { border-bottom: 0; }
+.serie-data { color: var(--inchiostro-tenue); min-width: 6.5rem; }
+.serie-gioco { font-weight: 600; }

@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.16.1 - 202610182040 (elenchi con chiavi uniche: due persone con lo stesso nome non si confondono)
+// v3.17.0 - 202610201400 (vittorie di fila: senza solitari, e si vede l'elenco della serie record)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -239,13 +239,26 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
       if (isFinite(massimo) && massimo > 0) distanze.push((massimo - r.punteggio_totale) / massimo)
     }
 
-    let attuale = 0, record = 0, ultimoEsito = null
-    for (const p of competitive) {
+    // Vittorie di fila: solo partite con almeno un avversario (un
+    // solitario «vinto» non batte nessuno). Si tiene anche quali sono
+    // le partite della serie record, per poterle mostrare.
+    let attuale = 0, record = 0, ultimoEsito = null, inizio = 0, recordDa = 0
+    const conAvversari = competitive.filter((p) => quanti(p) > 1)
+    conAvversari.forEach((p, i) => {
       const v = Boolean(suaRiga(p)?.vincitore)
       if (ultimoEsito === v) attuale++
-      else { ultimoEsito = v; attuale = 1 }
-      if (v) record = Math.max(record, attuale)
-    }
+      else { ultimoEsito = v; attuale = 1; inizio = i }
+      if (v && attuale > record) { record = attuale; recordDa = inizio }
+    })
+    const partiteRecord = conAvversari.slice(recordDa, recordDa + record).map((p) => ({
+      id: p.id,
+      data: p.giocata_il,
+      gioco: p.giochi?.nome || 'Gioco',
+      luogo: p.luoghi?.nome || '',
+      posto: suaRiga(p)?.posizione ?? null,
+      giocatori: quanti(p),
+      punti: suaRiga(p)?.punteggio_totale ?? null,
+    }))
 
     // Gioco per gioco
     const perGioco = new Map()
@@ -298,7 +311,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
       rendimento: attese > 0 ? vinte / attese : null,
       piazz,
       distanza: distanze.length ? distanze.reduce((a, b) => a + b, 0) / distanze.length : null,
-      serie: { attuale, vincente: ultimoEsito, record },
+      serie: { attuale, vincente: ultimoEsito, record, partite: partiteRecord },
       minuti: sue.reduce((t, p) => t + (p.durata_minuti || 0), 0),
       giochiDiversi: new Set(sue.map((p) => p.giochi?.id).filter(Boolean)).size,
       perGioco: [...perGioco.values()].sort((a, b) => b.partite - a.partite),
@@ -733,6 +746,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
 // Quando perde, vittorie di fila, cooperativi: per il giocatore e,
 // nella scheda di un gioco, per te a quel gioco.
 function Dettagli({ d }) {
+  const [serieAperta, setSerieAperta] = useState(false)
   return (
     <ul className="elenco">
       {d.distanza != null && (
@@ -745,14 +759,32 @@ function Dettagli({ d }) {
         </li>
       )}
       {d.serie.record > 0 && (
-        <li>
-          <div className="nome-giocatore">
-            <strong>Vittorie di fila</strong>
-            <span className="anno block">
-              {d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'}
-            </span>
-          </div>
-          <span className="punti-finali">{d.serie.record}</span>
+        <li style={{ display: 'block' }}>
+          <button type="button" className="riga-cliccabile" onClick={() => setSerieAperta(!serieAperta)} aria-expanded={serieAperta}>
+            <div className="nome-giocatore">
+              <strong>Vittorie di fila</strong>
+              <span className="anno block">
+                {d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'}
+                {' · '}{serieAperta ? 'nascondi' : 'vedi la serie'}
+              </span>
+            </div>
+            <span className="punti-finali">{d.serie.record}</span>
+          </button>
+          {serieAperta && (
+            <ol className="serie-record">
+              {d.serie.partite.map((p) => (
+                <li key={p.id}>
+                  <span className="serie-data">{new Date(p.data).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <span className="serie-gioco">{p.gioco}</span>
+                  <span className="anno">
+                    {p.posto != null ? `${p.posto}° su ${p.giocatori}` : `vinta in ${p.giocatori}`}
+                    {p.punti != null ? ` · ${p.punti} pt` : ''}
+                    {p.luogo ? ` · ${p.luogo}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
         </li>
       )}
       {d.cooperative.length > 0 && (
