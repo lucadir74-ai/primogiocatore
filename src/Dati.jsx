@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v3.10.1 - 202610041630
+// v4.0.0 - 202610201000 (pagina riordinata: una sezione a scomparsa per ogni fonte; BGA dentro)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -7,8 +7,35 @@ import { importaBgstats, analizzaBgstats } from './bgstats'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
 import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
+import ImportaBga from './ImportaBga.jsx'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
+
+// Le sezioni a scomparsa ricordano se le avevi aperte.
+const CHIAVE_APERTE = 'primo-giocatore:dati-aperte'
+function Sezione({ id, titolo, nota, children }) {
+  const [aperta, setAperta] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CHIAVE_APERTE) || '[]').includes(id) } catch { return false }
+  })
+  function cambia(e) {
+    const ora = e.currentTarget.open
+    setAperta(ora)
+    try {
+      const v = new Set(JSON.parse(localStorage.getItem(CHIAVE_APERTE) || '[]'))
+      if (ora) v.add(id); else v.delete(id)
+      localStorage.setItem(CHIAVE_APERTE, JSON.stringify([...v]))
+    } catch { /* resta solo per ora */ }
+  }
+  return (
+    <details className="sezione-ripiegabile" open={aperta} onToggle={cambia}>
+      <summary>
+        <span className="sezione-titolo">{titolo}</span>
+        {nota && <span className="sezione-nota">{nota}</span>}
+      </summary>
+      <div className="sezione-corpo">{children}</div>
+    </details>
+  )
+}
 
 function scarica(nomeFile, contenuto, tipo) {
   const blob = new Blob([contenuto], { type: tipo })
@@ -530,97 +557,79 @@ export default function Dati({ profilo }) {
     )
   }
 
+  const barra = avanzamento && (
+    <div className="avanzamento">
+      <span>{avanzamento.fase}</span>
+      {avanzamento.totale > 1 && (
+        <>
+          <div className="barra-avanzamento">
+            <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
+          </div>
+          <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div className="scheda">
-      <h2>I tuoi dati</h2>
-      <p className="sottotitolo">Portali via, rimettili dentro, tienine una copia.</p>
-
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <button className="bottone" onClick={esportaJson} disabled={lavorando}>
-        Esporta tutto (file da reimportare)
-      </button>
+      <Sezione id="bga" titolo="Board Game Arena" nota={profilo.bga_id ? 'collegato' : null}>
+        <ImportaBga profilo={profilo} incorporata />
+      </Sezione>
 
-      <button className="bottone bottone-secondario" onClick={esportaCsv} disabled={lavorando}>
-        Esporta per foglio di calcolo
-      </button>
-
-      <h3 className="titolo-sezione">Importa da BoardGameGeek</h3>
-      <div className="campo">
-        <label htmlFor="d-bgg">Il tuo nome utente BGG</label>
-        <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
-          placeholder="Come compare sul tuo profilo BGG" />
-      </div>
-      <button className="bottone" onClick={sincronizzaBgg} disabled={lavorando}>
-        {lavorando ? 'Aggiorno…' : 'Aggiorna da BGG'}
-      </button>
-      <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
-        Controllo completo
-      </button>
-      <p className="aiuto">
-        «Aggiorna» legge solo le partite dell'ultimo mese rispetto all'ultima arrivata:
-        bastano pochi secondi. Il controllo completo rilegge tutto l'archivio BGG e serve
-        quando pubblichi partite vecchie, per esempio un blocco importato da Board Game
-        Arena; parte comunque da solo una volta a settimana.
-      </p>
-
-      {ultimaSincro && (
+      <Sezione id="bgg" titolo="BoardGameGeek" nota={profilo.bgg_username ? profilo.bgg_username : null}>
+        <div className="campo">
+          <label htmlFor="d-bgg">Il tuo nome utente BGG</label>
+          <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
+            placeholder="Come compare sul tuo profilo BGG" />
+        </div>
+        <button className="bottone" onClick={sincronizzaBgg} disabled={lavorando}>
+          {lavorando ? 'Aggiorno…' : 'Aggiorna da BGG'}
+        </button>
         <p className="aiuto">
-          Ultimo aggiornamento: {new Date(ultimaSincro).toLocaleString('it-IT', {
+          Le partite nuove arrivano anche da sole, quando apri l&rsquo;app.
+          {ultimaSincro && ` Ultimo aggiornamento: ${new Date(ultimaSincro).toLocaleString('it-IT', {
             day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
-          })}
+          })}.`}
         </p>
-      )}
+        {!anteprimaBgg && barra}
+        <details className="dettagli-piccoli">
+          <summary>Controllo completo</summary>
+          <p className="aiuto">Rilegge tutto l&rsquo;archivio BGG: serve se hai pubblicato partite vecchie. Parte comunque da solo una volta a settimana.</p>
+          <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
+            Rileggi tutto da BGG
+          </button>
+        </details>
+      </Sezione>
 
-      {avanzamento && !anteprimaBgg && (
-        <div className="avanzamento">
-          <span>{avanzamento.fase}</span>
-          <div className="barra-avanzamento">
-            <div style={{ width: `${(avanzamento.fatto / Math.max(1, avanzamento.totale)) * 100}%` }} />
-          </div>
-        </div>
-      )}
+      <Sezione id="file" titolo="Importa da un file" nota="BG Stats o copia di Primo Giocatore">
+        <p className="aiuto">
+          Il backup di BG Stats (Impostazioni → Esportazione) o un file esportato da qui. Le partite già
+          presenti vengono saltate. Gli altri giocatori entrano come ospiti.
+        </p>
+        {barra}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={importa}
+          disabled={lavorando}
+          className="campo-file"
+          aria-label="Scegli il file da importare"
+        />
+      </Sezione>
 
-      <h3 className="titolo-sezione">Importa da un file</h3>
-      <p className="aiuto">
-        BG Stats non ha un collegamento diretto come BGG: la sincronizzazione automatica
-        è riservata alla loro app. Qui serve il file, da Impostazioni → Esportazione.
-      </p>
-      <p className="aiuto">
-        Accetta sia i file esportati da qui, sia il backup di <strong>BG Stats</strong>
-        (Impostazioni → Esportazione). Il formato viene riconosciuto da solo. Le partite
-        già presenti vengono saltate, quindi lo stesso file si può ricaricare senza
-        creare doppioni.
-      </p>
-
-      {avanzamento && (
-        <div className="avanzamento">
-          <span>{avanzamento.fase}</span>
-          {avanzamento.totale > 1 && (
-            <>
-              <div className="barra-avanzamento">
-                <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
-              </div>
-              <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
-            </>
-          )}
-        </div>
-      )}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="application/json,.json"
-        onChange={importa}
-        disabled={lavorando}
-        className="campo-file"
-        aria-label="Scegli il file da importare"
-      />
-
-      <p className="aiuto">
-        Nelle partite importate solo tu vieni riconosciuto come utente: gli altri entrano
-        come ospiti, e si collegheranno ai loro account quando si iscriveranno.
-      </p>
+      <Sezione id="esporta" titolo="Esporta" nota="una copia delle tue partite">
+        <button className="bottone" onClick={esportaJson} disabled={lavorando}>
+          Copia completa (da reimportare)
+        </button>
+        <button className="bottone bottone-secondario" onClick={esportaCsv} disabled={lavorando}>
+          Per foglio di calcolo (CSV)
+        </button>
+      </Sezione>
     </div>
   )
 }

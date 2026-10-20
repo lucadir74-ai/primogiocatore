@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v2.0.0 - 202610182100 (aggiornamenti rapidi: legge solo le partite nuove e le consegna con un tocco)
+// v3.0.0 - 202610201000 (collegamento con password e sincronizzazione automatica; iscritti riconosciuti dal numero BGA)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -366,18 +366,37 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
   const scelto = new Map()      // numero BGA -> ospite
   const daAggiornare = []
   const daInserire = []
+  const bot = (id) => daCreare.some((t) => (t.b || []).map(String).includes(id)) || Number(id) <= 0
+
+  // Gli iscritti che hanno il numero BGA nel profilo: un ospite già
+  // collegato al loro account, senza «sono io» da approvare.
+  const daChiedere = [...giocatori].filter(([id]) => !bot(id) && !perBga.has(id))
+  const perAccount = new Map()
+  for (const blocco of aBlocchi(daChiedere, 200)) {
+    const { data, error } = await supabase.rpc('ospiti_per_account_bga', {
+      p_bga: blocco.map(([id]) => Number(id)),
+      p_nomi: blocco.map(([, nome]) => nome || ''),
+    })
+    if (error) {
+      // Senza lo script SQL nuovo si va avanti come prima (per nome).
+      if (/ospiti_per_account_bga/.test(error.message || '')) break
+      throw error
+    }
+    for (const r of data || []) perAccount.set(String(r.bga_id), r.ospite_id)
+  }
+
   for (const [id, nomeGrezzo] of giocatori) {
     const nome = (nomeGrezzo || '').trim() || 'Sconosciuto'
     // I bot non hanno un numero stabile da ricordare.
-    const bot = daCreare.some((t) => (t.b || []).map(String).includes(id)) || Number(id) <= 0
-    let ospite = bot ? null : perBga.get(id)
+    const eBot = bot(id)
+    let ospite = eBot ? null : perBga.get(id) || perAccount.get(id)
     if (!ospite) {
       ospite = perNome.get(nome.toLowerCase())
       const o = ospite && ospitePerId.get(ospite)
-      if (o && !bot && o.bga_id == null && o.creato_da === profilo.id) daAggiornare.push({ id: o.id, bga_id: Number(id) })
+      if (o && !eBot && o.bga_id == null && o.creato_da === profilo.id) daAggiornare.push({ id: o.id, bga_id: Number(id) })
     }
     if (ospite) scelto.set(id, ospite)
-    else daInserire.push({ nome, creato_da: profilo.id, ...(bot ? {} : { bga_id: Number(id) }), _bga: id })
+    else daInserire.push({ nome, creato_da: profilo.id, ...(eBot ? {} : { bga_id: Number(id) }), _bga: id })
   }
 
   for (const blocco of aBlocchi(daAggiornare, 10)) {
@@ -454,4 +473,70 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
   }
 
   return { collegate: daCollegare.length, nuove: daCreare.length }
+}
+
+/* ---------------------------------------------------------------
+   4. Collegamento con password (api/bga.js)
+   --------------------------------------------------------------- */
+
+export async function chiamaBga(azione, extra = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const r = await fetch('/api/bga', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ azione, ...extra }),
+  })
+  let dati = null
+  try { dati = await r.json() } catch { /* niente */ }
+  if (!dati) throw new Error(`Il server non ha risposto (HTTP ${r.status}).`)
+  if (dati.errore) throw new Error(dati.errore)
+  return dati
+}
+
+// Le partite dal server, pagina dopo pagina (una chiamata non basta
+// per uno storico lungo). tutto: rilegge dall'inizio.
+export async function leggiDaServer(profilo, { tutto = false, avanzamento = () => {} } = {}) {
+  const base = await baseSegnalibro(profilo)
+  const fino = tutto || !base.fino ? 0 : base.fino - 7 * 86400
+  const tavoli = []
+  let da = 1
+  let ultima = null
+  for (let giro = 0; giro < 40; giro++) {
+    avanzamento({ fase: fino ? 'Cerco le partite nuove su BGA' : `Leggo tutto lo storico BGA: ${tavoli.length} partite`, fatto: 0, totale: 1 })
+    const r = await chiamaBga('leggi', { fino, da })
+    if (r.scaduta) return { scaduta: true }
+    if (r.collegato === false) return { scollegato: true }
+    tavoli.push(...r.tavoli)
+    ultima = r
+    if (!r.continua) break
+    da = r.continua
+  }
+  return { tipo: 'pg-bga-dati', giocatore: ultima.giocatore, nome: ultima.nome, tavoli, completo: !fino }
+}
+
+const CHIAVE_ORA = 'primo-giocatore:bga-ultima-sincro'
+const OGNI_ORE_BGA = 1
+
+// All'apertura dell'app, al massimo una volta all'ora, per chi ha
+// collegato BGA. Importa da solo quando non c'è niente da decidere;
+// altrimenti dice quante partite aspettano (giochi nuovi o incerte).
+export async function sincronizzaBgaSeServe(profilo) {
+  if (!profilo?.bga_id) return null
+  try {
+    const ultima = Number(localStorage.getItem(`${CHIAVE_ORA}:${profilo.id}`) || 0)
+    if (Date.now() - ultima < OGNI_ORE_BGA * 3600000) return null
+    localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
+  } catch { /* senza memoria si prova lo stesso */ }
+
+  const dati = await leggiDaServer(profilo)
+  if (dati.scollegato) return null
+  if (dati.scaduta) return { scaduta: true }
+  if (!dati.tavoli.length) return null
+  const a = await analizzaBga(profilo, dati)
+  if (!a.tavoli.length) return null
+  if (a.giochiDaAbbinare.length) return { inSospeso: a.tavoli.length }
+  const c = await classificaBga(a)
+  if (c.incerte.length) return { inSospeso: a.tavoli.length }
+  const r = await importaBga({ profilo, analisi: a, classi: c })
+  return r.nuove ? { nuove: r.nuove } : null
 }

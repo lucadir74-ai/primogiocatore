@@ -1,4 +1,4 @@
-// Primo Giocatore v4.15.0 - 202610181500 (import diretto da Board Game Arena)
+// Primo Giocatore v4.16.0 - 202610201000 (BGA collegato con password: partite nuove in automatico)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -21,6 +21,7 @@ import Classifiche from './Classifiche.jsx'
 import Organizzatori from './Organizzatori.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
+import { sincronizzaBgaSeServe } from './bga'
 import ImportaBga from './ImportaBga.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
@@ -608,6 +609,15 @@ export default function App() {
       .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
   }, [profilo?.id])
 
+  // Board Game Arena, per chi l'ha collegato con la password.
+  const [avvisoBga, setAvvisoBga] = useState(null)   // { nuove } | { inSospeso } | { scaduta }
+  useEffect(() => {
+    if (!profilo?.bga_id || daBga) return   // non nella scheda aperta dal segnalibro
+    sincronizzaBgaSeServe(profilo)
+      .then((r) => { if (r) setAvvisoBga(r) })
+      .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
+  }, [profilo?.id])
+
   function apriSezione(id) {
     setSezioneProfilo(id)
     try { localStorage.setItem(CHIAVE_SEZIONE, id) } catch { /* resta solo per ora */ }
@@ -733,6 +743,17 @@ export default function App() {
             </div>
           )}
 
+          {avvisoBga && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {avvisoBga.nuove > 0 && `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}. `}
+                {avvisoBga.inSospeso > 0 && `Da BGA: ${avvisoBga.inSospeso} partite aspettano una tua scelta (un gioco nuovo da riconoscere): aprile in Dati e import → Board Game Arena → Aggiorna ora. `}
+                {avvisoBga.scaduta && 'La sessione BGA è scaduta: ricollegala in Dati e import → Board Game Arena. '}
+                <button className="bottone-piatto" onClick={() => setAvvisoBga(null)}>ok</button>
+              </p>
+            </div>
+          )}
+
           <NomeBga profilo={profilo} quando={controlloBga} />
 
           {scheda !== 'profilo' && daApprovare > 0 && (
@@ -827,10 +848,7 @@ export default function App() {
                       <SeiTu profilo={profilo} />
                     </>
                   ) : attiva === 'dati' ? (
-                    <>
-                      <Dati profilo={profilo} />
-                      <ImportaBga profilo={profilo} />
-                    </>
+                    <Dati profilo={profilo} />
                   ) : attiva === 'ospiti' ? (
                     <UnisciOspiti profilo={profilo} />
                   ) : attiva === 'luoghi' ? (

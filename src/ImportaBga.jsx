@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v2.1.0 - 202610182200 (aggiornamento in un tocco + prova di accesso con password, solo organizzatori)
+// v3.0.0 - 202610201000 (collegamento con password e aggiornamento automatico; segnalibro come alternativa)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -12,9 +12,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
-import { supabase } from './supabase'
 import {
   segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
+  chiamaBga, leggiDaServer,
 } from './bga'
 
 const campoTesto = {
@@ -22,7 +22,8 @@ const campoTesto = {
   borderRadius: 10, border: '1px solid var(--bordo)', background: 'var(--carta)', color: 'var(--inchiostro)',
 }
 
-export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
+// incorporata: dentro la pagina Dati e import, senza riquadro e titolo propri.
+export default function ImportaBga({ profilo, daLink = false, onChiudi, incorporata = false }) {
   const [fase, setFase] = useState('attesa')   // attesa | giochi | anteprima | lavoro | fatto
   const [errore, setErrore] = useState('')
   const [avviso, setAvviso] = useState('')
@@ -38,6 +39,51 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
   const ricevuto = useRef(false)
 
   const [base, setBase] = useState(null)
+  const [collegamento, setCollegamento] = useState(null)   // null = sto controllando
+  const [utenteBga, setUtenteBga] = useState('')
+  const [passwordBga, setPasswordBga] = useState('')
+  const [occupato, setOccupato] = useState(false)
+
+  // Collegato con password? (Nella scheda aperta dal segnalibro non serve.)
+  useEffect(() => {
+    if (daLink) return
+    chiamaBga('stato').then(setCollegamento).catch(() => setCollegamento({ collegato: false }))
+  }, [profilo.id, daLink])
+
+  async function collega() {
+    setErrore(''); setAvviso(''); setOccupato(true)
+    try {
+      const r = await chiamaBga('collega', { utente: utenteBga.trim(), password: passwordBga })
+      setCollegamento({ collegato: true, bga_id: r.bgaId, bga_nome: r.nome })
+      profilo.bga_id = r.bgaId   // per questa sessione: il profilo si ricarica alla prossima apertura
+      setAvviso(`Collegato come ${r.nome}. Le partite nuove arriveranno da sole quando apri l’app.`)
+    } catch (e) { setErrore(e.message) } finally { setPasswordBga(''); setOccupato(false) }
+  }
+
+  async function scollega() {
+    if (!confirm('Scollegare BGA? I dati di accesso salvati vengono cancellati; le partite già importate restano.')) return
+    setErrore(''); setOccupato(true)
+    try {
+      await chiamaBga('scollega')
+      setCollegamento({ collegato: false })
+      setAvviso('BGA scollegato.')
+    } catch (e) { setErrore(e.message) } finally { setOccupato(false) }
+  }
+
+  async function aggiornaOra(tutto = false) {
+    setErrore(''); setAvviso(''); setFase('lavoro')
+    try {
+      const dati = await leggiDaServer(profilo, { tutto, avanzamento: setAvanzamento })
+      if (dati.scaduta) {
+        setCollegamento((c) => ({ ...c, ultimo_errore: 'scaduta' }))
+        setErrore('La sessione BGA è scaduta: inserisci di nuovo la password per ricollegare.')
+        setAvanzamento(null); setFase('attesa')
+        return
+      }
+      if (dati.scollegato) { setCollegamento({ collegato: false }); setAvanzamento(null); setFase('attesa'); return }
+      await ricevi(dati)
+    } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('attesa') }
+  }
   const codice = segnalibroBga(window.location.origin, base || { id: profilo.bga_id })
 
   // Il segnalibro porta dentro il tuo numero BGA e l'ultima partita
@@ -149,12 +195,10 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
   const partiteSaltate = (analisi?.giochiDaAbbinare || []).filter((g) => salto.includes(g.bga_nome))
     .reduce((s, g) => s + g.tavoli, 0)
 
+  const Contenitore = incorporata ? 'div' : 'section'
   return (
-    <div className="scheda">
-      <h2>Importa da Board Game Arena</h2>
-      <p className="sottotitolo">
-        Le tue partite BGA arrivano direttamente, senza passare da BG Stats o da BGG.
-      </p>
+    <Contenitore className={incorporata ? '' : 'scheda'}>
+      {!incorporata && <h2>Importa da Board Game Arena</h2>}
 
       {errore && <div className="avviso errore">{errore}</div>}
       {avviso && <div className="avviso ok">{avviso}</div>}
@@ -168,37 +212,70 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
         </div>
       )}
 
-      {fase === 'attesa' && !daLink && (
+      {fase === 'attesa' && !daLink && collegamento === null && <p className="aiuto">Controllo il collegamento&hellip;</p>}
+
+      {fase === 'attesa' && !daLink && collegamento?.collegato && (
         <>
-          <h3 className="titolo-sezione">Per aggiornare</h3>
-          <ol className="aiuto" style={{ paddingLeft: '1.2rem' }}>
-            <li>Su BGA, da entrato, apri la tua <strong>Cronologia delle partite</strong>.</li>
-            <li>Tocca la barra degli indirizzi, scrivi <strong>PG da BGA</strong> e tocca il suggerimento
-              con la stellina, senza premere Invio.</li>
-            <li>Dopo pochi secondi tocca <strong>Apri in Primo Giocatore</strong>: le partite nuove
-              entrano da sole. Ti chiede qualcosa solo se c&rsquo;è un gioco mai visto da abbinare.</li>
-          </ol>
-          <h3 className="titolo-sezione">Il segnalibro</h3>
           <p className="aiuto">
-            Va salvato una volta nei preferiti di Chrome (⋮ → stellina → Modifica): nome
-            {' '}<strong>PG da BGA</strong>, e al posto dell&rsquo;indirizzo il segnalibro copiato da qui.
-            Deve iniziare con <code>javascript:</code>. Se l&rsquo;avevi già, sostituiscilo con questo.
+            Collegato come <strong>{collegamento.bga_nome || 'giocatore BGA'}</strong>.
+            {' '}Le partite nuove arrivano da sole, al massimo una volta all&rsquo;ora, quando apri l&rsquo;app.
+            {collegamento.ultima_lettura && ` Ultima lettura: ${new Date(collegamento.ultima_lettura).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`}
           </p>
-          <button className="bottone" onClick={copiaCodice}>
-            {copiato ? 'Segnalibro copiato' : 'Copia il segnalibro'}
-          </button>
-          {!copiato && (
-            <details>
-              <summary className="aiuto">Il tasto non copia? Il segnalibro è qui</summary>
-              <textarea readOnly value={codice} style={campoTesto} onFocus={(e) => e.target.select()} />
-            </details>
+          {collegamento.ultimo_errore === 'scaduta' ? (
+            <>
+              <div className="avviso errore">La sessione BGA è scaduta: rimetti la password per ricollegare.</div>
+              <ModuloAccesso utente={utenteBga} setUtente={setUtenteBga} password={passwordBga} setPassword={setPasswordBga}
+                occupato={occupato} onInvia={collega} etichetta="Ricollega" />
+            </>
+          ) : (
+            <button className="bottone" onClick={() => aggiornaOra(false)} disabled={occupato}>Aggiorna ora</button>
           )}
+          <details className="dettagli-piccoli">
+            <summary>Altre azioni</summary>
+            <button className="bottone bottone-secondario" onClick={() => aggiornaOra(true)} disabled={occupato}>
+              Rileggi tutto lo storico
+            </button>
+            <p className="aiuto">Serve solo se pensi che manchi qualcosa: le partite già importate vengono saltate.</p>
+            <button className="bottone bottone-secondario" onClick={scollega} disabled={occupato}>Scollega BGA</button>
+          </details>
         </>
       )}
 
-      {fase === 'attesa' && (
+      {fase === 'attesa' && !daLink && collegamento && !collegamento.collegato && (
         <>
-          <h3 className="titolo-sezione">Se il collegamento non funziona</h3>
+          <p className="aiuto">
+            Collega il tuo account BGA e le partite arriveranno da sole. La password serve una volta
+            per entrare e non viene salvata: Primo Giocatore conserva solo la sessione di BGA, cifrata,
+            che puoi cancellare quando vuoi con «Scollega» (o cambiando la password su BGA).
+          </p>
+          <ModuloAccesso utente={utenteBga} setUtente={setUtenteBga} password={passwordBga} setPassword={setPasswordBga}
+            occupato={occupato} onInvia={collega} etichetta="Collega BGA" />
+
+          <details className="dettagli-piccoli">
+            <summary>Senza password: il segnalibro</summary>
+            <ol className="aiuto" style={{ paddingLeft: '1.2rem' }}>
+              <li>Copia il segnalibro e salvalo nei preferiti di Chrome (⋮ → stellina → Modifica) con nome
+                {' '}<strong>PG da BGA</strong>, al posto dell&rsquo;indirizzo. Deve iniziare con <code>javascript:</code>.</li>
+              <li>Su BGA apri la tua <strong>Cronologia delle partite</strong>, scrivi <strong>PG da BGA</strong> nella
+                barra degli indirizzi e tocca il suggerimento con la stellina.</li>
+              <li>Tocca <strong>Apri in Primo Giocatore</strong>.</li>
+            </ol>
+            <button className="bottone bottone-secondario" onClick={copiaCodice}>
+              {copiato ? 'Segnalibro copiato' : 'Copia il segnalibro'}
+            </button>
+            {!copiato && <textarea readOnly value={codice} style={campoTesto} onFocus={(e) => e.target.select()} aria-label="Segnalibro" />}
+            <p className="aiuto">Se il collegamento non si apre, nel riquadro su BGA tocca «Copia i dati» e incolla qui.</p>
+            <textarea value={incollato} onChange={(e) => setIncollato(e.target.value)} style={campoTesto}
+              placeholder="Incolla qui i dati copiati da BGA" aria-label="Dati copiati da BGA" />
+            <button className="bottone bottone-secondario" onClick={daIncollato} disabled={!incollato.trim()}>
+              Usa i dati incollati
+            </button>
+          </details>
+        </>
+      )}
+
+      {fase === 'attesa' && daLink && (
+        <>
           <p className="aiuto">Nel riquadro su BGA tocca «Copia i dati» e incolla qui.</p>
           <textarea value={incollato} onChange={(e) => setIncollato(e.target.value)} style={campoTesto}
             placeholder="Incolla qui i dati copiati da BGA" aria-label="Dati copiati da BGA" />
@@ -311,76 +388,26 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi }) {
       {daLink && fase !== 'fatto' && fase !== 'lavoro' && (
         <button className="bottone bottone-secondario" onClick={onChiudi}>Torna all&rsquo;app</button>
       )}
-      {!daLink && profilo.organizzatore && <ProvaPassword profilo={profilo} />}
-    </div>
+    </Contenitore>
   )
 }
 
-// PROVA: BGA accetta un accesso con password fatto dal server?
-// La password va al server solo per questa prova e non viene salvata.
-function ProvaPassword({ profilo }) {
-  const [utente, setUtente] = useState('')
-  const [password, setPassword] = useState('')
-  const [giocatore, setGiocatore] = useState(profilo.bga_id ? String(profilo.bga_id) : '')
-  const [lavoro, setLavoro] = useState(false)
-  const [risultato, setRisultato] = useState(null)
 
-  async function prova() {
-    setLavoro(true); setRisultato(null)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const r = await fetch('/api/bga-prova', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ utente: utente.trim(), password, giocatore: giocatore.trim() }),
-      })
-      const testo = await r.text()
-      let dati
-      try { dati = JSON.parse(testo) } catch { dati = { esito: `Risposta inattesa (HTTP ${r.status})`, passi: [{ passo: 'risposta', http: r.status, dettaglio: testo.slice(0, 200) }] } }
-      setRisultato(dati)
-    } catch (e) {
-      setRisultato({ esito: 'Errore', passi: [{ passo: 'rete', http: null, dettaglio: e.message }] })
-    } finally {
-      setPassword('')
-      setLavoro(false)
-    }
-  }
-
+function ModuloAccesso({ utente, setUtente, password, setPassword, occupato, onInvia, etichetta }) {
   return (
-    <details style={{ marginTop: '1.5rem' }}>
-      <summary className="aiuto">Prova: accesso a BGA con password (solo organizzatori)</summary>
-      <p className="aiuto">
-        Verifica se BGA accetta un accesso fatto dal server di Primo Giocatore. La password si usa
-        solo per questa prova e non viene salvata. Dopo la prova la casella si svuota.
-      </p>
+    <>
       <div className="campo">
-        <label htmlFor="pb-utente">Nome utente o email BGA</label>
-        <input id="pb-utente" value={utente} onChange={(e) => setUtente(e.target.value)} autoComplete="off" />
+        <label htmlFor="bga-utente">Nome utente o email BGA</label>
+        <input id="bga-utente" value={utente} onChange={(e) => setUtente(e.target.value)} autoComplete="username" />
       </div>
       <div className="campo">
-        <label htmlFor="pb-password">Password BGA</label>
-        <input id="pb-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+        <label htmlFor="bga-password">Password BGA</label>
+        <input id="bga-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password" onKeyDown={(e) => { if (e.key === 'Enter' && utente.trim() && password) onInvia() }} />
       </div>
-      <div className="campo">
-        <label htmlFor="pb-numero">Numero giocatore BGA</label>
-        <input id="pb-numero" inputMode="numeric" value={giocatore} onChange={(e) => setGiocatore(e.target.value)} />
-      </div>
-      <button className="bottone" onClick={prova} disabled={lavoro || !utente.trim() || !password}>
-        {lavoro ? 'Provo…' : 'Prova l’accesso'}
+      <button className="bottone" onClick={onInvia} disabled={occupato || !utente.trim() || !password}>
+        {occupato ? 'Collego…' : etichetta}
       </button>
-      {risultato && (
-        <>
-          <div className={`avviso ${risultato.esito === 'FUNZIONA' ? 'ok' : 'errore'}`}>Esito: {risultato.esito || risultato.errore}</div>
-          <ul className="elenco">
-            {(risultato.passi || []).map((p, i) => (
-              <li key={i} style={{ display: 'block' }}>
-                <strong>{p.passo}</strong>{p.http != null ? ` · HTTP ${p.http}` : ''}
-                <span className="anno block" style={{ overflowWrap: 'anywhere' }}>{p.dettaglio}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </details>
+    </>
   )
 }
