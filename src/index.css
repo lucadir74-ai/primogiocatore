@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.8.0 - 202610201400 (serie record nelle statistiche)
+/* Primo Giocatore - foglio di stile v1.9.0 - 202610201500 (finestre di spiegazione)
    Tema chiaro di giorno, scuro di sera: segue l'impostazione del telefono. */
 
 :root {
@@ -1837,3 +1837,88 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 .serie-record li:last-child { border-bottom: 0; }
 .serie-data { color: var(--inchiostro-tenue); min-width: 6.5rem; }
 .serie-gioco { font-weight: 600; }
+
+/* ---------- Numeri che si toccano e finestre di spiegazione ---------- */
+button.numerone {
+  position: relative;
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+button.numerone:hover { border-color: var(--blu); }
+button.numerone:active { transform: scale(0.98); }
+.segno-info {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.5rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--inchiostro-tenue) 60%, transparent);
+  color: var(--inchiostro-tenue);
+  font: italic 600 0.68rem/1.05rem Georgia, serif;
+  text-align: center;
+}
+.segno-info.in-riga { position: static; display: inline-block; margin-left: 0.35rem; vertical-align: middle; }
+
+.finestra-sfondo {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(8, 12, 18, 0.55);
+  animation: finestra-entra 0.15s ease-out;
+}
+@media (min-width: 640px) { .finestra-sfondo { align-items: center; } }
+.finestra {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  border: 1px solid var(--bordo);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.5);
+  padding: 1rem 1.15rem 1.25rem;
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+.finestra-testa {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.finestra-testa h3 { margin: 0.2rem 0 0; font-size: 1.1rem; }
+.finestra-chiudi {
+  flex: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  border: 0;
+  background: color-mix(in srgb, var(--inchiostro-tenue) 15%, transparent);
+  color: var(--inchiostro);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.finestra-cifra {
+  margin: 0.4rem 0 0.8rem;
+  font-family: var(--display);
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.finestra-cifra.sopra { color: var(--verde); }
+.finestra-cifra.sotto { color: var(--rosso); }
+.finestra-corpo p { margin: 0 0 0.7rem; line-height: 1.5; color: var(--inchiostro-tenue); }
+.finestra-corpo p:last-child { margin-bottom: 0; }
+.finestra-sottotitolo { margin: 1rem 0 0.2rem; font-size: 0.98rem; }
+@keyframes finestra-entra { from { opacity: 0; } to { opacity: 1; } }

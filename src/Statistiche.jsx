@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.17.0 - 202610201400 (vittorie di fila: senza solitari, e si vede l'elenco della serie record)
+// v3.18.0 - 202610201500 (ogni numero si tocca e spiega cosa vuol dire, in una finestra)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -593,14 +593,82 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
 /* ---------- Riquadri riutilizzabili ---------- */
 
-function Numerone({ cifra, testo, tono }) {
+// Una finestra sopra la pagina: si chiude con ×, toccando fuori o con Esc.
+function Finestra({ titolo, onChiudi, children }) {
+  useEffect(() => {
+    const tasto = (e) => { if (e.key === 'Escape') onChiudi() }
+    document.addEventListener('keydown', tasto)
+    const prima = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', tasto); document.body.style.overflow = prima }
+  }, [onChiudi])
   return (
-    <div className={`numerone${tono ? ` ${tono}` : ''}`}>
-      <span className="cifra">{cifra}</span>
-      <span className="didascalia">{testo}</span>
+    <div className="finestra-sfondo" onClick={onChiudi}>
+      <div className="finestra" role="dialog" aria-modal="true" aria-label={titolo} onClick={(e) => e.stopPropagation()}>
+        <div className="finestra-testa">
+          <h3>{titolo}</h3>
+          <button type="button" className="finestra-chiudi" onClick={onChiudi} aria-label="Chiudi">×</button>
+        </div>
+        <div className="finestra-corpo">{children}</div>
+      </div>
     </div>
   )
 }
+
+const maiuscola = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1)
+
+// Un numero grande. Con info si tocca e spiega cosa vuol dire.
+function Numerone({ cifra, testo, tono, info }) {
+  const [aperta, setAperta] = useState(false)
+  const classe = `numerone${tono ? ` ${tono}` : ''}${info ? ' con-info' : ''}`
+  if (!info) {
+    return (
+      <div className={classe}>
+        <span className="cifra">{cifra}</span>
+        <span className="didascalia">{testo}</span>
+      </div>
+    )
+  }
+  return (
+    <>
+      <button type="button" className={classe} onClick={() => setAperta(true)} aria-haspopup="dialog">
+        <span className="cifra">{cifra}</span>
+        <span className="didascalia">{testo}</span>
+        <span className="segno-info" aria-hidden="true">i</span>
+      </button>
+      {aperta && (
+        <Finestra titolo={maiuscola(testo)} onChiudi={() => setAperta(false)}>
+          <p className={`finestra-cifra${tono ? ` ${tono}` : ''}`}>{cifra}</p>
+          {info}
+        </Finestra>
+      )}
+    </>
+  )
+}
+
+// Spiegazioni comuni a più schede.
+const SPIEGA = {
+  partite: <p>Tutte le partite qui considerate, competitive e cooperative, con il filtro scelto in alto (dal vivo, online o tutte). La stessa partita registrata da più persone conta una volta.</p>,
+  giochi: <p>Quanti giochi diversi compaiono in queste partite.</p>,
+  giocatori: <p>Quante persone diverse hanno giocato queste partite, ospiti compresi.</p>,
+  alTavolo: <p>La somma delle durate registrate. Le partite senza durata non contano: quelle importate da BGA e da molte app non ce l&rsquo;hanno, quindi il totale è spesso più basso del vero.</p>,
+  durataMedia: <p>La durata media delle partite che hanno una durata registrata. Quelle senza durata non entrano nel calcolo.</p>,
+  ipg: <p>L&rsquo;Indice Primo Giocatore misura la forza al tavolo dalla posizione finale in ogni partita e dalla forza degli avversari: battere chi è forte vale di più. È un valore prudente, quindi nelle prime partite tende a salire. Si parte da 1000; un giocatore medio con molte partite sta intorno ai 1500. Le cooperative non contano.</p>,
+  vinte: (d) => <p>Partite competitive finite al primo posto, pari merito compreso, su {d.competitive.length} competitive giocate. Le cooperative sono escluse: lì non c&rsquo;è nessuno da battere.</p>,
+  atteso: (d) => (
+    <>
+      <p>Confronta le vittorie con quelle che avrebbe ottenuto un giocatore qualunque. In quattro la vittoria «spettante» vale un quarto, in due metà.</p>
+      <p>In queste {d.competitive.length} partite competitive un giocatore qualunque ne avrebbe vinte {d.attese.toFixed(1)}; qui sono {d.vinte}. Sopra 1,00× è meglio del caso, sotto è peggio.</p>
+    </>
+  ),
+  dietro: (
+    <>
+      <p>In media, di quanti avversari si è fatto meglio. Secondo in sei vuol dire meglio di 4 su 5, cioè 80%; secondo in tre, meglio di 1 su 2, cioè 50%.</p>
+      <p>Così il numero tiene conto di quanti eravate al tavolo: 100% arrivando sempre primo, 0% sempre ultimo. Contano le partite competitive con posizioni e almeno un avversario.</p>
+    </>
+  ),
+}
+const spiega = (chiave, d) => (typeof SPIEGA[chiave] === 'function' ? SPIEGA[chiave](d) : SPIEGA[chiave])
 
 function Istogramma({ dati }) {
   if (dati.righe.length < 2) return null
@@ -627,38 +695,26 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" />
+        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
         {ipg && (
           <Numerone
             cifra={ipg.ipg}
             testo={ipg.posizione ? `IPG · ${ipg.posizione}° su ${inClassifica}` : `IPG · in classifica da ${MIN_GLOBALE} partite`}
+            info={<>{spiega('ipg')}<p>Quello globale è la media degli IPG di ogni gioco: contano di più i giochi complessi e quelli giocati spesso. In classifica entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.</p></>}
           />
         )}
-        <Numerone cifra={d.vinte} testo={`vinte (${perc(d.vinte, d.competitive.length)})`} />
+        <Numerone cifra={d.vinte} testo={`vinte (${perc(d.vinte, d.competitive.length)})`} info={spiega('vinte', d)} />
         <Numerone
           cifra={d.rendimento != null ? `${d.rendimento.toFixed(2)}×` : '—'}
           testo="rispetto all'atteso"
           tono={d.rendimento != null ? (d.rendimento >= 1 ? 'sopra' : 'sotto') : null}
+          info={spiega('atteso', d)}
         />
-        <Numerone cifra={d.piazz != null ? `${Math.round(d.piazz * 100)}%` : '—'} testo="degli avversari finiti dietro" />
-        <Numerone cifra={d.giochiDiversi} testo="giochi diversi" />
-        <Numerone cifra={durata(d.minuti)} testo="al tavolo" />
+        <Numerone cifra={d.piazz != null ? `${Math.round(d.piazz * 100)}%` : '—'} testo="degli avversari finiti dietro" info={spiega('dietro')} />
+        <Numerone cifra={d.giochiDiversi} testo="giochi diversi" info={spiega('giochi')} />
+        <Numerone cifra={durata(d.minuti)} testo="al tavolo" info={spiega('alTavolo')} />
       </div>
-
-      <div className="spiegone">
-        <p>
-          <strong>Rispetto all'atteso</strong> pesa le vittorie sul numero di giocatori: in quattro
-          la vittoria spettante vale un quarto, in due metà. In queste {d.competitive.length} partite
-          competitive un giocatore qualunque ne avrebbe vinte {d.attese.toFixed(1)}. Sopra 1,00 è
-          meglio del caso.
-        </p>
-        <p>
-          <strong>Avversari finiti dietro</strong> dice in media di quanti avversari si è fatto
-          meglio. Secondo in sei vuol dire meglio di 4 su 5, cioè 80%; secondo in tre, meglio di 1
-          su 2, cioè 50%. Così il numero tiene conto di quanti eravate al tavolo: 100% arrivando
-          sempre primo, 0% sempre ultimo.
-        </p>
-      </div>
+      <p className="aiuto">Tocca un numero per sapere cosa vuol dire.</p>
 
       <h3 className="titolo-sezione">Dettagli</h3>
       <Dettagli d={d} />
@@ -744,57 +800,65 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
 }
 
 // Quando perde, vittorie di fila, cooperativi: per il giocatore e,
-// nella scheda di un gioco, per te a quel gioco.
+// nella scheda di un gioco, per te a quel gioco. Ogni riga si tocca
+// e apre la sua spiegazione.
+function RigaDettaglio({ titolo, sotto, valore, children }) {
+  const [aperta, setAperta] = useState(false)
+  return (
+    <li style={{ display: 'block' }}>
+      <button type="button" className="riga-cliccabile" onClick={() => setAperta(true)} aria-haspopup="dialog">
+        <div className="nome-giocatore">
+          <strong>{titolo}</strong>
+          <span className="anno block">{sotto}</span>
+        </div>
+        <span className="punti-finali">{valore} <span className="segno-info in-riga" aria-hidden="true">i</span></span>
+      </button>
+      {aperta && (
+        <Finestra titolo={titolo} onChiudi={() => setAperta(false)}>
+          <p className="finestra-cifra">{valore}</p>
+          {children}
+        </Finestra>
+      )}
+    </li>
+  )
+}
+
 function Dettagli({ d }) {
-  const [serieAperta, setSerieAperta] = useState(false)
+  const giornoBreve = (t) => new Date(t).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
   return (
     <ul className="elenco">
       {d.distanza != null && (
-        <li>
-          <div className="nome-giocatore">
-            <strong>Quando perde</strong>
-            <span className="anno block">distanza media dal vincitore</span>
-          </div>
-          <span className="punti-finali">−{Math.round(d.distanza * 100)}%</span>
-        </li>
+        <RigaDettaglio titolo="Quando perde" sotto="distanza media dal vincitore" valore={`−${Math.round(d.distanza * 100)}%`}>
+          <p>Nelle partite competitive non vinte, quanto si resta indietro rispetto al punteggio di chi vince, in percentuale del suo punteggio.</p>
+          <p>−{Math.round(d.distanza * 100)}% vuol dire che, perdendo, in media si fa il {100 - Math.round(d.distanza * 100)}% dei punti del vincitore. Più è vicino a zero, più le sconfitte sono di misura. Contano solo le partite con i punteggi.</p>
+        </RigaDettaglio>
       )}
       {d.serie.record > 0 && (
-        <li style={{ display: 'block' }}>
-          <button type="button" className="riga-cliccabile" onClick={() => setSerieAperta(!serieAperta)} aria-expanded={serieAperta}>
-            <div className="nome-giocatore">
-              <strong>Vittorie di fila</strong>
-              <span className="anno block">
-                {d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'}
-                {' · '}{serieAperta ? 'nascondi' : 'vedi la serie'}
-              </span>
-            </div>
-            <span className="punti-finali">{d.serie.record}</span>
-          </button>
-          {serieAperta && (
-            <ol className="serie-record">
-              {d.serie.partite.map((p) => (
-                <li key={p.id}>
-                  <span className="serie-data">{new Date(p.data).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  <span className="serie-gioco">{p.gioco}</span>
-                  <span className="anno">
-                    {p.posto != null ? `${p.posto}° su ${p.giocatori}` : `vinta in ${p.giocatori}`}
-                    {p.punti != null ? ` · ${p.punti} pt` : ''}
-                    {p.luogo ? ` · ${p.luogo}` : ''}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </li>
+        <RigaDettaglio titolo="Vittorie di fila" sotto={d.serie.vincente ? `serie aperta: ${d.serie.attuale}` : 'nessuna serie aperta'} valore={d.serie.record}>
+          <p>La serie più lunga di partite competitive vinte una dopo l&rsquo;altra, senza sconfitte in mezzo. I solitari e le cooperative non contano.{d.serie.vincente ? ` In questo momento è aperta una serie di ${d.serie.attuale}.` : ''}</p>
+          <p>Le partite sono in ordine di data. Per quelle di BGA è la data di fine: con più partite a turni aperte insieme, «di fila» vuol dire finite una dopo l&rsquo;altra.</p>
+          <h4 className="finestra-sottotitolo">Le {d.serie.record} partite della serie</h4>
+          <ol className="serie-record">
+            {d.serie.partite.map((p) => (
+              <li key={p.id}>
+                <span className="serie-data">{giornoBreve(p.data)}</span>
+                <span className="serie-gioco">{p.gioco}</span>
+                <span className="anno">
+                  {p.posto != null ? `${p.posto}° su ${p.giocatori}` : `vinta in ${p.giocatori}`}
+                  {p.punti != null ? ` · ${p.punti} pt` : ''}
+                  {p.luogo ? ` · ${p.luogo}` : ''}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </RigaDettaglio>
       )}
       {d.cooperative.length > 0 && (
-        <li>
-          <div className="nome-giocatore">
-            <strong>Cooperativi</strong>
-            <span className="anno block">contati a parte: non c'è nessuno da battere</span>
-          </div>
-          <span className="punti-finali">{d.coopVinte}/{d.cooperative.length}</span>
-        </li>
+        <RigaDettaglio titolo="Cooperativi" sotto="vinte su giocate" valore={`${d.coopVinte}/${d.cooperative.length}`}>
+          <p>Nei giochi cooperativi si vince o si perde tutti insieme, contro il gioco: per questo sono contati a parte e non entrano nelle altre statistiche.</p>
+          <p>{d.coopVinte}/{d.cooperative.length} vuol dire {d.coopVinte} partite cooperative vinte su {d.cooperative.length} giocate.</p>
+          <p>Attenzione per quelle importate da BGA: BGA non dice se una cooperativa è vinta o persa, e l&rsquo;import le segna vinte quando tutti risultano primi. Per giochi a punteggio come Hanabi il numero quindi non è affidabile.</p>
+        </RigaDettaglio>
       )}
     </ul>
   )
@@ -937,44 +1001,38 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" />
-        <Numerone cifra={d.giocatori.length} testo="giocatori" />
+        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
+        <Numerone cifra={d.giocatori.length} testo="giocatori" info={spiega('giocatori')} />
         {mioIpg && (
           <Numerone
             cifra={mioIpg.ipg}
             testo={mioIpg.posizione ? `il tuo IPG · ${mioIpg.posizione}° su ${classifica.length}` : `il tuo IPG · in classifica da ${MIN_GIOCO} partite`}
+            info={<>{spiega('ipg')}<p>Qui è calcolato solo su questo gioco. In classifica si entra con almeno {MIN_GIOCO} partite competitive a questo gioco.</p></>}
           />
         )}
         {io && io.competitive.length > 0 && (
           <>
-            <Numerone cifra={io.vinte} testo={`le tue vinte (${perc(io.vinte, io.competitive.length)})`} />
+            <Numerone cifra={io.vinte} testo={`le tue vinte (${perc(io.vinte, io.competitive.length)})`} info={spiega('vinte', io)} />
             <Numerone
               cifra={io.rendimento != null ? `${io.rendimento.toFixed(2)}×` : '—'}
               testo="il tuo rispetto all'atteso"
               tono={io.rendimento != null ? (io.rendimento >= 1 ? 'sopra' : 'sotto') : null}
+              info={spiega('atteso', io)}
             />
-            <Numerone cifra={io.piazz != null ? `${Math.round(io.piazz * 100)}%` : '—'} testo="degli avversari dietro di te" />
+            <Numerone cifra={io.piazz != null ? `${Math.round(io.piazz * 100)}%` : '—'} testo="degli avversari dietro di te" info={spiega('dietro')} />
           </>
         )}
-        {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="tipico al tavolo" />}
-        {d.mioTipico != null && <Numerone cifra={d.mioTipico} testo="il tuo tipico" />}
-        {d.mioMax != null && <Numerone cifra={d.mioMax} testo="il tuo migliore" tono="sopra" />}
+        {d.punteggioTipico != null && <Numerone cifra={d.punteggioTipico} testo="tipico al tavolo"
+          info={<><p>La mediana dei punteggi: metà delle volte si è fatto più di così, metà di meno. Non è la media, che una singola partita anomala sposterebbe.</p><p>Qui conta i punteggi di tutti i giocatori, in tutte le partite a questo gioco.{d.punteggioMax != null && ` Il massimo mai visto è ${d.punteggioMax}, il minimo ${d.punteggioMin}.`}{d.scartoMedio != null && ` Fra primo e ultimo passano in media ${d.scartoMedio} punti.`}</p></>} />}
+        {d.mioTipico != null && <Numerone cifra={d.mioTipico} testo="il tuo tipico" info={<><p>La mediana dei punteggi: metà delle volte si è fatto più di così, metà di meno. Non è la media, che una singola partita anomala sposterebbe.</p><p>Qui solo i tuoi punteggi a questo gioco.</p></>} />}
+        {d.mioMax != null && <Numerone cifra={d.mioMax} testo="il tuo migliore" tono="sopra" info={<p>Il tuo punteggio più alto di sempre a questo gioco.</p>} />}
         {d.mioMin != null && d.mioMin !== d.mioMax && (
-          <Numerone cifra={d.mioMin} testo="il tuo peggiore" tono="sotto" />
+          <Numerone cifra={d.mioMin} testo="il tuo peggiore" tono="sotto" info={<p>Il tuo punteggio più basso di sempre a questo gioco.</p>} />
         )}
-        {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" />}
+        {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" info={spiega('durataMedia')} />}
       </div>
 
-      <div className="spiegone">
-        <p>
-          <strong>Punteggio tipico</strong> è la mediana: metà delle volte si è fatto più
-          di così, metà di meno. Non è la media, che una singola partita anomala
-          sposterebbe.
-          {d.punteggioMax != null && ` Il massimo mai visto a questo gioco è ${d.punteggioMax}, il minimo ${d.punteggioMin}.`}
-          {d.scartoMedio != null && ` Fra primo e ultimo passano in media ${d.scartoMedio} punti.`}
-        </p>
-        {d.ultima && <p>Ultima volta: {giorno(d.ultima)}.</p>}
-      </div>
+      <p className="aiuto">Tocca un numero per sapere cosa vuol dire.{d.ultima && ` Ultima volta: ${giorno(d.ultima)}.`}</p>
 
       {io && io.competitive.length > 0 && (
         <>
@@ -1102,10 +1160,10 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" />
-        <Numerone cifra={d.giochi.length} testo="giochi diversi" />
-        <Numerone cifra={d.persone.length} testo="giocatori" />
-        {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" />}
+        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
+        <Numerone cifra={d.giochi.length} testo="giochi diversi" info={spiega('giochi')} />
+        <Numerone cifra={d.persone.length} testo="giocatori" info={spiega('giocatori')} />
+        {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" info={spiega('durataMedia')} />}
       </div>
 
       {d.ultima && <p className="aiuto">Ultima volta: {giorno(d.ultima)}.</p>}
@@ -1146,10 +1204,10 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={partite.length} testo="partite" />
-        <Numerone cifra={d.giochi.length} testo="giochi diversi" />
-        <Numerone cifra={d.persone.length} testo="giocatori" />
-        <Numerone cifra={durata(d.minuti)} testo="al tavolo" />
+        <Numerone cifra={partite.length} testo="partite" info={spiega('partite')} />
+        <Numerone cifra={d.giochi.length} testo="giochi diversi" info={spiega('giochi')} />
+        <Numerone cifra={d.persone.length} testo="giocatori" info={spiega('giocatori')} />
+        <Numerone cifra={durata(d.minuti)} testo="al tavolo" info={spiega('alTavolo')} />
       </div>
 
       <Istogramma dati={istogramma(partite)} />
