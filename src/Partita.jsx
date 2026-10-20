@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.13.0 - 202610160200
+// v4.14.0 - 202610202100 (segnapunti con i parziali, per voci o a mani)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -7,6 +7,7 @@ import { impronta } from './impronta'
 import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
+import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
@@ -53,6 +54,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [quando, setQuando] = useState(perCampo(new Date()))
   const [minuti, setMinuti] = useState('')
   const [vincitoreScelto, setVincitoreScelto] = useState(null)
+  const [segnapuntiAperto, setSegnapuntiAperto] = useState(false)
 
   const [secondi, setSecondi] = useState(0)
   const [inCorso, setInCorso] = useState(false)
@@ -201,7 +203,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
           id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
-          profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome )
+          profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome ),
+          dettagli_punteggio ( categoria, valore )
         )
       `)
       .eq('id', id)
@@ -226,6 +229,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         spareggio: p.spareggio == null ? '' : String(p.spareggio),
         ruolo: p.ruolo || '',
         ordine: p.ordine_turno ?? null,
+        parziali: (p.dettagli_punteggio || []).length
+          ? Object.fromEntries(p.dettagli_punteggio.map((d) => [d.categoria, Number(d.valore)]))
+          : null,
       }))
     )
     setCaricamento(false)
@@ -376,8 +382,27 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setCercaGiocatore('')
   }
 
+  // Se il totale si corregge a mano, i parziali non tornano più: si lasciano.
   const cambia = (chiave, campo, valore) =>
-    setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, [campo]: valore } : r)))
+    setRighe((rs) => rs.map((r) => (r.chiave === chiave
+      ? { ...r, [campo]: valore, ...(campo === 'punteggio' ? { parziali: null } : {}) }
+      : r)))
+
+  // Le voci del gioco valgono per tutti: le crea chiunque la prima volta,
+  // poi le cambia solo chi ha aggiunto il gioco o un organizzatore.
+  async function salvaVociGioco(voci) {
+    const { error } = await supabase.rpc('imposta_voci_punteggio', { p_gioco: gioco.id, p_voci: voci })
+    if (error) throw error
+    setGioco((g) => ({ ...g, categorie_punteggio: voci }))
+    setCatalogo((c) => c.map((x) => (x.id === gioco.id ? { ...x, categorie_punteggio: voci } : x)))
+  }
+
+  function usaTotaliSegnapunti(esito) {
+    setRighe((rs) => rs.map((r) => (esito[r.chiave]
+      ? { ...r, punteggio: esito[r.chiave].punteggio, parziali: esito[r.chiave].parziali }
+      : r)))
+    setSegnapuntiAperto(false)
+  }
 
   const togli = (chiave) => setRighe((rs) => rs.filter((r) => r.chiave !== chiave))
 
@@ -542,6 +567,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo('')
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
+    setSegnapuntiAperto(false)
     setRipresa(false)
     setCercaGiocatore('')
     azzeraTimer()
@@ -576,6 +602,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
           ordine_turno: r.ordine ?? null,
           primo_giocatore: r.ordine === 1,
+          parziali: tipo === 'punti' || tipo === 'categorie' ? (r.parziali || null) : null,
         })),
       }
 
@@ -870,6 +897,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                       {r.nome}
                     </button>
                     {r.ospite_id && <span className="anno"> ospite</span>}
+                    {r.parziali && <span className="anno"> · dai parziali</span>}
                     {vince && <span className="etichetta-vince">vince</span>}
 
                     {sostituendo === r.chiave && (
@@ -952,6 +980,27 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               )
             })}
           </ul>
+
+          {(tipo === 'punti' || tipo === 'categorie') && righe.length > 0 && (
+            <button className="bottone bottone-secondario apri-segnapunti" onClick={() => setSegnapuntiAperto(true)}>
+              {righe.some((r) => r.parziali) ? 'Riapri il segnapunti' : 'Segnapunti con i parziali'}
+              {Array.isArray(gioco.categorie_punteggio) && gioco.categorie_punteggio.length > 0 && (
+                <span className="anno block">voci di {gioco.nome} pronte</span>
+              )}
+            </button>
+          )}
+
+          {segnapuntiAperto && (
+            <Segnapunti
+              gioco={gioco}
+              giocatori={righe}
+              possoModificareVoci={possoImpostare(gioco)
+                || !(Array.isArray(gioco.categorie_punteggio) && gioco.categorie_punteggio.length)}
+              onSalvaVoci={salvaVociGioco}
+              onConferma={usaTotaliSegnapunti}
+              onChiudi={() => setSegnapuntiAperto(false)}
+            />
+          )}
 
           {righe.length > 1 && (
             <div className="riga-ordine">

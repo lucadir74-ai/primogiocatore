@@ -1,5 +1,5 @@
 // Primo Giocatore - partite in attesa di rete
-// v4.1.0 - 202609302000
+// v4.2.0 - 202610202100 (salva anche i parziali del segnapunti)
 //
 // Quando manca la linea la partita resta sul telefono e parte da sola
 // appena la rete torna. Vale solo per le partite nuove: modificarne
@@ -84,10 +84,30 @@ export async function scriviPartita(supabase, profilo, dati) {
     id = data.id
   }
 
-  const righe = dati.giocatori.map((g) => ({ ...g, partita_id: id }))
+  // I parziali non sono una colonna: vanno in dettagli_punteggio,
+  // agganciati alla partecipazione appena creata.
+  const righe = dati.giocatori.map(({ parziali, ...g }) => ({ ...g, partita_id: id }))
   if (righe.length) {
-    const { error } = await supabase.from('partecipazioni').insert(righe)
+    const { data: create, error } = await supabase
+      .from('partecipazioni').insert(righe).select('id, utente_id, ospite_id')
     if (error) throw error
+
+    const dettagli = []
+    for (const g of dati.giocatori) {
+      if (!g.parziali) continue
+      const p = (create || []).find((c) =>
+        (g.utente_id && c.utente_id === g.utente_id) || (g.ospite_id && c.ospite_id === g.ospite_id))
+      if (!p) continue
+      for (const [categoria, valore] of Object.entries(g.parziali)) {
+        dettagli.push({ partecipazione_id: p.id, categoria, valore })
+      }
+    }
+    // La partita a questo punto è già salvata: se i parziali non passano
+    // non la si fa fallire, altrimenti riprovando nascerebbe un doppione.
+    if (dettagli.length) {
+      const { error: e2 } = await supabase.from('dettagli_punteggio').insert(dettagli)
+      if (e2) console.warn('Parziali non salvati:', e2.message)
+    }
   }
   return id
 }

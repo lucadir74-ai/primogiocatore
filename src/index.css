@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.9.0 - 202610201500 (finestre di spiegazione)
+/* Primo Giocatore - foglio di stile v1.10.0 - 202610202100 (segnapunti con i parziali)
    Tema chiaro di giorno, scuro di sera: segue l'impostazione del telefono. */
 
 :root {
@@ -1922,3 +1922,157 @@ button.numerone:active { transform: scale(0.98); }
 .finestra-corpo p:last-child { margin-bottom: 0; }
 .finestra-sottotitolo { margin: 1rem 0 0.2rem; font-size: 0.98rem; }
 @keyframes finestra-entra { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- Segnapunti con i parziali ---------- */
+
+.apri-segnapunti { margin: 0.8rem 0 0.4rem; }
+.apri-segnapunti .anno { font-family: var(--testo); font-weight: 400; font-size: 0.78rem; }
+
+.finestra.segnapunti { max-width: 44rem; max-height: 90vh; }
+
+.sp-modi {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0.8rem 0;
+  padding: 0.25rem;
+  border-radius: 12px;
+  background: var(--carta);
+}
+.sp-modi button {
+  flex: 1;
+  padding: 0.5rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--inchiostro-tenue);
+  background: none;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.sp-modi button.attivo {
+  color: var(--inchiostro);
+  background: var(--superficie);
+  box-shadow: 0 1px 3px var(--ombra);
+}
+
+.sp-scorri {
+  overflow-x: auto;
+  margin: 0 -0.3rem;
+  -webkit-overflow-scrolling: touch;
+}
+.sp-tabella {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.92rem;
+}
+.sp-tabella th,
+.sp-tabella td {
+  padding: 0.3rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  text-align: center;
+}
+.sp-tabella thead th {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.85rem;
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-tabella .sp-voce {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 7.5rem;
+  max-width: 10rem;
+  text-align: left;
+  font-weight: 500;
+  background: var(--superficie);
+}
+.sp-meno { color: var(--rosso); font-weight: 700; }
+.sp-sezione th {
+  text-align: left;
+  padding-top: 0.8rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--inchiostro-tenue);
+}
+.sp-cella {
+  width: 100%;
+  min-width: 3.6rem;
+  padding: 0.5rem 0.3rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  border-radius: 8px;
+}
+.sp-cella:focus-visible { outline: 2px solid var(--blu); outline-offset: 0; background: var(--superficie); }
+.sp-tabella tfoot th,
+.sp-tabella tfoot td {
+  border-bottom: 0;
+  border-top: 2px solid var(--bordo-forte);
+  padding-top: 0.55rem;
+}
+.sp-totale {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-strumenti {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.1rem;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.sp-vuoto { margin: 0.6rem 0; }
+.sp-vuoto .bottone { margin-top: 0.8rem; }
+
+.sp-elenco-voci { list-style: none; margin: 0.8rem 0 0; padding: 0; }
+.sp-elenco-voci li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+}
+.sp-etichetta {
+  flex: 1 1 10rem;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  border-radius: 9px;
+}
+.sp-elenco-voci li.sezione .sp-etichetta {
+  font-family: var(--display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.85rem;
+}
+.sp-azioni-voce { display: flex; align-items: center; gap: 0.8rem; }
+.sp-azioni-voce .bottone-piatto { text-decoration: none; font-size: 1.1rem; padding: 0 0.15rem; }
+.sp-azioni-voce .bottone-piatto:disabled { opacity: 0.3; cursor: default; }
+.sp-aggiungi { display: flex; gap: 1.2rem; margin: 0.8rem 0 1rem; }
+
+.visivamente-nascosto {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
