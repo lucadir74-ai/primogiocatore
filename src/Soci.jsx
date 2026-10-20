@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.0.0 - 202610201930
+// v1.1.0 - 202610202100 (CSV più tollerante: anche file Excel, Tana scritta per esteso, errori spiegati)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo chi organizza tutte le Tane.
@@ -142,27 +142,65 @@ export default function Soci({ profilo }) {
     })
   }
 
+  // CSV o Excel (.xlsx/.xls): Excel si legge con SheetJS, caricato solo qui.
+  async function leggiFile(file) {
+    const nome = file.name.toLowerCase()
+    const testa = new Uint8Array(await file.slice(0, 4).arrayBuffer())
+    const excel = /\.(xlsx|xls|ods)$/.test(nome) || (testa[0] === 0x50 && testa[1] === 0x4b) || (testa[0] === 0xd0 && testa[1] === 0xcf)
+    if (excel) {
+      const XLSX = await import('xlsx')
+      const libro = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const foglio = libro.Sheets[libro.SheetNames[0]]
+      return XLSX.utils.sheet_to_json(foglio, { header: 1, raw: false, defval: '' })
+        .map((r) => r.map((x) => String(x ?? '')))
+        .filter((r) => r.some((x) => x.trim()))
+    }
+    let testo = await file.text()
+    // Excel italiano a volte salva in Windows-1252: se l'UTF-8 viene male, si rilegge.
+    if (testo.includes('\uFFFD')) testo = new TextDecoder('windows-1252').decode(await file.arrayBuffer())
+    return leggiCsv(testo.replace(/^\uFEFF/, ''))
+  }
+
+  // «Tana dei Goblin di Roma», «TdG Roma», «roma» → la Tana «Roma», se esiste.
+  function tanaRiconosciuta(scritta) {
+    const v = piatto(scritta)
+    if (!v) return ''
+    const esatta = tane.find((t) => piatto(t.nome) === v)
+    if (esatta) return esatta.nome
+    const dentro = tane.filter((t) => v.includes(piatto(t.nome)))
+    return dentro.length === 1 ? dentro[0].nome : scritta.trim()
+  }
+
   async function sceltoFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     setErrore(''); setMessaggio('')
-    const righe = leggiCsv(await file.text())
-    if (righe.length < 2) { setErrore('Il file è vuoto o ha solo l’intestazione.'); return }
-    const colonne = righe[0].map(colonna)
-    if (!colonne.includes('email')) { setErrore('Nel file manca la colonna dell’email (mail o email).'); return }
-    const dati = righe.slice(1).map((r) => {
-      const o = {}
-      colonne.forEach((c, i) => { if (c) o[c] = (r[i] || '').trim() })
-      return o
-    })
-    setCsv({ dati, colonne: colonne.filter(Boolean), nome: file.name })
+    try {
+      const righe = await leggiFile(file)
+      if (righe.length < 2) { setErrore(`«${file.name}» è vuoto o ha solo l’intestazione.`); return }
+      const colonne = righe[0].map(colonna)
+      if (!colonne.includes('email')) {
+        setErrore(`In «${file.name}» non trovo la colonna dell’email. Intestazioni lette: ${righe[0].map((x) => `«${x.trim()}»`).join(', ') || 'nessuna'}.`)
+        return
+      }
+      const dati = righe.slice(1).map((r) => {
+        const o = {}
+        colonne.forEach((c, i) => { if (c) o[c] = String(r[i] ?? '').trim() })
+        if (o.tana) o.tana = tanaRiconosciuta(o.tana)
+        return o
+      }).filter((o) => o.email || o.nome || o.nickname)
+      const nuoveTane = [...new Set(dati.map((o) => o.tana).filter((t) => t && !tane.some((x) => x.nome === t)))]
+      setCsv({ dati, colonne: colonne.filter(Boolean), nome: file.name, nuoveTane })
+    } catch (err) {
+      setErrore(`Non riesco a leggere «${file.name}»: ${err?.message || err}`)
+    }
   }
 
   function importaCsv() {
     esegui(async () => {
       const { data, error } = await supabase.rpc('importa_soci', { p_righe: csv.dati, p_tana: tana })
-      if (error) throw error
+      if (error) throw new Error(`Importazione non riuscita: ${error.message}`)
       setCsv(null)
       return `Importati: ${data.nuovi} nuovi, ${data.aggiornati} aggiornati${data.scartati ? `, ${data.scartati} scartati (email non valida o Tana che non gestisci)` : ''}.`
     })
@@ -248,17 +286,22 @@ export default function Soci({ profilo }) {
 
       <Sezione id="soci-csv" titolo="Importa da CSV" nota="aggiunge o aggiorna, non cancella">
         <p className="aiuto">
-          Colonne riconosciute: nickname, nome, cognome, mail (o email), tana. Separatore punto e virgola,
-          virgola o tabulazione. Chi è già nell&rsquo;elenco viene aggiornato; chi manca nel file non viene tolto.
+          File CSV o Excel. Colonne riconosciute: nickname, nome, cognome, mail (o email), tana (anche «Tana di riferimento»).
+          Nel CSV il separatore può essere punto e virgola, virgola o tabulazione. Chi è già nell&rsquo;elenco viene aggiornato; chi manca nel file non viene tolto.
           {taneMie.length > 1 && ' Le righe senza Tana vanno in quella scelta in alto.'}
         </p>
         {!csv ? (
-          <input type="file" accept=".csv,text/csv,text/plain" onChange={sceltoFile} className="campo-file" aria-label="Scegli il file CSV" />
+          <input type="file" accept=".csv,.txt,.xlsx,.xls,.ods,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={sceltoFile} className="campo-file" aria-label="Scegli il file CSV" />
         ) : (
           <>
             <p className="aiuto">
               <strong>{csv.nome}</strong>: {csv.dati.length} righe. Colonne trovate: {csv.colonne.join(', ')}.
             </p>
+            {csv.nuoveTane.length > 0 && (
+              <div className="avviso errore">
+                Tane non riconosciute: {csv.nuoveTane.join(', ')}. {globale ? 'Verranno create come Tane nuove: se è un errore di scrittura, correggi il file.' : 'Quelle righe verranno scartate.'}
+              </div>
+            )}
             <ul className="elenco">
               {csv.dati.slice(0, 3).map((r, i) => (
                 <li key={i} style={{ display: 'block' }}>
