@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.5.1 - 202610202015 (dopo approva/rifiuta avvisa l'app: il pallino delle richieste si spegne subito)
+// v3.6.0 - 202610210140 (ospiti che sembrano iscritti: stesso nome o stesso numero BGA di un account, si collegano con un tocco)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -26,9 +26,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   async function carica() {
     try {
       const [o, p, pr] = await Promise.all([
-        tutteLeRighe(() => supabase.from('ospiti').select('id, nome, utente_collegato').order('nome')),
+        tutteLeRighe(() => supabase.from('ospiti').select('*').order('nome')),
         tutteLeRighe(() => supabase.from('partecipazioni').select('ospite_id').not('ospite_id', 'is', null)),
-        tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname').order('nome')),
+        tutteLeRighe(() => supabase.from('profili').select('*').order('nome')),
       ])
       setPersone(pr)
       const conteggio = new Map()
@@ -39,6 +39,48 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     } catch (e) {
       setErrore(e.message)
     }
+  }
+
+  // Ospiti che con ogni probabilità sono un iscritto: stesso numero BGA
+  // del suo profilo, oppure nome identico al suo nickname, al nome o al
+  // nome BGA (maiuscole, spazi e accenti non contano). Solo
+  // corrispondenze esatte e senza ambiguità: due account possibili = niente.
+  const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+  const sembranoIscritti = (() => {
+    const perNome = new Map()
+    const perBga = new Map()
+    const aggiungi = (m, k, p) => { if (!k) return; if (!m.has(k)) m.set(k, new Set()); m.get(k).add(p.id) }
+    for (const p of persone) {
+      // Il nome conta solo se è nome e cognome: «Marco» da solo è di troppi.
+      const nomi = [p.nickname, p.bga_username, String(p.nome || '').trim().includes(' ') ? p.nome : null]
+      for (const n of nomi) { const k = piatto(n); if (k.length >= 4) aggiungi(perNome, k, p) }
+      if (p.bga_id) aggiungi(perBga, String(p.bga_id), p)
+    }
+    const out = []
+    for (const o of ospiti) {
+      const daBga = o.bga_id ? perBga.get(String(o.bga_id)) : null
+      const daNome = perNome.get(piatto(o.nome))
+      const scelto = daBga?.size === 1 ? [...daBga][0] : daNome?.size === 1 ? [...daNome][0] : null
+      if (!scelto) continue
+      const utente = persone.find((p) => p.id === scelto)
+      if (utente) out.push({ ospite: o, utente, perche: daBga?.size === 1 ? 'stesso numero BGA' : 'stesso nome' })
+    }
+    return out.sort((a, b) => b.ospite.partite - a.ospite.partite)
+  })()
+
+  async function collegaTutti() {
+    const n = sembranoIscritti.length
+    if (!confirm(`Collegare ${n} ospiti ai rispettivi account? Le loro partite passano agli account e le voci ospite spariscono.`)) return
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    let fatti = 0
+    for (const { ospite, utente } of sembranoIscritti) {
+      const { error } = await supabase.rpc('collega_ospite', { p_ospite: ospite.id, p_utente: utente.id })
+      if (error) { setErrore(`«${ospite.nome}»: ${error.message}`); break }
+      fatti++
+    }
+    setLavorando(false)
+    if (fatti) setMessaggio(`${fatti} ospiti collegati al loro account.`)
+    carica()
   }
 
   async function salvaNome() {
@@ -133,6 +175,29 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
       <RichiesteDaApprovare profilo={profilo} onCambio={() => { carica(); onRichieste?.() }} />
+
+      {sembranoIscritti.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Sembrano iscritti <span className="conteggio">{sembranoIscritti.length}</span></h3>
+          <p className="aiuto">Ospiti con lo stesso nome o lo stesso numero BGA di un account. Collegandoli, le loro partite passano all&rsquo;account e il doppione sparisce.</p>
+          <ul className="elenco">
+            {sembranoIscritti.slice(0, 30).map(({ ospite, utente, perche }) => (
+              <li key={ospite.id}>
+                <div className="nome-giocatore">
+                  <strong>{ospite.nome}</strong>
+                  <span className="anno block">{ospite.partite} {ospite.partite === 1 ? 'partita' : 'partite'} · è {utente.nickname || utente.nome}? ({perche})</span>
+                </div>
+                <button className="bottone-piatto" onClick={() => diventaAccount(ospite, utente)} disabled={lavorando}>collega</button>
+              </li>
+            ))}
+          </ul>
+          {sembranoIscritti.length > 1 && (
+            <button className="bottone bottone-secondario" onClick={collegaTutti} disabled={lavorando}>
+              {lavorando ? 'Collego…' : `Collega tutti (${sembranoIscritti.length})`}
+            </button>
+          )}
+        </>
+      )}
 
       {ospiti.length > 8 && (
         <input
