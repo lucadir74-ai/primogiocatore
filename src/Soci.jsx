@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.1.0 - 202610202100 (CSV più tollerante: anche file Excel, Tana scritta per esteso, errori spiegati)
+// v1.2.0 - 202610202200 (non nell'elenco: nome del profilo e soci che potrebbero essere la stessa persona)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo chi organizza tutte le Tane.
@@ -52,6 +52,29 @@ function colonna(intestazione) {
   if (/^nome/.test(h)) return 'nome'
   if (/^(tana|sede)/.test(h)) return 'tana'
   return null
+}
+
+// Soci che potrebbero essere la stessa persona di un account non in
+// elenco: stessa parte prima della @ dell'email, stesso nickname, o
+// nome e cognome che corrispondono al nome del profilo.
+function forseLui(account, soci) {
+  const locale = (e) => piatto(String(e || '').split('@')[0])
+  const suaLocale = locale(account.email)
+  const nick = piatto(account.nickname)
+  const nome = piatto(account.nome)
+  const punti = (s) => {
+    let p = 0
+    if (suaLocale && suaLocale.length >= 4 && locale(s.email) === suaLocale) p += 3
+    const sn = piatto(s.nickname)
+    if (sn && (sn === nick || sn === nome)) p += 3
+    else if (sn && sn.length >= 4 && (nick.includes(sn) || sn.includes(nick || '§') || nome.includes(sn))) p += 1
+    const nc = piatto(`${s.nome || ''}${s.cognome || ''}`)
+    const cn = piatto(`${s.cognome || ''}${s.nome || ''}`)
+    if (nome && nome.length >= 5 && (nc === nome || cn === nome)) p += 3
+    else if (nome && s.cognome && piatto(s.cognome).length >= 4 && nome.includes(piatto(s.cognome)) && s.nome && nome.includes(piatto(s.nome))) p += 2
+    return p
+  }
+  return soci.map((s) => ({ s, p: punti(s) })).filter((x) => x.p >= 2).sort((a, b) => b.p - a.p).slice(0, 3).map((x) => x.s)
 }
 
 export default function Soci({ profilo }) {
@@ -325,8 +348,18 @@ export default function Soci({ profilo }) {
               <li key={a.id} style={{ display: 'block' }}>
                 <div className="nome-giocatore">
                   <strong>{daMostrare(a)}</strong>
-                  <span className="anno block">{a.email} · {STATI[a.stato_socio] || a.stato_socio}{a.tana_id ? ` · ${nomeTana(a.tana_id)}` : ''}</span>
+                  <span className="anno block">
+                    {a.nickname && a.nome && piatto(a.nome) !== piatto(a.nickname) ? `${a.nome} · ` : ''}
+                    {a.email} · {STATI[a.stato_socio] || a.stato_socio}{a.tana_id ? ` · ${nomeTana(a.tana_id)}` : ''}
+                  </span>
                 </div>
+                {decidendo !== a.id && forseLui(a, soci).map((s) => (
+                  <div key={s.id} className="aiuto" style={{ margin: '0.3rem 0' }}>
+                    Forse è <strong>{s.nickname || '—'}</strong> ({[s.nome, s.cognome].filter(Boolean).join(' ')}, {s.email})
+                    {' '}<button className="bottone-piatto" disabled={lavoro}
+                      onClick={() => decidi(a, 'socio', { nickname: s.nickname, nome: s.nome, cognome: s.cognome })}>è lui</button>
+                  </div>
+                ))}
                 {decidendo === a.id ? (
                   <div style={{ marginTop: '0.6rem' }}>
                     {campo(datiSocio, setDatiSocio, 'nickname', 'Nickname')}
