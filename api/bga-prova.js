@@ -1,5 +1,5 @@
 // Primo Giocatore - PROVA: accesso a Board Game Arena dal server
-// v0.1.0 - 202610182200
+// v0.2.0 - 202610200220 (segue i reindirizzamenti di BGA conservando i cookie)
 //
 // Serve solo a capire se BGA accetta un accesso con nome e password
 // fatto dai server di Vercel, e se poi lascia leggere lo storico.
@@ -87,22 +87,47 @@ export default async function handler(req, res) {
   })
 
   const jar = barattolo()
+  // Segue i reindirizzamenti a mano, così i cookie di ogni passaggio
+  // restano nel barattolo (fetch da solo li perderebbe). r.percorso
+  // racconta dove è finita la richiesta.
   async function chiama(percorso, opzioni = {}) {
-    const r = await fetch(BGA + percorso, {
-      ...opzioni,
-      redirect: 'manual',
-      headers: { 'User-Agent': UA, Cookie: jar.intestazione(), ...(opzioni.headers || {}) },
-    })
-    jar.prendi(r)
-    return r
+    let indirizzo = percorso.startsWith('http') ? percorso : BGA + percorso
+    let metodo = opzioni.method || 'GET'
+    let corpo = opzioni.body
+    const giro = []
+    for (let salto = 0; salto < 6; salto++) {
+      const r = await fetch(indirizzo, {
+        method: metodo,
+        body: corpo,
+        redirect: 'manual',
+        headers: { 'User-Agent': UA, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8', 'Accept-Language': 'it-IT,it;q=0.9', Cookie: jar.intestazione(), ...(opzioni.headers || {}) },
+      })
+      jar.prendi(r)
+      const dove = r.headers.get('location')
+      if (r.status >= 300 && r.status < 400 && dove) {
+        indirizzo = new globalThis.URL(dove, indirizzo).toString()
+        giro.push(`${r.status} → ${indirizzo.replace(/^https:\/\//, '')}`)
+        // Dopo un reindirizzamento il browser rifà la richiesta in GET.
+        if (r.status !== 307 && r.status !== 308) { metodo = 'GET'; corpo = undefined }
+        continue
+      }
+      r.percorso = giro.length ? giro.join(' · ') : 'diretto'
+      return r
+    }
+    throw new Error(`Troppi reindirizzamenti: ${giro.join(' · ')}`)
   }
 
   try {
     // 1. Pagina di accesso: cookie di sessione e token anti-falsificazione.
-    let r = await chiama('/account')
-    let html = await r.text()
-    let token = trovaToken(html)
-    segna('1. pagina di accesso', r, token ? `token trovato; cookie: ${jar.nomi().join(', ') || 'nessuno'}` : `token NON trovato. Inizio pagina: ${html.slice(0, 160)}`)
+    //    Se /account non lo dà, si prova la home.
+    let r, html, token = null
+    for (const pagina of ['/account', '/']) {
+      r = await chiama(pagina)
+      html = await r.text()
+      token = trovaToken(html)
+      segna(`1. pagina ${pagina}`, r, `${r.percorso}; ${token ? 'token trovato' : 'token NON trovato'}; cookie: ${jar.nomi().join(', ') || 'nessuno'}${token ? '' : `; inizio: ${html.slice(0, 120)}`}`)
+      if (token) break
+    }
     if (!token) return res.status(200).json({ esito: 'fermo al passo 1', passi })
 
     const comuni = {
@@ -141,7 +166,7 @@ export default async function handler(req, res) {
     html = await r.text()
     const tokenDentro = trovaToken(html)
     const riconosciuto = /logout|disconnect|esci/i.test(html)
-    segna('3. pagina della cronologia', r, `token: ${tokenDentro ? 'sì' : 'no'}; sembra entrato: ${riconosciuto ? 'sì' : 'no'}; cookie: ${jar.nomi().join(', ')}`)
+    segna('3. pagina della cronologia', r, `${r.percorso}; token: ${tokenDentro ? 'sì' : 'no'}; sembra entrato: ${riconosciuto ? 'sì' : 'no'}; cookie: ${jar.nomi().join(', ')}`)
 
     // 4. Lettura dello storico, come fa il segnalibro.
     if (id && tokenDentro) {
