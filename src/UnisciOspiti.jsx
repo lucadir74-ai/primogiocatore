@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.5.0 - 202610181930 (casella unica per unire due ospiti)
+// v3.5.1 - 202610202015 (dopo approva/rifiuta avvisa l'app: il pallino delle richieste si spegne subito)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -9,7 +9,7 @@ import { supabase, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
 import CercaScegli from './CercaScegli.jsx'
 
-export default function UnisciOspiti({ profilo }) {
+export default function UnisciOspiti({ profilo, onRichieste }) {
   const [ospiti, setOspiti] = useState([])
   const [daUnire, setDaUnire] = useState('')   // sparisce
   const [verso, setVerso] = useState('')       // resta
@@ -132,7 +132,7 @@ export default function UnisciOspiti({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <RichiesteDaApprovare profilo={profilo} onCambio={carica} />
+      <RichiesteDaApprovare profilo={profilo} onCambio={() => { carica(); onRichieste?.() }} />
 
       {ospiti.length > 8 && (
         <input

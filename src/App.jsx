@@ -1,4 +1,4 @@
-// Primo Giocatore v4.17.0 - 202610201930 (accesso riservato ai soci delle Tane, pagina Soci)
+// Primo Giocatore v4.17.1 - 202610202015 (il pallino «sono io» si aggiorna appena approvi o rifiuti)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -894,7 +894,7 @@ export default function App() {
                   ) : attiva === 'dati' ? (
                     <Dati profilo={profilo} />
                   ) : attiva === 'ospiti' ? (
-                    <UnisciOspiti profilo={profilo} />
+                    <UnisciOspiti profilo={profilo} onRichieste={() => contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)} />
                   ) : attiva === 'luoghi' ? (
                     <Luoghi profilo={profilo} />
                   ) : attiva === 'giochi' ? (
