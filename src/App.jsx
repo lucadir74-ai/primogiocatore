@@ -1,4 +1,4 @@
-// Primo Giocatore v4.18.0 - 202610211200 (nuova grafica by TdG Roma: logo della Tana, bordeaux e verde)
+// Primo Giocatore v4.18.0 - 202610211330 (iscrizione: «sei socio della Tana?», controllo email, richiesta su WhatsApp)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -174,14 +174,48 @@ function CampoPassword({ id, value, onChange, autoComplete, onKeyDown }) {
 
 /* ---------------- Accesso e registrazione ---------------- */
 
+// Iscrizione riservata ai soci: chi non lo è scrive a Dario su WhatsApp.
+const WHATSAPP_TANA = '393335891955'
+const TANA_NOME = 'Tana dei Goblin di Roma'
+function linkWhatsApp({ nickname, nome, email }) {
+  const righe = [
+    `Ciao, vorrei usare Primo Giocatore e iscrivermi alla ${TANA_NOME}.`,
+    nickname && `Nickname: ${nickname}`,
+    nome && `Nome e cognome: ${nome}`,
+    email && `Email: ${email}`,
+  ].filter(Boolean)
+  return `https://wa.me/${WHATSAPP_TANA}?text=${encodeURIComponent(righe.join('\n'))}`
+}
+
 function Accesso() {
   const [modo, setModo] = useState('entra')   // entra | iscriviti | recupero
+  // Iscrizione a passi: domanda → (no: WhatsApp) | (sì: email → dati)
+  const [passo, setPasso] = useState('domanda')   // domanda | no | email | dati
+  const [emailVerificata, setEmailVerificata] = useState(false)
+  const [nonTrovata, setNonTrovata] = useState(false)
+  const [nickname, setNickname] = useState('')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [attesa, setAttesa] = useState(false)
   const [errore, setErrore] = useState('')
   const [ok, setOk] = useState('')
+
+  async function verificaEmail() {
+    setErrore(''); setOk(''); setNonTrovata(false)
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setErrore('Scrivi un indirizzo email completo.'); return }
+    setAttesa(true)
+    try {
+      const { data, error } = await supabase.rpc('email_tra_i_soci', { p_email: email.trim() })
+      // Senza lo script SQL (funzione mancante) si va avanti come prima.
+      if (error) { setEmailVerificata(false); setPasso('dati'); return }
+      if (data) { setEmailVerificata(true); setPasso('dati') } else setNonTrovata(true)
+    } finally { setAttesa(false) }
+  }
+
+  function vaiA(nuovo) {
+    setModo(nuovo); setPasso('domanda'); setErrore(''); setOk(''); setNonTrovata(false); setEmailVerificata(false)
+  }
 
   async function invia() {
     setErrore('')
@@ -193,8 +227,8 @@ function Accesso() {
       setErrore('Servono email e password.')
       return
     }
-    if (modo === 'iscriviti' && !nome.trim()) {
-      setErrore('Scrivi il nome con cui ti vedranno gli altri giocatori.')
+    if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim())) {
+      setErrore('Scrivi nickname e nome e cognome.')
       return
     }
     if (modo === 'iscriviti' && password.length < 8) {
@@ -220,11 +254,13 @@ function Accesso() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { nome: nome.trim() } },
+          options: { data: { nome: nome.trim(), nickname: nickname.trim() } },
         })
         if (error) throw error
         if (data.session) return
-        setOk('Account creato. Controlla la posta e conferma l\u2019indirizzo, poi torna qui.')
+        setOk(emailVerificata
+          ? 'Account creato. Controlla la posta (anche la posta indesiderata) e conferma l\u2019indirizzo: poi entri.'
+          : 'Account creato. Conferma l\u2019indirizzo dalla posta. Siccome questa email non risulta fra i soci, un organizzatore dovrà confermare l\u2019iscrizione.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
@@ -252,19 +288,83 @@ function Accesso() {
       <Avviso tipo="errore" testo={errore} />
       <Avviso tipo="ok" testo={ok} />
 
-      {modo === 'iscriviti' && (
-        <div className="campo">
-          <label htmlFor="nome">Nome</label>
-          <input
-            id="nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            autoComplete="name"
-            placeholder="Come ti chiamano al tavolo"
-          />
-        </div>
+      {modo === 'iscriviti' && passo === 'domanda' && (
+        <>
+          <p><strong>Sei socio della {TANA_NOME}?</strong></p>
+          <p className="aiuto">Primo Giocatore è riservato ai soci della Tana.</p>
+          <button className="bottone" onClick={() => setPasso('email')}>Sì, sono socio</button>
+          <button className="bottone bottone-secondario" onClick={() => setPasso('no')}>No, non ancora</button>
+        </>
       )}
 
+      {modo === 'iscriviti' && passo === 'no' && (
+        <>
+          <p>Per iscriverti alla Tana scrivi su WhatsApp a Dario, l&rsquo;organizzatore. Se vuoi, lascia qui i tuoi dati: finiscono già nel messaggio.</p>
+          <div className="campo">
+            <label htmlFor="w-nick">Nickname (facoltativo)</label>
+            <input id="w-nick" value={nickname} onChange={(e) => setNickname(e.target.value)} autoComplete="nickname" />
+          </div>
+          <div className="campo">
+            <label htmlFor="w-nome">Nome e cognome (facoltativo)</label>
+            <input id="w-nome" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="name" />
+          </div>
+          <div className="campo">
+            <label htmlFor="w-email">Email (facoltativa)</label>
+            <input id="w-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+          </div>
+          <a className="bottone" href={linkWhatsApp({ nickname, nome, email })} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+            Scrivi su WhatsApp
+          </a>
+          <button className="bottone bottone-secondario" onClick={() => setPasso('email')}>In realtà sono socio</button>
+        </>
+      )}
+
+      {modo === 'iscriviti' && passo === 'email' && (
+        <>
+          <div className="campo">
+            <label htmlFor="v-email">Con quale email ti sei iscritto alla Tana?</label>
+            <input id="v-email" type="email" value={email} autoComplete="email"
+              onChange={(e) => { setEmail(e.target.value); setNonTrovata(false) }}
+              onKeyDown={(e) => e.key === 'Enter' && verificaEmail()} />
+          </div>
+          {!nonTrovata ? (
+            <button className="bottone" onClick={verificaEmail} disabled={attesa || !email.trim()}>
+              {attesa ? 'Controllo\u2026' : 'Continua'}
+            </button>
+          ) : (
+            <>
+              <div className="avviso errore">
+                Questa email non risulta fra i soci. Controlla di aver scritto quella che hai dato alla Tana.
+              </div>
+              <button className="bottone" onClick={verificaEmail} disabled={attesa}>Riprova</button>
+              <a className="bottone bottone-secondario" href={linkWhatsApp({ email })} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                Chiedi aiuto su WhatsApp
+              </a>
+              <button className="bottone-piatto" onClick={() => { setEmailVerificata(false); setPasso('dati') }}>
+                Registrati comunque (un organizzatore confermerà)
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {modo === 'iscriviti' && passo === 'dati' && (
+        <>
+          <div className="campo">
+            <label htmlFor="nick">Nickname</label>
+            <input id="nick" value={nickname} onChange={(e) => setNickname(e.target.value)}
+              autoComplete="nickname" placeholder="Come ti chiamano al tavolo" />
+          </div>
+          <div className="campo">
+            <label htmlFor="nome">Nome e cognome</label>
+            <input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="name" />
+          </div>
+        </>
+      )}
+
+      {(modo !== 'iscriviti' || passo === 'dati') && (
       <div className="campo">
         <label htmlFor="email">Email</label>
         <input
@@ -273,10 +373,13 @@ function Accesso() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
+          readOnly={modo === 'iscriviti' && emailVerificata}
         />
+        {modo === 'iscriviti' && emailVerificata && <p className="aiuto">Email trovata fra i soci della Tana ✓</p>}
       </div>
+      )}
 
-      {modo !== 'recupero' && (
+      {modo !== 'recupero' && (modo !== 'iscriviti' || passo === 'dati') && (
       <div className="campo">
         <label htmlFor="password">Password</label>
         <CampoPassword
@@ -290,17 +393,19 @@ function Accesso() {
       </div>
       )}
 
+      {(modo !== 'iscriviti' || passo === 'dati') && (
       <button className="bottone" onClick={invia} disabled={attesa}>
         {attesa ? 'Un attimo\u2026'
           : modo === 'entra' ? 'Entra'
           : modo === 'iscriviti' ? 'Crea account'
           : 'Mandami il collegamento'}
       </button>
+      )}
 
       {modo === 'entra' && (
         <p className="riga-fondo">
           <button className="bottone-piatto"
-            onClick={() => { setModo('recupero'); setErrore(''); setOk('') }}>
+            onClick={() => vaiA('recupero')}>
             Password dimenticata
           </button>
         </p>
@@ -310,11 +415,7 @@ function Accesso() {
         {modo === 'iscriviti' ? 'Ce l\u2019hai già? ' : modo === 'recupero' ? '' : 'Non hai ancora un account? '}
         <button
           className="bottone-piatto"
-          onClick={() => {
-            setModo(modo === 'entra' ? 'iscriviti' : 'entra')
-            setErrore('')
-            setOk('')
-          }}
+          onClick={() => vaiA(modo === 'entra' ? 'iscriviti' : 'entra')}
         >
           {modo === 'entra' ? 'Iscriviti' : 'Torna all\u2019accesso'}
         </button>
@@ -690,7 +791,15 @@ export default function App() {
       .then(({ data, error }) => {
         if (!vivo) return
         if (error) setErroreProfilo(traduciErrore(error))
-        else if (data) setProfilo(data)
+        else if (data) {
+          // Il nickname scelto all'iscrizione arriva con l'account: al
+          // primo accesso finisce nel profilo, se non ce n'è già uno.
+          const nick = sessione.user.user_metadata?.nickname?.trim()
+          if (nick && !data.nickname) {
+            setProfilo({ ...data, nickname: nick })
+            supabase.from('profili').update({ nickname: nick }).eq('id', data.id).then(() => {})
+          } else setProfilo(data)
+        }
         else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
       })
     return () => { vivo = false }
