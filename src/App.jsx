@@ -1,4 +1,4 @@
-// Primo Giocatore v4.18.0 - 202610211330 (iscrizione: «sei socio della Tana?», controllo email, richiesta su WhatsApp)
+// Primo Giocatore v4.19.0 - 202610211500 (pagina di benvenuto e tasto per condividere l'app)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -24,6 +24,8 @@ import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
 import ImportaBga from './ImportaBga.jsx'
+import Benvenuto from './Benvenuto.jsx'
+import Condividi from './Condividi.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -36,6 +38,8 @@ const SEZIONI_PROFILO = [
   ['soci', 'Soci', true],     // organizzatori, anche di una sola Tana
 ]
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
+// Chi su questo telefono è già entrato una volta salta la pagina di benvenuto.
+const CHIAVE_GIA_ENTRATO = 'primo-giocatore:gia-entrato'
 
 // Il riquadro "Sei tu?" serve a chi si è appena registrato: dopo due
 // mesi, o per chi organizza, resta solo nel profilo.
@@ -187,8 +191,8 @@ function linkWhatsApp({ nickname, nome, email }) {
   return `https://wa.me/${WHATSAPP_TANA}?text=${encodeURIComponent(righe.join('\n'))}`
 }
 
-function Accesso() {
-  const [modo, setModo] = useState('entra')   // entra | iscriviti | recupero
+function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
+  const [modo, setModo] = useState(modoIniziale)   // entra | iscriviti | recupero
   // Iscrizione a passi: domanda → (no: WhatsApp) | (sì: email → dati)
   const [passo, setPasso] = useState('domanda')   // domanda | no | email | dati
   const [emailVerificata, setEmailVerificata] = useState(false)
@@ -420,6 +424,12 @@ function Accesso() {
           {modo === 'entra' ? 'Iscriviti' : 'Torna all\u2019accesso'}
         </button>
       </p>
+
+      {onBenvenuto && (
+        <p className="riga-fondo">
+          <button className="bottone-piatto" onClick={onBenvenuto}>Cos&rsquo;è Primo Giocatore?</button>
+        </p>
+      )}
     </div>
   )
 }
@@ -726,6 +736,10 @@ export default function App() {
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
   const [cambioPassword, setCambioPassword] = useState(false)
+  // Senza sessione: pagina di benvenuto, oppure accesso/iscrizione.
+  const [ingresso, setIngresso] = useState(() => {
+    try { return localStorage.getItem(CHIAVE_GIA_ENTRATO) ? 'entra' : 'benvenuto' } catch { return 'benvenuto' }
+  })
   const [sezioneProfilo, setSezioneProfilo] = useState(() => {
     try { return localStorage.getItem(CHIAVE_SEZIONE) || 'profilo' } catch { return 'profilo' }
   })
@@ -762,6 +776,13 @@ export default function App() {
     if (!profilo) return
     contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)
   }, [profilo?.id, scheda])
+
+  // Una volta entrato su questo telefono, la prossima volta si parte dall'accesso.
+  useEffect(() => {
+    if (!sessione) return
+    try { localStorage.setItem(CHIAVE_GIA_ENTRATO, '1') } catch { /* niente */ }
+    setIngresso('entra')
+  }, [sessione])
 
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
@@ -819,6 +840,7 @@ export default function App() {
     <div className="guscio">
       <header className="testata">
         <Marchio />
+        <Condividi />
       </header>
 
       {tavoloPubblico ? (
@@ -844,7 +866,15 @@ export default function App() {
       ) : cambioPassword ? (
         <NuovaPassword fatto={() => setCambioPassword(false)} />
       ) : !sessione ? (
-        <Accesso />
+        ingresso === 'benvenuto' ? (
+          <Benvenuto
+            onIscriviti={() => setIngresso('iscriviti')}
+            onEntra={() => setIngresso('entra')}
+            linkNonSocio={linkWhatsApp({})}
+          />
+        ) : (
+          <Accesso key={ingresso} modoIniziale={ingresso} onBenvenuto={() => setIngresso('benvenuto')} />
+        )
       ) : !profilo ? (
         <div className="scheda">
           {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
