@@ -1,6 +1,8 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.0.0 - 202610211945
-// Si apre toccando un nome nella pagina Ruoli. Dati base dell'account e
+// v1.1.0 - 202610212030 (aperta anche dall'elenco soci, con o senza account)
+// Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
+// Dall'elenco soci arriva anche la riga del socio (socio): se non ha
+// ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
 // a che punto è con la sincronizzazione: solo numeri, nessun titolo né
 // avversario, così la riservatezza delle partite resta intatta.
 
@@ -24,11 +26,12 @@ function Riga({ etichetta, valore, tono }) {
   )
 }
 
-export default function SchedaIscritto({ id, onChiudi }) {
+export default function SchedaIscritto({ id, socio, onChiudi }) {
   const [s, setS] = useState(null)
   const [errore, setErrore] = useState('')
 
   useEffect(() => {
+    if (!id) return
     let vivo = true
     supabase.rpc('scheda_iscritto', { p_utente: id }).then(({ data, error }) => {
       if (!vivo) return
@@ -53,7 +56,24 @@ export default function SchedaIscritto({ id, onChiudi }) {
   const p = s?.profilo || {}
   const r = s?.registrate || {}
   const bga = s?.bga_collegato
-  const titolo = s ? daMostrare(p) : 'Scheda iscritto'
+  const nomeSocio = socio ? `${socio.nome || ''} ${socio.cognome || ''}`.trim() : ''
+  const titolo = s ? daMostrare(p)
+    : socio ? (socio.nickname || nomeSocio || socio.email || 'Socio')
+    : 'Scheda iscritto'
+
+  // La riga dell'elenco soci, quando la scheda arriva da lì.
+  const elencoSoci = socio && (
+    <>
+      <h4 className="finestra-sottotitolo">Nell’elenco soci</h4>
+      <ul className="elenco">
+        {socio.nickname && <Riga etichetta="Nickname" valore={socio.nickname} />}
+        {nomeSocio && <Riga etichetta="Nome e cognome" valore={nomeSocio} />}
+        {!s && <Riga etichetta="Email" valore={socio.email ? <a href={`mailto:${socio.email}`}>{socio.email}</a> : 'mancante'} tono={socio.email ? null : 'no'} />}
+        {socio.tana && <Riga etichetta="Tana" valore={socio.tana} />}
+        {socio.aggiunto_il && <Riga etichetta="In elenco dal" valore={giorno(socio.aggiunto_il)} />}
+      </ul>
+    </>
+  )
 
   return (
     <div className="finestra-sfondo" onClick={onChiudi}>
@@ -65,7 +85,13 @@ export default function SchedaIscritto({ id, onChiudi }) {
 
         <div className="finestra-corpo">
           {errore && <div className="avviso errore">{errore}</div>}
-          {!s && !errore && <p>Carico la scheda…</p>}
+          {!id && (
+            <>
+              <div className="avviso">Non ha ancora un account su Primo Giocatore con questa email.</div>
+              {elencoSoci}
+            </>
+          )}
+          {id && !s && !errore && <p>Carico la scheda…</p>}
 
           {s && (
             <>
@@ -85,6 +111,8 @@ export default function SchedaIscritto({ id, onChiudi }) {
                 <Riga etichetta="Ultimo accesso" valore={giorno(s.ultimo_accesso) || 'mai'} />
                 {p.stato_socio && <Riga etichetta="Tana" valore={STATI[p.stato_socio] || p.stato_socio} />}
               </ul>
+
+              {elencoSoci}
 
               <h4 className="finestra-sottotitolo">BoardGameGeek</h4>
               <ul className="elenco">

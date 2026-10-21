@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.2.0 - 202610202200 (non nell'elenco: nome del profilo e soci che potrebbero essere la stessa persona)
+// v1.3.0 - 202610212030 (toccando un socio dell'elenco si apre la sua scheda)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo chi organizza tutte le Tane.
@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import Sezione from './Sezione.jsx'
 import CercaScegli from './CercaScegli.jsx'
+import SchedaIscritto from './SchedaIscritto.jsx'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
 const STATI = { in_attesa: 'in attesa', eccezione: 'entra come eccezione', escluso: 'non ammesso' }
@@ -85,6 +86,8 @@ export default function Soci({ profilo }) {
   const [controllo, setControllo] = useState(null)
   const [soci, setSoci] = useState([])
   const [fuori, setFuori] = useState([])
+  const [account, setAccount] = useState(null)   // socio -> account, per email (null finché non si sa)
+  const [aperto, setAperto] = useState(null)          // socio di cui è aperta la scheda
   const [orgTane, setOrgTane] = useState([])
   const [persone, setPersone] = useState([])
   const [nuovo, setNuovo] = useState(vuoto)
@@ -119,6 +122,9 @@ export default function Soci({ profilo }) {
       setTana((attuale) => attuale ?? gestite[0] ?? null)
       setSoci(s)
       setFuori(f.data || [])
+      // A parte: se manca lo script della scheda, l'elenco funziona lo stesso.
+      const { data: abbinati, error: senza } = await supabase.rpc('soci_con_account')
+      setAccount(senza ? null : new Map((abbinati || []).map((x) => [String(x.socio), x.utente])))
       if (globale) {
         const p = await tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname').order('nome'))
         setPersone(p)
@@ -389,10 +395,13 @@ export default function Soci({ profilo }) {
         <ul className="elenco">
           {sociVisti.slice(0, 100).map((s) => (
             <li key={s.id}>
-              <div className="nome-giocatore">
-                <strong>{s.nickname || `${s.nome || ''} ${s.cognome || ''}`.trim() || s.email}</strong>
-                <span className="anno block">{[s.nickname && `${s.nome || ''} ${s.cognome || ''}`.trim(), s.email].filter(Boolean).join(' · ')}</span>
-              </div>
+              <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(s)}>
+                <div className="nome-giocatore">
+                  <strong>{s.nickname || `${s.nome || ''} ${s.cognome || ''}`.trim() || s.email}</strong>
+                  {account && !account.has(String(s.id)) && <span className="distintivo grigio">senza account</span>}
+                  <span className="anno block">{[s.nickname && `${s.nome || ''} ${s.cognome || ''}`.trim(), s.email].filter(Boolean).join(' · ')}</span>
+                </div>
+              </button>
               <button className="bottone-piatto pericolo" onClick={() => togli(s)} disabled={lavoro}>togli</button>
             </li>
           ))}
@@ -431,6 +440,13 @@ export default function Soci({ profilo }) {
             )
           })}
         </Sezione>
+      )}
+      {aperto && (
+        <SchedaIscritto
+          id={account?.get(String(aperto.id)) || null}
+          socio={{ ...aperto, tana: nomeTana(aperto.tana_id) }}
+          onChiudi={() => setAperto(null)}
+        />
       )}
     </div>
   )
