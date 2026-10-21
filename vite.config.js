@@ -2,9 +2,24 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Indirizzo pubblico per l'anteprima dei link condivisi (og:image vuole
+// un indirizzo completo). Su Vercel arriva da solo; si può forzare con
+// la variabile SITO_PUBBLICO (es. https://www.esempio.it).
+const sito = (
+  process.env.SITO_PUBBLICO
+  || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
+  || ''
+).replace(/\/$/, '')
+
+const indirizzoPubblico = {
+  name: 'indirizzo-pubblico',
+  transformIndexHtml: (html) => html.replaceAll('%SITO%', sito),
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    indirizzoPubblico,
     VitePWA({
       // L'aggiornamento avviene da solo: appena il telefono ritrova la
       // rete e si ricarica la pagina, prende la versione nuova. Senza,
