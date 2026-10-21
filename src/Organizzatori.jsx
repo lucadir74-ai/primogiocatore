@@ -1,14 +1,16 @@
 // Primo Giocatore - gestione degli organizzatori
-// v3.10.0 - 202609211400
+// v3.11.0 - 202610211945 (toccando un nome si apre la scheda dell'iscritto)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
+import SchedaIscritto from './SchedaIscritto'
 
 export default function Organizzatori({ profilo }) {
   const [persone, setPersone] = useState([])
   const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
+  const [aperto, setAperto] = useState(null)
 
   useEffect(() => { carica() }, [])
 
@@ -81,16 +83,18 @@ export default function Organizzatori({ profilo }) {
           const nuovo = new Date(p.creato_il).getTime() > settimanaFa
           return (
             <li key={p.id}>
-              <div className="nome-giocatore">
-                <strong>{daMostrare(p)}</strong>
-                {nuovo && <span className="distintivo verde">Nuovo</span>}
-                <span className="anno block">
-                  {new Date(p.creato_il).toLocaleDateString('it-IT', {
-                    day: 'numeric', month: 'long', year: 'numeric',
-                  })}
-                  {p.citta ? ` · ${p.citta}` : ''}
-                </span>
-              </div>
+              <button type="button" className="voce-scelta" onClick={() => setAperto(p.id)}>
+                <div className="nome-giocatore">
+                  <strong>{daMostrare(p)}</strong>
+                  {nuovo && <span className="distintivo verde">Nuovo</span>}
+                  <span className="anno block">
+                    {new Date(p.creato_il).toLocaleDateString('it-IT', {
+                      day: 'numeric', month: 'long', year: 'numeric',
+                    })}
+                    {p.citta ? ` · ${p.citta}` : ''}
+                  </span>
+                </div>
+              </button>
             </li>
           )
         })}
@@ -146,10 +150,12 @@ export default function Organizzatori({ profilo }) {
       <ul className="elenco">
         {elenco.slice(0, 25).map((p) => (
           <li key={p.id}>
-            <div className="nome-giocatore">
-              <strong>{daMostrare(p)}</strong>
-              {p.citta && <span className="anno block">{p.citta}</span>}
-            </div>
+            <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
+              <div className="nome-giocatore">
+                <strong>{daMostrare(p)}</strong>
+                {p.citta && <span className="anno block">{p.citta}</span>}
+              </div>
+            </button>
             <span className="azioni-iscritto">
               {!p.dimostratore && (
                 <button className="bottone-piatto" onClick={() => cambia(p.id, 'dimostratore', true)}>
@@ -170,7 +176,10 @@ export default function Organizzatori({ profilo }) {
         Compaiono solo le persone con un account. Il ruolo di organizzatore dà accesso
         ai contatti di chi si iscrive ai tavoli: assegnalo a chi ha davvero bisogno di
         telefonare o scrivere ai partecipanti. Il tuo non puoi revocartelo da solo.
+        Tocca un nome per vedere la scheda dell'iscritto.
       </p>
+
+      {aperto && <SchedaIscritto id={aperto} onChiudi={() => setAperto(null)} />}
     </div>
   )
 }
