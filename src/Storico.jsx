@@ -1,9 +1,10 @@
 // Primo Giocatore - Storico
-// v3.9.0 - 202610182040 (elenchi con chiavi uniche: niente righe fantasma; la ricerca ignora spazi e accenti)
+// v3.10.0 - 202610211500 (più veloce: archivio in memoria condiviso con le Statistiche, partite mostrate a pagine)
 
 import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, COLORI, daMostrare } from './supabase'
+import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -14,15 +15,22 @@ const SEZIONI = [
 
 const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
+const PER_PAGINA = 50
+
 export default function Storico({ profilo, onModifica, onApri, ripristina }) {
   const [sezione, setSezione] = useState('partite')
-  const [partite, setPartite] = useState([])
+  // Dalla più recente; unite le copie della stessa partita (vince la tua).
+  const ordina = (righe) => unisciCondivise([...righe].reverse(), [profilo.id])
+  const inMemoria = archivioInMemoria(profilo.id)
+  const [partite, setPartite] = useState(() => (inMemoria ? ordina(inMemoria) : []))
   const [aperta, setAperta] = useState(null)
-  const [caricamento, setCaricamento] = useState(true)
+  const [caricamento, setCaricamento] = useState(!inMemoria)
+  const [quante, setQuante] = useState(PER_PAGINA)
   const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
 
   useEffect(() => { carica() }, [])
+  useEffect(() => { setQuante(PER_PAGINA) }, [cerca, sezione])
 
   // Al ritorno da una modifica si riprende da dove si era: stessa
   // sezione, stessa ricerca, stessa partita aperta.
@@ -33,25 +41,11 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
     if (ripristina.aperta) setAperta(ripristina.aperta)
   }, [ripristina?.quando])
 
+  // Si vede subito ciò che è in memoria; la rilettura aggiorna da sola.
+  useEffect(() => seguiArchivio((righe) => setPartite(ordina(righe))), [profilo.id])
   async function carica() {
-    setCaricamento(true)
     try {
-      const righe = await tutteLeRighe(() => supabase
-      .from('partite')
-      .select(`
-        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, registrata_da,
-        giochi ( id, nome, immagine_url ),
-        luoghi ( id, nome ),
-        partecipazioni (
-          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio, ruolo, ordine_turno,
-          profili:utente_id ( nome, nickname, colore ),
-          ospiti:ospite_id ( nome, utente_collegato )
-        )
-      `)
-      .order('giocata_il', { ascending: false }))
-      // La stessa partita registrata da te e da un altro giocatore
-      // compare una volta sola, e fra le due copie resta la tua.
-      setPartite(unisciCondivise(righe, [profilo.id]))
+      setPartite(ordina(await leggiArchivio(profilo.id)))
     } catch (e) {
       setErrore(e.message)
     } finally {
@@ -64,6 +58,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
     const { error } = await supabase.from('partite').delete().eq('id', id)
     if (error) setErrore(error.message)
     else {
+      togliDallArchivio(id)
       setPartite((p) => p.filter((x) => x.id !== id))
       setAperta(null)
     }
@@ -196,7 +191,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       )}
 
       {/* --- Partite --- */}
-      {sezione === 'partite' && filtrate.map((p) => {
+      {sezione === 'partite' && filtrate.slice(0, Math.max(quante, filtrate.findIndex((x) => x.id === aperta) + 1)).map((p) => {
         const apertaQui = aperta === p.id
         // Ordina per piazzamento; dove manca (partite registrate prima
         // della classifica automatica) ripiega sul punteggio.
@@ -313,6 +308,12 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       })}
 
       {/* --- Giochi --- */}
+      {sezione === 'partite' && filtrate.length > quante && (
+        <button className="bottone bottone-secondario" onClick={() => setQuante((q) => q + PER_PAGINA * 2)}>
+          Mostra altre ({filtrate.length - quante})
+        </button>
+      )}
+
       {sezione === 'giochi' && (
         <ul className="elenco">
           {filtraNome(perGioco()).map((g, i) => (

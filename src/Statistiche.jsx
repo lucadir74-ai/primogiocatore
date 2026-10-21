@@ -1,10 +1,11 @@
 // Primo Giocatore - Statistiche
-// v3.18.0 - 202610201500 (ogni numero si tocca e spiega cosa vuol dire, in una finestra)
+// v3.19.0 - 202610211500 (più veloce: archivio delle partite in memoria, condiviso con lo Storico)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
+import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
@@ -90,8 +91,9 @@ const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sc
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
 export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
-  const [tuttePartite, setPartite] = useState([])
-  const [caricamento, setCaricamento] = useState(true)
+  const inMemoria = archivioInMemoria(profilo.id)
+  const [tuttePartite, setPartite] = useState(inMemoria || [])
+  const [caricamento, setCaricamento] = useState(!inMemoria)
   const [errore, setErrore] = useState('')
 
   const [tipo, setTipo] = useState('persona')
@@ -140,22 +142,11 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (mira.dove) setDove(mira.dove)
   }, [mira?.tipo, mira?.id, mira?.dove, mira?.quando])
 
+  // Si vede subito ciò che è in memoria; la rilettura aggiorna da sola.
+  useEffect(() => seguiArchivio(setPartite), [profilo.id])
   async function carica() {
     try {
-      const righe = await tutteLeRighe(() => supabase
-      .from('partite')
-      .select(`
-        id, giocata_il, durata_minuti, tipo_punteggio, esito_coop, note, registrata_da,
-        giochi ( id, nome ),
-        luoghi ( id, nome, tipo ),
-        partecipazioni (
-          utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, ordine_turno,
-          profili:utente_id ( nome, nickname, colore ),
-          ospiti:ospite_id ( nome, utente_collegato )
-        )
-      `)
-      .order('giocata_il', { ascending: true }))
-      setPartite(righe)
+      setPartite(await leggiArchivio(profilo.id))
     } catch (e) {
       setErrore(e.message)
     } finally {
@@ -488,7 +479,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (!confirm(`Cancellare ${nome} del ${giorno(p.giocata_il)}? Non si torna indietro.`)) return
     const { error } = await supabase.from('partite').delete().eq('id', p.id)
     if (error) setErrore(error.message)
-    else setPartite((righe) => righe.filter((x) => x.id !== p.id))
+    else { togliDallArchivio(p.id); setPartite((righe) => righe.filter((x) => x.id !== p.id)) }
   }
 
   function cambiaTipo(nuovo) {
