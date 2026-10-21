@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#982121" />
+
+    <!-- Installazione nella schermata Home -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/icona-192.png" />
+
+    <!-- iPhone: senza queste l'app resta una pagina dentro Safari,
+         con la barra degli indirizzi sempre in vista -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Primo" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Primo Giocatore by TdG Roma</title>
+    <meta name="description" content="L'app dei soci della Tana dei Goblin di Roma: registra le partite, scala la classifica e iscriviti ai tavoli." />
+
+    <!-- Anteprima quando il link si condivide su WhatsApp, Telegram, Facebook…
+         %SITO% lo riempie la build con l'indirizzo pubblico (vite.config.js). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="it_IT" />
+    <meta property="og:site_name" content="Primo Giocatore by TdG Roma" />
+    <meta property="og:title" content="Primo Giocatore by TdG Roma" />
+    <meta property="og:description" content="L'app dei soci della Tana dei Goblin di Roma: registra le partite, scala la classifica e iscriviti ai tavoli." />
+    <meta property="og:url" content="%SITO%/" />
+    <meta property="og:image" content="%SITO%/anteprima-condivisione.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Logo della Tana dei Goblin Roma e la scritta Primo Giocatore by TdG Roma" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
