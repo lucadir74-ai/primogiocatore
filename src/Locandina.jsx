@@ -1,5 +1,5 @@
 // Primo Giocatore - locandina del tavolo
-// v4.7.0 - 202609231600
+// v4.18.0 - 202610211200 (testata con il logo della Tana dei Goblin Roma)
 //
 // Un foglio A5 da stampare e appoggiare sul tavolo vero: chi passa
 // inquadra il codice e si iscrive, senza che nessuno debba spiegare
@@ -46,8 +46,8 @@ export default function Locandina({ tavolo, onChiudi }) {
 
       <div className="locandina">
         <div className="locandina-testa">
-          <span className="locandina-segnalino">1°</span>
-          <span className="locandina-marchio">Primo giocatore</span>
+          <img className="locandina-logo" src="/logo-tdg-roma.png" alt="Tana dei Goblin Roma" />
+          <span className="locandina-marchio">Primo Giocatore<small>by TdG Roma</small></span>
         </div>
 
         <h1 className="locandina-titolo">{tavolo.titolo || tavolo.giochi?.nome || 'Tavolo'}</h1>

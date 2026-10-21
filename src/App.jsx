@@ -1,4 +1,4 @@
-// Primo Giocatore v4.17.1 - 202610202015 (il pallino «sono io» si aggiorna appena approvi o rifiuti)
+// Primo Giocatore v4.18.0 - 202610211200 (nuova grafica by TdG Roma: logo della Tana, bordeaux e verde)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -115,10 +115,10 @@ function Icona({ nome }) {
 function Marchio() {
   return (
     <div className="marchio">
-      <div className="segnalino" aria-hidden="true">1°</div>
+      <img className="logo-tana" src="/logo-tdg-roma.png" alt="Tana dei Goblin Roma" />
       <h1>
-        Primo
-        <span>giocatore</span>
+        Primo Giocatore
+        <span>by TdG Roma</span>
       </h1>
     </div>
   )
@@ -548,7 +548,7 @@ function EliminaAccount({ email }) {
       />
       <button
         className="bottone"
-        style={{ marginTop: '0.75rem', background: '#8C2A20' }}
+        style={{ marginTop: '0.75rem', background: '#8C2A20', color: '#FFFFFF' }}
         onClick={elimina}
         disabled={!giusta || attesa}
       >
