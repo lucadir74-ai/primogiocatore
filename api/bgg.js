@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.7.1 - 202610112230
+// v1.7.2 - 202610221230 (collezione: conteggio dei giochi unici per il controllo)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -210,7 +210,7 @@ export default async function handler(req, res) {
         }))
         // Senza nome la riga è inutile e il database la rifiuterebbe.
         .filter((g) => g.nome && Number.isFinite(g.bgg_id))
-      return res.status(200).json({ giochi, totale: giochi.length })
+      return res.status(200).json({ giochi, totale: giochi.length, unici: new Set(giochi.map((g) => g.bgg_id)).size })
     }
 
     if (azione === 'partite') {
