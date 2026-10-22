@@ -33,6 +33,9 @@ export default defineConfig({
         // I dati non si mettono in cache: una statistica vecchia è
         // peggio di una statistica assente.
         navigateFallback: '/index.html',
+        // Gli indirizzi /api sono del server, non dell'app: aperti nel
+        // browser devono arrivare a Vercel, non finire sulla pagina dell'app.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             // I caratteri di Google servono all'aspetto, non ai dati:
