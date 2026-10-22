@@ -1,5 +1,5 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.1.0 - 202610212030 (aperta anche dall'elenco soci, con o senza account)
+// v1.2.0 - 202610221300 (organizzatori: «entra comunque» invece dello stato socio)
 // Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
 // Dall'elenco soci arriva anche la riga del socio (socio): se non ha
 // ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
@@ -29,6 +29,7 @@ function Riga({ etichetta, valore, tono }) {
 export default function SchedaIscritto({ id, socio, onChiudi }) {
   const [s, setS] = useState(null)
   const [errore, setErrore] = useState('')
+  const [orgTana, setOrgTana] = useState(false)   // organizza almeno una Tana
 
   useEffect(() => {
     if (!id) return
@@ -41,6 +42,10 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
           : error.message)
       } else if (!data) setErrore('Account non trovato.')
       else setS(data)
+    })
+    // Chi organizza una Tana entra comunque: lo stato socio non conta.
+    supabase.from('organizzatori_tana').select('tana_id').eq('utente_id', id).then(({ data }) => {
+      if (vivo) setOrgTana(Boolean(data?.length))
     })
     return () => { vivo = false }
   }, [id])
@@ -95,9 +100,10 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
 
           {s && (
             <>
-              {(p.organizzatore || p.dimostratore) && (
+              {(p.organizzatore || orgTana || p.dimostratore) && (
                 <p>
                   {p.organizzatore && <span className="distintivo">Organizzatore</span>}
+                  {!p.organizzatore && orgTana && <span className="distintivo">Organizzatore di Tana</span>}
                   {p.dimostratore && <span className="distintivo verde">Dimostratore</span>}
                 </p>
               )}
@@ -109,7 +115,9 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
                 <Riga etichetta="Città" valore={p.citta || 'non indicata'} tono={p.citta ? null : 'no'} />
                 <Riga etichetta="Iscritto il" valore={giorno(p.creato_il) || '—'} />
                 <Riga etichetta="Ultimo accesso" valore={giorno(s.ultimo_accesso) || 'mai'} />
-                {p.stato_socio && <Riga etichetta="Tana" valore={STATI[p.stato_socio] || p.stato_socio} />}
+                {(p.organizzatore || orgTana) && p.stato_socio !== 'socio'
+                  ? <Riga etichetta="Tana" valore="organizzatore · entra comunque" />
+                  : p.stato_socio && <Riga etichetta="Tana" valore={STATI[p.stato_socio] || p.stato_socio} />}
               </ul>
 
               {elencoSoci}

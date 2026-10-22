@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.0.0 - 202610201000 (collegamento con password e sincronizzazione automatica; iscritti riconosciuti dal numero BGA)
+// v3.1.0 - 202610221300 (sincronizzazione automatica: importa le partite sicure a blocchi e riprende lo storico da dove era arrivata)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -515,11 +515,38 @@ export async function leggiDaServer(profilo, { tutto = false, avanzamento = () =
 }
 
 const CHIAVE_ORA = 'primo-giocatore:bga-ultima-sincro'
+const CHIAVE_STORICO = 'primo-giocatore:bga-storico'
 const OGNI_ORE_BGA = 1
 
+// Importa da un blocco di tavoli solo quello che non chiede decisioni:
+// le partite nuove di giochi già riconosciuti e quelle che coincidono
+// esattamente con una che hai già. Restano fuori, e si contano, i
+// tavoli di giochi da abbinare e le partite incerte.
+async function importaSicure(profilo, arrivo) {
+  const a = await analizzaBga(profilo, arrivo)
+  if (!a.tavoli.length) return { nuove: 0, inSospeso: 0 }
+  const c = await classificaBga(a)
+  const inSospeso = c.incerte.length + c.senzaGioco
+  if (!c.nuove.length && !c.collegate.length) return { nuove: 0, inSospeso }
+  const r = await importaBga({ profilo, analisi: a, classi: { ...c, incerte: [] } })
+  return { nuove: r.nuove, inSospeso }
+}
+
+function leggiStorico(chiave) {
+  try { return JSON.parse(localStorage.getItem(chiave) || 'null') } catch { return null }
+}
+function scriviStorico(chiave, valore) {
+  try { localStorage.setItem(chiave, JSON.stringify(valore)) } catch { /* resta solo per ora */ }
+}
+
 // All'apertura dell'app, al massimo una volta all'ora, per chi ha
-// collegato BGA. Importa da solo quando non c'è niente da decidere;
-// altrimenti dice quante partite aspettano (giochi nuovi o incerte).
+// collegato BGA. Si salva un blocco alla volta, man mano che arriva:
+// se l'app si chiude a metà, il lavoro fatto resta.
+// La prima volta (nessuna partita BGA ancora importata) si legge tutto
+// lo storico; la pagina a cui si è arrivati resta sul telefono, così
+// la volta dopo si riprende da lì invece di ricominciare.
+// Le partite che chiedono una scelta non bloccano più le altre: si
+// contano e si rimandano a Dati e import.
 export async function sincronizzaBgaSeServe(profilo) {
   if (!profilo?.bga_id) return null
   try {
@@ -528,15 +555,33 @@ export async function sincronizzaBgaSeServe(profilo) {
     localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
   } catch { /* senza memoria si prova lo stesso */ }
 
-  const dati = await leggiDaServer(profilo)
-  if (dati.scollegato) return null
-  if (dati.scaduta) return { scaduta: true }
-  if (!dati.tavoli.length) return null
-  const a = await analizzaBga(profilo, dati)
-  if (!a.tavoli.length) return null
-  if (a.giochiDaAbbinare.length) return { inSospeso: a.tavoli.length }
-  const c = await classificaBga(a)
-  if (c.incerte.length) return { inSospeso: a.tavoli.length }
-  const r = await importaBga({ profilo, analisi: a, classi: c })
-  return r.nuove ? { nuove: r.nuove } : null
+  const chiave = `${CHIAVE_STORICO}:${profilo.id}`
+  let storico = leggiStorico(chiave)
+  if (storico?.fatto) storico = null
+  const base = await baseSegnalibro(profilo)
+  if (!storico && !base.fino) storico = { da: 1 }
+  const fino = storico ? 0 : base.fino - 7 * 86400
+
+  let da = storico?.da || 1
+  let nuove = 0
+  let inSospeso = 0
+  for (let giro = 0; giro < 40; giro++) {
+    const r = await chiamaBga('leggi', { fino, da })
+    if (r.scaduta) return { scaduta: true }
+    if (r.collegato === false) return null
+    if (r.tavoli?.length) {
+      const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false })
+      nuove += esito.nuove
+      inSospeso += esito.inSospeso
+    }
+    if (!r.continua) {
+      if (storico) scriviStorico(chiave, { fatto: true })
+      break
+    }
+    da = r.continua
+    if (storico) scriviStorico(chiave, { da })
+  }
+
+  if (!nuove && !inSospeso) return null
+  return { nuove, inSospeso }
 }

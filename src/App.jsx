@@ -1,4 +1,4 @@
-// Primo Giocatore v4.19.0 - 202610211500 (pagina di benvenuto e tasto per condividere l'app)
+// Primo Giocatore v4.19.1 - 202610221300 (avviso BGA: le partite in sospeso non bloccano più le altre)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -930,7 +930,7 @@ export default function App() {
             <div className="scheda scheda-sottile">
               <p className="aiuto" style={{ margin: 0 }}>
                 {avvisoBga.nuove > 0 && `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}. `}
-                {avvisoBga.inSospeso > 0 && `Da BGA: ${avvisoBga.inSospeso} partite aspettano una tua scelta (un gioco nuovo da riconoscere): aprile in Dati e import → Board Game Arena → Aggiorna ora. `}
+                {avvisoBga.inSospeso > 0 && `Da BGA: ${avvisoBga.inSospeso} partite aspettano una tua scelta (giochi da riconoscere o partite da confermare); le altre sono già entrate. Per vederle: Dati e import → Board Game Arena → Rileggi tutto lo storico. `}
                 {avvisoBga.scaduta && 'La sessione BGA è scaduta: ricollegala in Dati e import → Board Game Arena. '}
                 <button className="bottone-piatto" onClick={() => setAvvisoBga(null)}>ok</button>
               </p>
