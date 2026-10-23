@@ -1,5 +1,5 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.2.0 - 202610221300 (organizzatori: «entra comunque» invece dello stato socio)
+// v1.3.0 - 202610222200 (esito dell'ultima sincronizzazione BGA automatica)
 // Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
 // Dall'elenco soci arriva anche la riga del socio (socio): se non ha
 // ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
@@ -10,6 +10,18 @@ import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 
 const STATI = { socio: 'socio', in_attesa: 'in attesa', eccezione: 'entra come eccezione', escluso: 'non ammesso' }
+
+const quando = (d) => (d
+  ? new Date(d).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  : null)
+
+// Un tentativo «in corso» fermo da più di 10 minuti si è interrotto:
+// di solito l'app è stata chiusa prima della fine.
+function statoEsito(e) {
+  if (e.errore) return `errore: ${e.errore}`
+  if (e.in_corso) return Date.now() - new Date(e.quando).getTime() > 10 * 60000 ? 'interrotto (app chiusa prima della fine?)' : 'in corso'
+  return 'completato'
+}
 
 const giorno = (d) => (d
   ? new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -30,6 +42,7 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
   const [s, setS] = useState(null)
   const [errore, setErrore] = useState('')
   const [orgTana, setOrgTana] = useState(false)   // organizza almeno una Tana
+  const [esitoBga, setEsitoBga] = useState(null)  // ultimo tentativo automatico (tabella bga_esiti)
 
   useEffect(() => {
     if (!id) return
@@ -42,6 +55,10 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
           : error.message)
       } else if (!data) setErrore('Account non trovato.')
       else setS(data)
+    })
+    // L'ultimo tentativo di sincronizzazione BGA: se la tabella manca, niente.
+    supabase.from('bga_esiti').select('*').eq('utente_id', id).maybeSingle().then(({ data }) => {
+      if (vivo) setEsitoBga(data || null)
     })
     // Chi organizza una Tana entra comunque: lo stato socio non conta.
     supabase.from('organizzatori_tana').select('tana_id').eq('utente_id', id).then(({ data }) => {
@@ -143,6 +160,17 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
                     : `attiva dal ${giorno(bga.collegata_il)}`}
                   tono={bga && !bga.ultimo_errore ? null : 'no'} />
                 {bga?.ultima_lettura && <Riga etichetta="Ultima lettura" valore={giorno(bga.ultima_lettura)} />}
+                {esitoBga && (
+                  <>
+                    <Riga etichetta="Ultimo tentativo automatico"
+                      valore={`${quando(esitoBga.quando)} · ${statoEsito(esitoBga)}`}
+                      tono={esitoBga.errore ? 'no' : null} />
+                    <Riga etichetta="In quel tentativo"
+                      valore={`${esitoBga.importate} importate · ${esitoBga.in_sospeso} in sospeso`} />
+                    {esitoBga.storico && <Riga etichetta="Lettura" valore={esitoBga.storico} />}
+                    {esitoBga.versione && <Riga etichetta="Versione dell'app" valore={esitoBga.versione} />}
+                  </>
+                )}
                 <Riga etichetta="Partite importate da BGA"
                   valore={r.bga ? `${r.bga}${r.ultima_bga ? ` · la più recente del ${giorno(r.ultima_bga)}` : ''}` : 'nessuna'}
                   tono={r.bga ? null : 'no'} />

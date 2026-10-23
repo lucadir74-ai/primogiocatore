@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.1.0 - 202610221300 (sincronizzazione automatica: importa le partite sicure a blocchi e riprende lo storico da dove era arrivata)
+// v3.2.0 - 202610222200 (sincronizzazione automatica: l'esito di ogni tentativo si registra in bga_esiti e si vede nella scheda iscritto)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -547,6 +547,19 @@ function scriviStorico(chiave, valore) {
 // la volta dopo si riprende da lì invece di ricominciare.
 // Le partite che chiedono una scelta non bloccano più le altre: si
 // contano e si rimandano a Dati e import.
+// L'esito di ogni tentativo automatico, per la scheda iscritto: quando,
+// con quale versione dell'app, quante partite, eventuale errore e a che
+// punto è lo storico. Se la tabella manca (script SQL non eseguito) o la
+// scrittura fallisce, la sincronizzazione va avanti lo stesso.
+const VERSIONE_SINCRO = '3.2.0'
+async function registraEsito(profiloId, campi) {
+  try {
+    await supabase.from('bga_esiti').upsert(
+      { utente_id: profiloId, quando: new Date().toISOString(), versione: VERSIONE_SINCRO, ...campi },
+      { onConflict: 'utente_id' })
+  } catch { /* solo diagnostica: non deve fermare niente */ }
+}
+
 export async function sincronizzaBgaSeServe(profilo) {
   if (!profilo?.bga_id) return null
   try {
@@ -556,30 +569,55 @@ export async function sincronizzaBgaSeServe(profilo) {
   } catch { /* senza memoria si prova lo stesso */ }
 
   const chiave = `${CHIAVE_STORICO}:${profilo.id}`
-  let storico = leggiStorico(chiave)
-  if (storico?.fatto) storico = null
-  const base = await baseSegnalibro(profilo)
-  if (!storico && !base.fino) storico = { da: 1 }
-  const fino = storico ? 0 : base.fino - 7 * 86400
-
-  let da = storico?.da || 1
   let nuove = 0
   let inSospeso = 0
-  for (let giro = 0; giro < 40; giro++) {
-    const r = await chiamaBga('leggi', { fino, da })
-    if (r.scaduta) return { scaduta: true }
-    if (r.collegato === false) return null
-    if (r.tavoli?.length) {
-      const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false })
-      nuove += esito.nuove
-      inSospeso += esito.inSospeso
+  let storico = null
+  let da = 1
+  const aPunto = () => (storico ? `storico fino a pagina ${da}` : 'solo le novità')
+  await registraEsito(profilo.id, { in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio' })
+
+  try {
+    storico = leggiStorico(chiave)
+    if (storico?.fatto) storico = null
+    const base = await baseSegnalibro(profilo)
+    if (!storico && !base.fino) storico = { da: 1 }
+    const fino = storico ? 0 : base.fino - 7 * 86400
+    da = storico?.da || 1
+
+    let chiuso = false
+    for (let giro = 0; giro < 40; giro++) {
+      const r = await chiamaBga('leggi', { fino, da })
+      if (r.scaduta) {
+        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
+        return { scaduta: true }
+      }
+      if (r.collegato === false) {
+        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'BGA non collegato', storico: aPunto() })
+        return null
+      }
+      if (r.tavoli?.length) {
+        const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false })
+        nuove += esito.nuove
+        inSospeso += esito.inSospeso
+      }
+      if (!r.continua) {
+        if (storico) { scriviStorico(chiave, { fatto: true }); storico = null; da = 0 }
+        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: da === 0 ? 'storico completo' : 'solo le novità' })
+        chiuso = true
+        break
+      }
+      da = r.continua
+      if (storico) scriviStorico(chiave, { da })
+      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: aPunto() })
     }
-    if (!r.continua) {
-      if (storico) scriviStorico(chiave, { fatto: true })
-      break
-    }
-    da = r.continua
-    if (storico) scriviStorico(chiave, { da })
+    // Finiti i giri senza arrivare in fondo: riprende alla prossima apertura.
+    if (!chiuso) await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()}, riprende alla prossima apertura` })
+  } catch (e) {
+    await registraEsito(profilo.id, {
+      in_corso: false, importate: nuove, in_sospeso: inSospeso,
+      errore: String(e?.message || e).slice(0, 300), storico: aPunto(),
+    })
+    throw e
   }
 
   if (!nuove && !inSospeso) return null
