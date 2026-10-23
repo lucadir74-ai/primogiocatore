@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.15.0 - 202610031500
+// v4.16.0 - 202610230930 (un solo elenco: ogni gioco una volta, con «in collezione» e numero di partite; filtri Tutti / In collezione / Giocati)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -25,7 +25,8 @@ export default function Giochi({ profilo }) {
   const [manuale, setManuale] = useState(null) // null = chiuso
   const [vista, setVista] = useState('catalogo')
   const [posseduti, setPosseduti] = useState(new Set()) // collezione BGG
-  const [giocati, setGiocati] = useState(new Set())     // partite registrate
+  const [giocati, setGiocati] = useState(new Map())     // gioco_id → partite giocate
+  const [filtro, setFiltro] = useState('tutti')         // tutti | collezione | giocati
   const [cercaCatalogo, setCercaCatalogo] = useState('')
   const [completando, setCompletando] = useState(0) // quanti ne mancano
   const giaTentati = useRef(new Set())
@@ -44,7 +45,12 @@ export default function Giochi({ profilo }) {
           .select('partite ( gioco_id )').eq('utente_id', profilo.id)),
       ])
       setPosseduti(new Set(c.map((r) => r.gioco_id)))
-      setGiocati(new Set(p.map((r) => r.partite?.gioco_id).filter(Boolean)))
+      const conta = new Map()
+      for (const r of p) {
+        const id = r.partite?.gioco_id
+        if (id) conta.set(id, (conta.get(id) || 0) + 1)
+      }
+      setGiocati(conta)
     } catch (e) {
       setErrore(e.message)
     }
@@ -94,7 +100,7 @@ export default function Giochi({ profilo }) {
       if (!g) throw new Error('BGG non ha restituito il gioco.')
 
       await assicuraGiocoBgg(g)
-      setMessaggio(`${g.nome} aggiunto. Comparirà qui quando lo giocherai o lo segnerai come tuo.`)
+      setMessaggio(`${g.nome} aggiunto all\u2019app. Comparirà fra i tuoi giochi quando lo giocherai, o quando lo segnerai come posseduto su BGG e reimporterai la collezione.`)
       caricaCatalogo()
       caricaMiei()
     } catch (e) {
@@ -255,9 +261,31 @@ export default function Giochi({ profilo }) {
 
   const giaInCatalogo = (bggId) => catalogo.some((g) => g.bgg_id === bggId)
 
-  const miei = catalogo.filter((g) => posseduti.has(g.id))
-  const soloGiocati = catalogo.filter((g) => !posseduti.has(g.id) && giocati.has(g.id))
-  const totaleMiei = miei.length + soloGiocati.length
+  // Un solo elenco: ogni gioco compare una volta, con accanto se è in
+  // collezione e quante partite ci hai fatto. I filtri restringono.
+  const tuoi = catalogo.filter((g) => posseduti.has(g.id) || giocati.has(g.id))
+  const totaleMiei = tuoi.length
+  const quanti = {
+    tutti: tuoi.length,
+    collezione: tuoi.filter((g) => posseduti.has(g.id)).length,
+    giocati: tuoi.filter((g) => giocati.has(g.id)).length,
+  }
+  const filtrati = tuoi.filter((g) => filtro === 'collezione' ? posseduti.has(g.id)
+    : filtro === 'giocati' ? giocati.has(g.id) : true)
+
+  // Cosa dire accanto a un risultato della ricerca già presente nell'app.
+  function statoRisultato(bggId) {
+    const g = catalogo.find((x) => x.bgg_id === bggId)
+    if (!g) return null
+    if (posseduti.has(g.id)) return 'nella tua collezione'
+    if (giocati.has(g.id)) return 'già giocato'
+    return 'già nell\u2019app'
+  }
+
+  function partite(n) {
+    if (!n) return 'mai giocato'
+    return n === 1 ? '1 partita' : `${n} partite`
+  }
 
   // Un elenco di giochi con le loro impostazioni, filtrato dalla ricerca.
   function elenco(giochi) {
@@ -265,6 +293,7 @@ export default function Giochi({ profilo }) {
     const visibili = giochi.filter((g) => !cerca || g.nome.toLowerCase().includes(cerca))
     if (visibili.length === 0) return <p className="aiuto">Nessun gioco con questo nome.</p>
     return (
+      <>
       <ul className="elenco elenco-catalogo">
         {visibili.slice(0, 300).map((g) => (
         <li key={g.id}>
@@ -273,6 +302,9 @@ export default function Giochi({ profilo }) {
             <div>
               <strong>{g.nome}</strong>
               {g.anno ? <span className="anno"> {g.anno}</span> : null}
+              <span className="anno block">
+                {posseduti.has(g.id) ? 'in collezione · ' : ''}{partite(giocati.get(g.id))}
+              </span>
               {posso(g) ? (
                 <>
                   <select
@@ -304,6 +336,10 @@ export default function Giochi({ profilo }) {
         </li>
         ))}
       </ul>
+      {visibili.length > 300 && (
+        <p className="aiuto">Ne vedi 300 su {visibili.length}: usa la ricerca o i filtri per trovare gli altri.</p>
+      )}
+      </>
     )
   }
 
@@ -362,7 +398,7 @@ export default function Giochi({ profilo }) {
                 {r.anno ? <span className="anno"> {r.anno}</span> : null}
               </div>
               {giaInCatalogo(r.bgg_id) ? (
-                <span className="gia">già fra i tuoi</span>
+                <span className="gia">{statoRisultato(r.bgg_id)}</span>
               ) : (
                 <button className="bottone-piatto" onClick={() => aggiungi(r.bgg_id)}>
                   Aggiungi
@@ -459,8 +495,8 @@ export default function Giochi({ profilo }) {
       )}
 
       <p className="aiuto">
-        Qui ci sono solo i tuoi giochi: quelli della tua collezione BGG e quelli a cui hai
-        giocato senza possederli. Da ogni riga imposti come si conta il punteggio e se ci
+        Qui ci sono i giochi che ti riguardano: quelli della tua collezione BGG (segnati come
+        posseduti su BGG) e quelli a cui hai giocato. Da ogni riga imposti come si conta il punteggio e se ci
         sono fazioni: sono le impostazioni che decidono cosa ti chiede la schermata della partita.
       </p>
 
@@ -477,21 +513,18 @@ export default function Giochi({ profilo }) {
         </p>
       ) : (
         <>
-          <h3 className="titolo-sezione">
-            Nella tua collezione <span className="conteggio">{miei.length}</span>
-          </h3>
-          {miei.length === 0
-            ? <p className="aiuto">Nessuno: importa la collezione da BGG qui sopra.</p>
-            : elenco(miei)}
-
-          {soloGiocati.length > 0 && (
-            <>
-              <h3 className="titolo-sezione">
-                Giocati, non tuoi <span className="conteggio">{soloGiocati.length}</span>
-              </h3>
-              {elenco(soloGiocati)}
-            </>
-          )}
+          <div className="sottoschede">
+            {[['tutti', 'Tutti'], ['collezione', 'In collezione'], ['giocati', 'Giocati']].map(([id, etichetta]) => (
+              <button key={id} type="button" className={filtro === id ? 'attiva' : ''} onClick={() => setFiltro(id)}>
+                {etichetta} {quanti[id]}
+              </button>
+            ))}
+          </div>
+          {filtrati.length === 0
+            ? <p className="aiuto">
+                {filtro === 'collezione' ? 'Nessuno: importa la collezione da BGG qui sopra.' : 'Nessun gioco.'}
+              </p>
+            : elenco(filtrati)}
         </>
       )}
 
