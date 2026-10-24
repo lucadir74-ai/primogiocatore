@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.3.0 - 202610242030 (chiamate al server: se la connessione cade si riprova da soli fino a 3 volte; messaggi d'errore in italiano)
+// v3.4.0 - 202610242100 (chiamate al server più brevi e più numerose: fino a 200 giri per gli storici lunghi)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -526,7 +526,7 @@ export async function leggiDaServer(profilo, { tutto = false, avanzamento = () =
   const tavoli = []
   let da = 1
   let ultima = null
-  for (let giro = 0; giro < 40; giro++) {
+  for (let giro = 0; giro < 200; giro++) {
     avanzamento({ fase: fino ? 'Cerco le partite nuove su BGA' : `Leggo tutto lo storico BGA: ${tavoli.length} partite`, fatto: 0, totale: 1 })
     const r = await chiamaBga('leggi', { fino, da })
     if (r.scaduta) return { scaduta: true }
@@ -610,7 +610,7 @@ export async function sincronizzaBgaSeServe(profilo) {
     da = storico?.da || 1
 
     let chiuso = false
-    for (let giro = 0; giro < 40; giro++) {
+    for (let giro = 0; giro < 200; giro++) {
       const r = await chiamaBga('leggi', { fino, da })
       if (r.scaduta) {
         await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
