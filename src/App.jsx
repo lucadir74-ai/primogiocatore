@@ -927,8 +927,10 @@ export default function App() {
     setScheda('partita')
   }
 
+  // L'omino in testata apre sempre la scheda Profilo, non l'ultima sezione vista.
   function vaiAlProfilo() {
     setRitornoStorico(null)
+    apriSezione('profilo')
     setScheda('profilo')
     window.scrollTo({ top: 0 })
   }
