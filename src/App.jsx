@@ -719,6 +719,41 @@ function InAttesa({ profilo, onRicontrolla }) {
   )
 }
 
+/* ---------------- Indirizzi delle pagine ---------------- */
+
+// Ogni pagina ha il suo indirizzo (/tavoli, /storico, /profilo/dati...):
+// il tasto indietro del telefono torna alla pagina di prima invece di
+// chiudere l'app, e un indirizzo si può salvare o riaprire.
+const PAGINE = ['partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'profilo']
+
+function percorsoDi(scheda, partitaId, sezione) {
+  if (scheda === 'partita') return partitaId ? `/partita/${partitaId}` : '/partita'
+  if (scheda === 'profilo') return sezione && sezione !== 'profilo' ? `/profilo/${sezione}` : '/profilo'
+  return '/' + scheda
+}
+
+function leggiPercorso() {
+  try {
+    const [, a, b] = window.location.pathname.split('/')
+    if (!PAGINE.includes(a)) return null
+    return {
+      scheda: a,
+      partitaId: a === 'partita' && b ? decodeURIComponent(b) : null,
+      sezione: a === 'profilo' ? (b || 'profilo') : null,
+    }
+  } catch { return null }
+}
+
+function IconaProfilo() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+    </svg>
+  )
+}
+
 function IconaEsci() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -739,9 +774,9 @@ export default function App() {
   const [ammesso, setAmmesso] = useState(null)
   const [orgTana, setOrgTana] = useState(false)
   const [pronto, setPronto] = useState(false)
-  const [scheda, setScheda] = useState('partita')
+  const [scheda, setScheda] = useState(() => leggiPercorso()?.scheda || 'partita')
   const [erroreProfilo, setErroreProfilo] = useState('')
-  const [partitaId, setPartitaId] = useState(null)
+  const [partitaId, setPartitaId] = useState(() => leggiPercorso()?.partitaId || null)
   const [mira, setMira] = useState(null)
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
@@ -751,8 +786,16 @@ export default function App() {
     try { return localStorage.getItem(CHIAVE_GIA_ENTRATO) ? 'entra' : 'benvenuto' } catch { return 'benvenuto' }
   })
   const [sezioneProfilo, setSezioneProfilo] = useState(() => {
+    const dalPercorso = leggiPercorso()?.sezione
+    if (dalPercorso) return dalPercorso
     try { return localStorage.getItem(CHIAVE_SEZIONE) || 'profilo' } catch { return 'profilo' }
   })
+  // Come scrivere il prossimo cambio di pagina nella cronologia del
+  // browser: 'push' aggiunge un passo (il tasto indietro ci torna),
+  // 'replace' sostituisce quello attuale. Il primo è sempre 'replace'.
+  const modoStoria = useRef('replace')
+  // Dati da allegare al prossimo passo, es. { ritornoA: '/storico' }.
+  const statoProssimo = useRef(null)
   const [daApprovare, setDaApprovare] = useState(0)
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
   const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
@@ -846,12 +889,63 @@ export default function App() {
   }
   useEffect(() => { setAmmesso(null); controllaAccesso() }, [profilo?.id])
 
+  // La pagina aperta finisce nell'indirizzo e nella cronologia.
+  const inApp = !!(sessione && profilo && !tavoloPubblico && !daBga)
+  useEffect(() => {
+    if (!inApp) return
+    const percorso = percorsoDi(scheda, partitaId, sezioneProfilo)
+    const modo = modoStoria.current
+    modoStoria.current = 'push'
+    const stato = { pg: true, ...(statoProssimo.current || {}) }
+    statoProssimo.current = null
+    if (percorso === window.location.pathname) return
+    try {
+      if (modo === 'replace') window.history.replaceState(stato, '', percorso)
+      else window.history.pushState(stato, '', percorso)
+    } catch { /* niente: si resta sulla pagina senza cronologia */ }
+  }, [inApp, scheda, partitaId, sezioneProfilo])
+
+  // Tasto indietro (o avanti) del telefono: si apre la pagina dell'indirizzo.
+  useEffect(() => {
+    function suCambioIndirizzo() {
+      const r = leggiPercorso()
+      if (!r) return
+      setScheda(r.scheda)
+      setPartitaId(r.partitaId)
+      if (r.sezione) setSezioneProfilo(r.sezione)
+      window.scrollTo({ top: 0 })
+    }
+    window.addEventListener('popstate', suCambioIndirizzo)
+    return () => window.removeEventListener('popstate', suCambioIndirizzo)
+  }, [])
+
+  // Apre una partita da modificare ricordando da dove si arriva, così
+  // a fine modifica si torna indietro di un passo invece di aggiungerne.
+  function apriPartita(id) {
+    statoProssimo.current = { ritornoA: window.location.pathname }
+    setPartitaId(id)
+    setScheda('partita')
+  }
+
+  function vaiAlProfilo() {
+    setRitornoStorico(null)
+    setScheda('profilo')
+    window.scrollTo({ top: 0 })
+  }
+
   return (
     <div className="guscio">
       <header className="testata">
         <Marchio />
         <div className="tasti-testata">
           <Condividi />
+          {inApp && (
+            <button type="button" className={'tasto-condividi' + (scheda === 'profilo' ? ' attivo' : '')}
+              aria-label="Profilo" title="Profilo" aria-current={scheda === 'profilo' ? 'page' : undefined}
+              onClick={vaiAlProfilo}>
+              <IconaProfilo />
+            </button>
+          )}
           {sessione && !tavoloPubblico && (
             <button type="button" className="tasto-condividi" aria-label="Esci dall'account" title="Esci dall'account"
               onClick={() => { if (window.confirm('Vuoi uscire dall\u2019account?')) supabase.auth.signOut() }}>
@@ -914,7 +1008,6 @@ export default function App() {
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
               ['giocatori', 'Giocatori'],
-              ['profilo', 'Profilo'],
             ].map(([id, etichetta]) => (
               <button
                 key={id}
@@ -975,24 +1068,34 @@ export default function App() {
               profilo={profilo}
               partitaId={partitaId}
               finitaModifica={() => {
-                setPartitaId(null)
                 // Si torna da dove si era arrivati, com'era.
+                const eraModifica = !!partitaId
+                let meta
                 if (ritorno) {
                   setMira({ ...ritorno, quando: Date.now() })
-                  setScheda('statistiche')
                   setRitorno(null)
+                  meta = 'statistiche'
                 } else {
                   if (ritornoStorico) {
                     setRitornoStorico({ ...ritornoStorico, quando: Date.now() })
                   }
-                  setScheda('storico')
+                  meta = 'storico'
                 }
+                // Arrivati da quella pagina: un passo indietro, così la
+                // modifica non resta nella cronologia.
+                if (eraModifica && window.history.state?.ritornoA === '/' + meta) {
+                  window.history.back()
+                  return
+                }
+                if (eraModifica) modoStoria.current = 'replace'
+                setPartitaId(null)
+                setScheda(meta)
               }}
             />
           ) : scheda === 'tavoli' ? (
             <Tavoli
               profilo={profilo}
-              onRegistraPartita={(id) => { setPartitaId(id); setScheda('partita') }}
+              onRegistraPartita={apriPartita}
             />
           ) : scheda === 'storico' ? (
             <Storico
@@ -1001,8 +1104,7 @@ export default function App() {
               onModifica={(id, posizione) => {
                 setRitorno(null)
                 setRitornoStorico(posizione || null)
-                setPartitaId(id)
-                setScheda('partita')
+                apriPartita(id)
               }}
               onApri={(tipo, id) => {
                 setMira({ tipo, id, quando: Date.now() })
@@ -1013,15 +1115,17 @@ export default function App() {
             <Statistiche
               profilo={profilo}
               mira={mira}
-              onClassifiche={() => setScheda('classifiche')}
+              onClassifiche={() => { statoProssimo.current = { ritornoA: '/statistiche' }; setScheda('classifiche') }}
               onModifica={(id, dove) => {
                 setRitorno(dove || null)
-                setPartitaId(id)
-                setScheda('partita')
+                apriPartita(id)
               }}
             />
           ) : scheda === 'classifiche' ? (
-            <Classifiche profilo={profilo} onIndietro={() => setScheda('statistiche')} />
+            <Classifiche profilo={profilo} onIndietro={() => {
+              if (window.history.state?.ritornoA === '/statistiche') window.history.back()
+              else setScheda('statistiche')
+            }} />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : scheda === 'giocatori' ? (

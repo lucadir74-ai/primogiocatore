@@ -96,6 +96,18 @@ body {
 
 /* Tasti a destra nella testata (Condividi, Esci) */
 .tasti-testata { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+.marchio { min-width: 0; }
+
+/* Telefoni stretti: tre tasti in testata più il marchio */
+@media (max-width: 420px) {
+  .testata { padding: 0.8rem 0.9rem; gap: 0.5rem; }
+  .logo-tana { width: 2.7rem; }
+  .marchio { gap: 0.55rem; }
+  .marchio h1 { font-size: 1.4rem; }
+  .marchio span { font-size: 0.7rem; }
+  .tasti-testata { gap: 0.35rem; }
+  .tasti-testata .tasto-condividi { width: 2.5rem; height: 2.5rem; }
+}
 
 /* Tasto Condividi nella testata */
 .tasto-condividi {
@@ -109,6 +121,10 @@ body {
   background: transparent;
   color: var(--testata-testo);
   cursor: pointer;
+}
+.tasto-condividi.attivo {
+  background: var(--testata-testo);
+  color: var(--testata-fondo);
 }
 .tasto-condividi:active { background: color-mix(in srgb, var(--testata-testo) 15%, transparent); }
 .tasto-condividi:focus-visible { outline: 2px solid var(--testata-testo); outline-offset: 2px; }
