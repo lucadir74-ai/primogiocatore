@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.0.0 - 202610201000 (collegamento con password e aggiornamento automatico; segnalibro come alternativa)
+// v3.1.0 - 202610242030 (Aggiorna ora tiene lo schermo acceso finché lavora, per non far cadere la connessione)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -72,6 +72,11 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
 
   async function aggiornaOra(tutto = false) {
     setErrore(''); setAvviso(''); setFase('lavoro')
+    // Uno storico lungo richiede minuti: se il telefono spegne lo schermo
+    // il browser taglia la connessione («Failed to fetch»). Si tiene
+    // acceso finché si lavora, dove il browser lo permette.
+    let schermo = null
+    try { schermo = await navigator.wakeLock?.request('screen') } catch { /* non supportato: pazienza */ }
     try {
       const dati = await leggiDaServer(profilo, { tutto, avanzamento: setAvanzamento })
       if (dati.scaduta) {
@@ -82,7 +87,12 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       }
       if (dati.scollegato) { setCollegamento({ collegato: false }); setAvanzamento(null); setFase('attesa'); return }
       await ricevi(dati)
-    } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('attesa') }
+    } catch (e) {
+      setErrore(/failed to fetch|load failed|networkerror/i.test(e.message)
+        ? 'La connessione si è interrotta durante l’importazione. Tieni l’app aperta in primo piano, con lo schermo acceso, e tocca di nuovo «Aggiorna ora».'
+        : e.message)
+      setAvanzamento(null); setFase('attesa')
+    } finally { schermo?.release?.().catch(() => {}) }
   }
   const codice = segnalibroBga(window.location.origin, base || { id: profilo.bga_id })
 

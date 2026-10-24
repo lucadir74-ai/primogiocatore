@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.2.0 - 202610222200 (sincronizzazione automatica: l'esito di ogni tentativo si registra in bga_esiti e si vede nella scheda iscritto)
+// v3.3.0 - 202610242030 (chiamate al server: se la connessione cade si riprova da soli fino a 3 volte; messaggi d'errore in italiano)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -480,17 +480,42 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
    --------------------------------------------------------------- */
 
 export async function chiamaBga(azione, extra = {}) {
-  const { data: { session } } = await supabase.auth.getSession()
-  const r = await fetch('/api/bga', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-    body: JSON.stringify({ azione, ...extra }),
-  })
-  let dati = null
-  try { dati = await r.json() } catch { /* niente */ }
-  if (!dati) throw new Error(`Il server non ha risposto (HTTP ${r.status}).`)
-  if (dati.errore) throw new Error(dati.errore)
-  return dati
+  // Leggere e controllare non cambia niente: se la connessione cade
+  // (schermo spento, app in secondo piano, rete che passa dal Wi-Fi ai
+  // dati) o il server è momentaneamente giù, si riprova da soli.
+  // «collega» e «scollega» no: meglio che decida la persona.
+  const ripetibile = azione === 'leggi' || azione === 'stato'
+  const attese = ripetibile ? [3000, 8000, 20000] : []
+  for (let prova = 0; ; prova++) {
+    const { data: { session } } = await supabase.auth.getSession()
+    let r = null
+    let caduta = false
+    try {
+      r = await fetch('/api/bga', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ azione, ...extra }),
+      })
+    } catch { caduta = true }
+    let dati = null
+    if (r) { try { dati = await r.json() } catch { /* niente */ } }
+    const daRiprovare = caduta || (!dati && r && r.status >= 500)
+    if (daRiprovare && prova < attese.length) {
+      await new Promise((ok) => setTimeout(ok, attese[prova]))
+      continue
+    }
+    if (caduta) {
+      throw new Error('La connessione con Primo Giocatore si è interrotta (anche dopo 3 tentativi). '
+        + 'Tieni l’app aperta in primo piano, con lo schermo acceso, e riprova.')
+    }
+    if (!dati) {
+      throw new Error(r.status === 504
+        ? 'BGA ha risposto troppo lentamente e il server ha smesso di aspettare (HTTP 504). Riprova fra qualche minuto.'
+        : `Il server non ha risposto (HTTP ${r.status}).`)
+    }
+    if (dati.errore) throw new Error(dati.errore)
+    return dati
+  }
 }
 
 // Le partite dal server, pagina dopo pagina (una chiamata non basta
