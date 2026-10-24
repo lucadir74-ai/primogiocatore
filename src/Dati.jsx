@@ -397,6 +397,14 @@ export default function Dati({ profilo }) {
           </p>
         )}
 
+        {anteprimaBgg.senzaData > 0 && (
+          <p className="aiuto avviso-pareggio">
+            {anteprimaBgg.senzaData === 1 ? '1 partita non ha' : `${anteprimaBgg.senzaData} partite non hanno`} la
+            data su BGG e {anteprimaBgg.senzaData === 1 ? 'resta' : 'restano'} fuori. Se aggiungi la data su
+            BGG, alla prossima lettura entrano.
+          </p>
+        )}
+
         <h3 className="titolo-sezione">Considerate nuove</h3>
         <ul className="elenco elenco-scorrevole">
           {anteprimaBgg.partite.filter((p) => !p.sospetta).map((p) => (

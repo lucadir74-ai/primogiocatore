@@ -68,6 +68,15 @@ function segnaSincro() {
   return adesso
 }
 
+// BGG ammette partite senza data: arrivano come «0000-00-00», che il
+// database rifiuta. Valida solo una data vera, dal 1900 a domani.
+export function dataValida(d) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return false
+  const t = new Date(d + 'T12:00:00Z')
+  if (Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== d) return false
+  return d >= '1900-01-01' && t.getTime() <= Date.now() + 86400000
+}
+
 // Legge da BGG e segna ogni partita: già importata (si scarta),
 // sospetta (sembra già presente) o nuova. dal: 'AAAA-MM-GG' o niente.
 export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamento = () => {} }) {
@@ -109,6 +118,11 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     escluseBga = prima - uniche.length
   }
 
+  // Senza data non si possono mettere in ordine né confrontare: restano fuori.
+  const primaDate = uniche.length
+  uniche = uniche.filter((p) => dataValida(p.data))
+  const senzaData = primaDate - uniche.length
+
   tutte.length = 0
   tutte.push(...uniche)
 
@@ -145,13 +159,14 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     giaImportate: tutte.length - daGuardare.length,
     doppieInLettura: doppie,
     escluseBga,
+    senzaData,
     utente,
   }
 }
 
 // Scrive le partite scelte. Restituisce quante sono entrate.
 export async function importaPartiteBgg({ partite, utente, profiloId, avanzamento = () => {} }) {
-  const conGioco = partite.filter((p) => p.gioco?.bgg_id)
+  const conGioco = partite.filter((p) => p.gioco?.bgg_id && dataValida(p.data))
 
   // I giochi in un colpo solo: quelli già nell'app si riusano.
   const unici = [...new Map(conGioco.map((p) => [p.gioco.bgg_id, p.gioco])).values()]
