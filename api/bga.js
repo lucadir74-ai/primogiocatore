@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.0.0 - 202610201000
+// v1.1.0 - 202610242045 (una riga nei log di Vercel per ogni chiamata: azione, durata, esito; mai la password)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -255,19 +255,34 @@ export default async function handler(req, res) {
   if (!utenteId) return res.status(401).json({ errore: 'Accesso a Primo Giocatore scaduto: rientra.' })
 
   const corpo = req.body || {}
+  const partenza = Date.now()
+  // Una riga per chiamata nei log di Vercel: senza, le chiamate andate
+  // bene non lasciano traccia. Mai la password né i cookie.
+  const traccia = (esito) => {
+    const extra = corpo.azione === 'leggi' ? ` da=${corpo.da ?? 1} fino=${corpo.fino ?? 0}` : ''
+    console.log(`[bga] ${corpo.azione || '?'} utente=${utenteId.slice(0, 8)}${extra} ${Date.now() - partenza}ms → ${esito}`)
+  }
+  const rispondi = (dati) => {
+    let esito = 'ok'
+    if (dati?.errore) esito = `errore: ${String(dati.errore).slice(0, 120)}`
+    else if (dati?.scaduta) esito = 'sessione scaduta'
+    else if (Array.isArray(dati?.tavoli)) esito = `${dati.tavoli.length} partite${dati.continua ? `, continua da pagina ${dati.continua}` : ', fine'}`
+    traccia(esito)
+    return res.status(200).json(dati)
+  }
   try {
-    if (corpo.azione === 'collega') return res.status(200).json(await collega(db, utenteId, corpo))
-    if (corpo.azione === 'stato') return res.status(200).json(await stato(db, utenteId))
-    if (corpo.azione === 'leggi') return res.status(200).json(await leggi(db, utenteId, corpo))
+    if (corpo.azione === 'collega') return rispondi(await collega(db, utenteId, corpo))
+    if (corpo.azione === 'stato') return rispondi(await stato(db, utenteId))
+    if (corpo.azione === 'leggi') return rispondi(await leggi(db, utenteId, corpo))
     if (corpo.azione === 'scollega') {
       await db.from('bga_sessioni').delete().eq('utente_id', utenteId)
-      return res.status(200).json({ collegato: false })
+      return rispondi({ collegato: false })
     }
     return res.status(400).json({ errore: 'Azione sconosciuta' })
   } catch (e) {
     // Mai la password nei messaggi: qui non c'è, ma per prudenza niente corpo.
     const msg = String(e?.message || e)
-    if (/bga_sessioni/.test(msg)) return res.status(200).json({ errore: 'Al database manca lo script SQL per il collegamento BGA (bga_sessioni.sql).' })
-    return res.status(200).json({ errore: `Errore: ${msg.slice(0, 200)}` })
+    if (/bga_sessioni/.test(msg)) return rispondi({ errore: 'Al database manca lo script SQL per il collegamento BGA (bga_sessioni.sql).' })
+    return rispondi({ errore: `Errore: ${msg.slice(0, 200)}` })
   }
 }
