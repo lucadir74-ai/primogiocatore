@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.16.0 - 202610230930 (un solo elenco: ogni gioco una volta, con «in collezione» e numero di partite; filtri Tutti / In collezione / Giocati)
+// v4.17.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -40,7 +40,7 @@ export default function Giochi({ profilo }) {
   async function caricaMiei() {
     try {
       const [c, p] = await Promise.all([
-        tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id)),
+        tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
         tutteLeRighe(() => supabase.from('partecipazioni')
           .select('partite ( gioco_id )').eq('utente_id', profilo.id)),
       ])

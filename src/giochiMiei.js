@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.1.0 - 202610181300 (ospiti collegati riusati negli import)
+// v2.2.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -15,7 +15,7 @@ import { supabase, tutteLeRighe } from './supabase'
 export async function giochiMiei(profiloId, campi) {
   const [c, p, m] = await Promise.all([
     tutteLeRighe(() => supabase.from('collezioni')
-      .select(`gioco_id, giochi ( ${campi} )`).eq('utente_id', profiloId)),
+      .select(`gioco_id, giochi ( ${campi} )`).eq('utente_id', profiloId), 1000, 'gioco_id'),
     tutteLeRighe(() => supabase.from('partecipazioni')
       .select(`partite ( giochi ( ${campi} ) )`).eq('utente_id', profiloId)),
     tutteLeRighe(() => supabase.from('giochi').select(campi).eq('creato_da', profiloId)),

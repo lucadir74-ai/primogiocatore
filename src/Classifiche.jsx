@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.1.0 - 202610112330
+// v1.2.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -61,7 +61,7 @@ export default function Classifiche({ profilo, onIndietro }) {
       try {
         const r = await tutteLeRighe(() => supabase.from('ipg')
           .select('profilo_id, gioco_id, ipg, partite, vittorie, posizione, nome, colore, gioco_nome, gioco_immagine, aggiornato_il')
-          .order('profilo_id').order('gioco_id'))
+          .order('profilo_id').order('gioco_id'), 1000, null)
         if (vivo) setRighe(r)
       } catch (e) {
         if (vivo) setErrore(e.message)

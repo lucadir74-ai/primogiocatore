@@ -32,10 +32,18 @@ export const daMostrare = (p) =>
 // Il primo blocco da solo (spesso basta); se è pieno, i successivi
 // partono a gruppi di PARALLELI insieme invece che uno dopo l'altro:
 // con qualche migliaio di partite la pagina si apre in un terzo del tempo.
+//
+// chiave: la colonna univoca che fa da ultimo criterio di ordine (di
+// solito id). Senza un ordine univoco il database non garantisce la
+// stessa sequenza da un blocco all'altro: oltre le mille righe alcune
+// sparivano e altre arrivavano due volte. Si aggiunge in coda a
+// eventuali altri ordini (nome, data...), che restano i primi.
+// null solo dove la query ha già un ordine univoco suo.
 const PARALLELI = 4
-export async function tutteLeRighe(costruisciQuery, blocco = 1000) {
+export async function tutteLeRighe(costruisciQuery, blocco = 1000, chiave = 'id') {
+  const query = () => (chiave ? costruisciQuery().order(chiave) : costruisciQuery())
   const pezzo = async (da) => {
-    const { data, error } = await costruisciQuery().range(da, da + blocco - 1)
+    const { data, error } = await query().range(da, da + blocco - 1)
     if (error) throw error
     return data || []
   }

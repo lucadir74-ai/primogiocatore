@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.19.0 - 202610211500 (più veloce: archivio delle partite in memoria, condiviso con lo Storico)
+// v3.20.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -109,7 +109,8 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
   async function caricaPrimeggio() {
     try {
       const righe = await tutteLeRighe(() => supabase.from('ipg')
-        .select('profilo_id, gioco_id, ipg, partite, posizione, nome, colore, aggiornato_il'))
+        .select('profilo_id, gioco_id, ipg, partite, posizione, nome, colore, aggiornato_il')
+        .order('profilo_id').order('gioco_id'), 1000, null)
       setPrimeggio(righe)
     } catch { /* tabella non ancora creata: il Primeggio resta nascosto */ }
   }

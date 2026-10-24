@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.15.0 - 202610202145 (in cima chi era all'ultima partita, e un tocco per rimetterli tutti)
+// v4.16.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
@@ -174,7 +174,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       tutteLeRighe(() => supabase.from('ospiti').select('id, nome').order('nome')),
       tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
       tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
-      tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id)),
+      tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
     ])
     setCatalogo(g)
     setPersone(p)

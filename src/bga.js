@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.4.0 - 202610242100 (chiamate al server più brevi e più numerose: fino a 200 giri per gli storici lunghi)
+// v3.5.0 - 202610250130 (sincronizzazione automatica: archivio letto una volta sola e, per le novità, solo le ultime settimane; avanzamento visibile nella scheda iscritto)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -152,15 +152,25 @@ export async function baseSegnalibro(profilo) {
    --------------------------------------------------------------- */
 
 // Le tue partite, per riconoscere quelle già presenti.
-async function archivio(profiloId) {
+// dal (AAAA-MM-GG, facoltativo): solo le partite da quel giorno in poi.
+// Basta per le novità: i tavoli BGA recenti si confrontano con le
+// partite delle stesse settimane, non con un archivio di anni.
+async function archivio(profiloId, dal = null) {
   try {
-    return await tutteLeRighe(() => supabase.from('partite')
-      .select('id, gioco_id, giocata_il, bga_tavolo, giochi ( bgg_id, nome ), partecipazioni ( punteggio_totale )')
-      .eq('registrata_da', profiloId))
+    return await tutteLeRighe(() => {
+      let q = supabase.from('partite')
+        .select('id, gioco_id, giocata_il, bga_tavolo, giochi ( bgg_id, nome ), partecipazioni ( punteggio_totale )')
+        .eq('registrata_da', profiloId)
+      if (dal) q = q.gte('giocata_il', dal)
+      return q
+    })
   } catch (e) { throw erroreMigrazione(e) }
 }
 
-export async function analizzaBga(profilo, arrivo) {
+// memoria (facoltativa): { righe } dell'archivio già letto. La usa la
+// sincronizzazione automatica, che altrimenti a ogni giro rileggeva
+// tutto l'archivio (con decine di migliaia di partite, decine di MB).
+export async function analizzaBga(profilo, arrivo, memoria = null) {
   const giocatore = String(arrivo?.giocatore || '')
   const tavoli = Array.isArray(arrivo?.tavoli) ? arrivo.tavoli : null
   if (!/^\d+$/.test(giocatore) || !tavoli) throw new Error('I dati non sembrano quelli del segnalibro BGA.')
@@ -175,7 +185,8 @@ export async function analizzaBga(profilo, arrivo) {
   // Un tavolo una volta sola, anche se il segnalibro l'ha letto due volte.
   const unici = [...new Map(tavoli.filter((t) => t?.t && t?.g && Array.isArray(t.p)).map((t) => [String(t.t), t])).values()]
 
-  const righe = await archivio(profilo.id)
+  const righe = memoria?.righe || await archivio(profilo.id)
+  if (memoria) memoria.righe = righe
   const giaTavoli = new Set(righe.filter((r) => r.bga_tavolo != null).map((r) => String(r.bga_tavolo)))
   const daGuardare = unici.filter((t) => !giaTavoli.has(String(t.t)))
 
@@ -344,8 +355,11 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
     fatte += blocco.length
   }
 
+  const collegati = daCollegare.map(({ tavolo, partitaId }) => ({ partitaId, bga_tavolo: Number(tavolo.t) }))
+  const create = []   // { id, bga_tavolo } delle partite nuove
+
   const daCreare = [...classi.nuove, ...(incerteNuove ? classi.incerte.map((x) => x.tavolo) : [])]
-  if (!daCreare.length) return { collegate: daCollegare.length, nuove: 0 }
+  if (!daCreare.length) return { collegate: daCollegare.length, nuove: 0, collegati, create }
 
   // I giocatori: prima il numero BGA, poi il nome.
   avanzamento({ fase: 'Giocatori', fatto: 0, totale: 1 })
@@ -439,6 +453,7 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
     const { data: inserite, error } = await supabase.from('partite').insert(righe).select('id, bga_tavolo')
     if (error) throw erroreMigrazione(error)
     const perTavolo = new Map(inserite.map((p) => [String(p.bga_tavolo), p.id]))
+    create.push(...inserite)
 
     const partecipazioni = []
     for (const t of blocco) {
@@ -472,7 +487,7 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
     fatte += blocco.length
   }
 
-  return { collegate: daCollegare.length, nuove: daCreare.length }
+  return { collegate: daCollegare.length, nuove: daCreare.length, collegati, create }
 }
 
 /* ---------------------------------------------------------------
@@ -547,13 +562,24 @@ const OGNI_ORE_BGA = 1
 // le partite nuove di giochi già riconosciuti e quelle che coincidono
 // esattamente con una che hai già. Restano fuori, e si contano, i
 // tavoli di giochi da abbinare e le partite incerte.
-async function importaSicure(profilo, arrivo) {
-  const a = await analizzaBga(profilo, arrivo)
+async function importaSicure(profilo, arrivo, memoria) {
+  const a = await analizzaBga(profilo, arrivo, memoria)
   if (!a.tavoli.length) return { nuove: 0, inSospeso: 0 }
   const c = await classificaBga(a)
   const inSospeso = c.incerte.length + c.senzaGioco
   if (!c.nuove.length && !c.collegate.length) return { nuove: 0, inSospeso }
   const r = await importaBga({ profilo, analisi: a, classi: { ...c, incerte: [] } })
+  // L'archivio in memoria resta in pari con quello che si è appena
+  // scritto: una partita collegata non va ricollegata al giro dopo, e un
+  // tavolo appena importato non va reimportato.
+  if (memoria?.righe) {
+    const perId = new Map(memoria.righe.map((x) => [x.id, x]))
+    for (const x of r.collegati || []) {
+      const riga = perId.get(x.partitaId)
+      if (riga) riga.bga_tavolo = x.bga_tavolo
+    }
+    for (const x of r.create || []) memoria.righe.push({ id: x.id, bga_tavolo: x.bga_tavolo, partecipazioni: [] })
+  }
   return { nuove: r.nuove, inSospeso }
 }
 
@@ -576,7 +602,7 @@ function scriviStorico(chiave, valore) {
 // con quale versione dell'app, quante partite, eventuale errore e a che
 // punto è lo storico. Se la tabella manca (script SQL non eseguito) o la
 // scrittura fallisce, la sincronizzazione va avanti lo stesso.
-const VERSIONE_SINCRO = '3.2.0'
+const VERSIONE_SINCRO = '3.5.0'
 async function registraEsito(profiloId, campi) {
   try {
     await supabase.from('bga_esiti').upsert(
@@ -609,8 +635,16 @@ export async function sincronizzaBgaSeServe(profilo) {
     const fino = storico ? 0 : base.fino - 7 * 86400
     da = storico?.da || 1
 
+    // L'archivio si legge una volta, al primo blocco con partite, e poi
+    // resta in memoria per tutti i giri. Per le sole novità bastano le
+    // partite delle ultime settimane (margine largo: le partite a turni
+    // durano giorni, e gli orari salvati possono sfasare di un giorno).
+    const memoria = { righe: null }
+    const dal = fino ? new Date((fino - 30 * 86400) * 1000).toISOString().slice(0, 10) : null
+
     let chiuso = false
     for (let giro = 0; giro < 200; giro++) {
+      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · leggo da BGA` })
       const r = await chiamaBga('leggi', { fino, da })
       if (r.scaduta) {
         await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
@@ -621,7 +655,12 @@ export async function sincronizzaBgaSeServe(profilo) {
         return null
       }
       if (r.tavoli?.length) {
-        const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false })
+        if (!memoria.righe) {
+          await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · leggo il tuo archivio` })
+          memoria.righe = await archivio(profilo.id, dal)
+        }
+        await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · confronto e salvo ${r.tavoli.length} partite (archivio: ${memoria.righe.length})` })
+        const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false }, memoria)
         nuove += esito.nuove
         inSospeso += esito.inSospeso
       }

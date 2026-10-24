@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.9.0 - 202609211100
+// v3.10.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -43,7 +43,7 @@ export default function Collezione({ profilo }) {
         tutteLeRighe(() => supabase
           .from('collezioni')
           .select('gioco_id, origine, giochi ( id, nome, anno, immagine_url )')
-          .eq('utente_id', profilo.id)),
+          .eq('utente_id', profilo.id), 1000, 'gioco_id'),
         tutteLeRighe(() => supabase
           .from('partite')
           .select('gioco_id, giocata_il, giochi ( id, nome, immagine_url ), partecipazioni ( utente_id )')),
