@@ -94,6 +94,9 @@ body {
   gap: 0.75rem;
 }
 
+/* Tasti a destra nella testata (Condividi, Esci) */
+.tasti-testata { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+
 /* Tasto Condividi nella testata */
 .tasto-condividi {
   flex: none;

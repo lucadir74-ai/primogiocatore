@@ -211,8 +211,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
     setAttesa(true)
     try {
       const { data, error } = await supabase.rpc('email_tra_i_soci', { p_email: email.trim() })
-      // Senza lo script SQL (funzione mancante) si va avanti come prima.
-      if (error) { setEmailVerificata(false); setPasso('dati'); return }
+      // Se il controllo non riesce non si passa: l'iscrizione è solo per i soci.
+      if (error) { setErrore('Non riesco a controllare l\u2019elenco soci. Riprova fra poco.'); return }
       if (data) { setEmailVerificata(true); setPasso('dati') } else setNonTrovata(true)
     } finally { setAttesa(false) }
   }
@@ -229,6 +229,10 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
       if (!email) { setErrore('Scrivi l\u2019indirizzo con cui ti sei iscritto.'); return }
     } else if (!email || !password) {
       setErrore('Servono email e password.')
+      return
+    }
+    if (modo === 'iscriviti' && !emailVerificata) {
+      setErrore('L\u2019iscrizione è riservata ai soci della Tana: se non lo sei, scrivi a Dario su WhatsApp.')
       return
     }
     if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim())) {
@@ -262,9 +266,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
         })
         if (error) throw error
         if (data.session) return
-        setOk(emailVerificata
-          ? 'Account creato. Controlla la posta (anche la posta indesiderata) e conferma l\u2019indirizzo: poi entri.'
-          : 'Account creato. Conferma l\u2019indirizzo dalla posta. Siccome questa email non risulta fra i soci, un organizzatore dovrà confermare l\u2019iscrizione.')
+        setOk('Account creato. Controlla la posta (anche la posta indesiderata) e conferma l\u2019indirizzo: poi entri.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
@@ -346,9 +348,6 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
                 style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                 Chiedi aiuto su WhatsApp
               </a>
-              <button className="bottone-piatto" onClick={() => { setEmailVerificata(false); setPasso('dati') }}>
-                Registrati comunque (un organizzatore confermerà)
-              </button>
             </>
           )}
         </>
@@ -720,6 +719,17 @@ function InAttesa({ profilo, onRicontrolla }) {
   )
 }
 
+function IconaEsci() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
 export default function App() {
   const [tavoloPubblico] = useState(tavoloDalLink())
   const [daBga, setDaBga] = useState(bgaDalLink())
@@ -840,7 +850,15 @@ export default function App() {
     <div className="guscio">
       <header className="testata">
         <Marchio />
-        <Condividi />
+        <div className="tasti-testata">
+          <Condividi />
+          {sessione && !tavoloPubblico && (
+            <button type="button" className="tasto-condividi" aria-label="Esci dall'account" title="Esci dall'account"
+              onClick={() => { if (window.confirm('Vuoi uscire dall\u2019account?')) supabase.auth.signOut() }}>
+              <IconaEsci />
+            </button>
+          )}
+        </div>
       </header>
 
       {tavoloPubblico ? (
