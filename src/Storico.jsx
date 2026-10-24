@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v3.10.0 - 202610211500 (più veloce: archivio in memoria condiviso con le Statistiche, partite mostrate a pagine)
+// v3.11.0 - 202610241200 (filtro Tutte / Dal vivo / Online, come nelle Statistiche)
 
 import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
@@ -27,10 +27,12 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
   const [caricamento, setCaricamento] = useState(!inMemoria)
   const [quante, setQuante] = useState(PER_PAGINA)
   const [cerca, setCerca] = useState('')
+  // Dal vivo / online, come nelle Statistiche. Vale per tutte le sezioni.
+  const [dove, setDove] = useState('tutte')   // tutte | vivo | online
   const [errore, setErrore] = useState('')
 
   useEffect(() => { carica() }, [])
-  useEffect(() => { setQuante(PER_PAGINA) }, [cerca, sezione])
+  useEffect(() => { setQuante(PER_PAGINA) }, [cerca, sezione, dove])
 
   // Al ritorno da una modifica si riprende da dove si era: stessa
   // sezione, stessa ricerca, stessa partita aperta.
@@ -38,6 +40,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
     if (!ripristina) return
     if (ripristina.sezione) setSezione(ripristina.sezione)
     if (ripristina.cerca != null) setCerca(ripristina.cerca)
+    if (ripristina.dove) setDove(ripristina.dove)
     if (ripristina.aperta) setAperta(ripristina.aperta)
   }, [ripristina?.quando])
 
@@ -79,7 +82,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
   function perGioco() {
     const m = new Map()
-    for (const p of partite) {
+    for (const p of scelte) {
       if (!p.giochi) continue
       const k = p.giochi.id
       const v = m.get(k) || { id: k, nome: p.giochi.nome, immagine: p.giochi.immagine_url, partite: 0, vittorie: 0, ultima: null }
@@ -97,7 +100,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
   // lì o vincete tutti o perdete tutti.
   function perGiocatore() {
     const m = new Map()
-    for (const p of partite) {
+    for (const p of scelte) {
       const mia = p.partecipazioni?.find((x) => mieiId.has(x.utente_id))
       const sfida = p.tipo_punteggio !== 'coop'
       for (const par of p.partecipazioni || []) {
@@ -120,7 +123,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
   function perLuogo() {
     const m = new Map()
-    for (const p of partite) {
+    for (const p of scelte) {
       const k = p.luoghi?.id || 'ignoto'
       const v = m.get(k) || { id: k, nome: p.luoghi?.nome || 'Non indicato', partite: 0, ultima: null }
       v.partite++
@@ -132,12 +135,17 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
   /* ---------- Vista ---------- */
 
+  const quanteOnline = partite.filter((p) => p.luoghi?.tipo === 'online').length
+  const scelte = dove === 'tutte' ? partite
+    : dove === 'online' ? partite.filter((p) => p.luoghi?.tipo === 'online')
+    : partite.filter((p) => p.luoghi?.tipo !== 'online')
+
   // «Dario a», «dario-a» e «DarioA» trovano tutti «DarioAggioli»:
   // spazi, maiuscole, accenti e segni non contano.
   const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
   const q = piatto(cerca)
   const contiene = (t) => piatto(t).includes(q)
-  const filtrate = !q ? partite : partite.filter((p) => {
+  const filtrate = !q ? scelte : scelte.filter((p) => {
     const pezzi = [
       p.giochi?.nome,
       p.luoghi?.nome,
@@ -184,7 +192,20 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
         />
       )}
 
+      {quanteOnline > 0 && (
+        <div className="sottoschede sottoschede-dove">
+          {[['tutte', 'Tutte'], ['vivo', 'Dal vivo'], ['online', 'Online']].map(([id, et]) => (
+            <button key={id} className={dove === id ? 'attiva' : ''} onClick={() => setDove(id)}>
+              {et}
+            </button>
+          ))}
+        </div>
+      )}
+
       {partite.length === 0 && <p className="aiuto">Ancora nessuna partita registrata.</p>}
+      {partite.length > 0 && scelte.length === 0 && (
+        <p className="aiuto">Nessuna partita {dove === 'online' ? 'online' : 'dal vivo'}.</p>
+      )}
 
       {cerca.trim() && sezione === 'partite' && filtrate.length === 0 && (
         <p className="aiuto">Nessuna partita per «{cerca}».</p>
@@ -292,7 +313,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
                   <div className="azioni-partita">
                     <button
                       className="bottone-piatto"
-                      onClick={() => onModifica?.(p.id, { sezione, cerca, aperta: p.id })}
+                      onClick={() => onModifica?.(p.id, { sezione, cerca, dove, aperta: p.id })}
                     >
                       Modifica
                     </button>
