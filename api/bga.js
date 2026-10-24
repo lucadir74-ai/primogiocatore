@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.1.0 - 202610242045 (una riga nei log di Vercel per ogni chiamata: azione, durata, esito; mai la password)
+// v1.2.0 - 202610242100 (risposte più frequenti: ogni chiamata legge al massimo ~15 secondi, così il telefono non resta in attesa a lungo e la connessione non cade)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -32,7 +32,11 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const BGA = 'https://boardgamearena.com'
 const UA = 'Mozilla/5.0 (Linux; Android 14) PrimoGiocatore/1.0'
-const TEMPO_LETTURA = 42000   // poi si risponde «continua», per stare nei 60 secondi
+// Poi si risponde «continua». Non di più: una connessione che resta
+// muta per decine di secondi, su alcune reti mobili e Wi-Fi, viene
+// tagliata e il browser dice «Failed to fetch» anche se il server ha
+// finito bene (successo con lo storico lungo di un iscritto, 24/10).
+const TEMPO_LETTURA = 15000
 const PAUSA_PAGINE = 700
 
 /* ---------------- Cifratura dei cookie ---------------- */
