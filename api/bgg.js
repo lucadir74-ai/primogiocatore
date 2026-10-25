@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.7.2 - 202610221230 (collezione: conteggio dei giochi unici per il controllo)
+// v1.8.0 - 202610252200 (solo per chi è entrato nell'app; id solo numerici; pausa fra le richieste rispettata anche con più richieste insieme; nuovo tentativo se BGG risponde 429)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -13,6 +13,14 @@
 //   /api/bgg?azione=partite&utente=lucadir74&dal=2026-09-01   (solo da quella data)
 
 import { XMLParser } from 'fast-xml-parser'
+import { createClient } from '@supabase/supabase-js'
+
+// Con molte richieste in coda la pausa di 5 secondi fra una e l'altra
+// richiede tempo: il massimo consentito su Vercel Hobby.
+export const config = { maxDuration: 60 }
+
+const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 const BGG = 'https://boardgamegeek.com/xmlapi2'
 
@@ -49,14 +57,16 @@ async function chiamaBGG(percorso, { fresco = false } = {}) {
     return daCache.xml
   }
 
-  // Rispetta la pausa richiesta da BGG.
-  const passato = Date.now() - ultimaChiamata
-  if (passato < PAUSA_MINIMA) await attesa(PAUSA_MINIMA - passato)
-
   let risposta
   // La collezione può rispondere 202: significa "richiama fra poco".
+  // 429: troppe richieste, si aspetta e si riprova.
   for (let tentativo = 0; tentativo < 4; tentativo++) {
-    ultimaChiamata = Date.now()
+    // Rispetta la pausa richiesta da BGG. Ogni richiesta prenota il suo
+    // turno prima di aspettare: con più richieste insieme sulla stessa
+    // copia del server, prima partivano tutte nello stesso istante.
+    const turno = Math.max(Date.now(), ultimaChiamata + PAUSA_MINIMA)
+    ultimaChiamata = turno
+    if (turno > Date.now()) await attesa(turno - Date.now())
     const intestazioni = { 'User-Agent': 'PrimoGiocatore/1.0 (app per gruppi di gioco)' }
     // "Bearer" seguito da uno spazio, nessun due punti.
     if (TOKEN) intestazioni.Authorization = `Bearer ${TOKEN}`
@@ -66,7 +76,17 @@ async function chiamaBGG(percorso, { fresco = false } = {}) {
       await attesa(3000)
       continue
     }
+    if (risposta.status === 429) {
+      ultimaChiamata = Date.now() + PAUSA_MINIMA   // rallenta anche le altre in coda
+      continue
+    }
     break
+  }
+
+  if (risposta.status === 429) {
+    const e = new Error('BoardGameGeek è sovraccarico di richieste. Riprova fra un minuto.')
+    e.codice = 429
+    throw e
   }
 
   if (risposta.status === 202) {
@@ -159,6 +179,23 @@ function semplificaGioco(item) {
 export default async function handler(req, res) {
   const { azione, q, id, utente, pagina, dal } = req.query
 
+  // Solo per chi è entrato nell'app: senza questo controllo chiunque
+  // poteva usare il nostro token BGG, e se BGG lo blocca si fermano
+  // ricerca giochi e import per tutti.
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '')
+  if (!token || !SUPABASE || !SERVIZIO) {
+    return res.status(401).json({ errore: 'Entra nell\u2019app per usare la ricerca su BGG.' })
+  }
+  try {
+    const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+    const { data, error } = await db.auth.getUser(token)
+    if (error || !data?.user) {
+      return res.status(401).json({ errore: 'Sessione scaduta: esci e rientra nell\u2019app.' })
+    }
+  } catch {
+    return res.status(503).json({ errore: 'Controllo dell\u2019accesso non riuscito. Riprova fra poco.' })
+  }
+
   try {
     if (azione === 'cerca') {
       if (!q || q.trim().length < 2) {
@@ -180,6 +217,8 @@ export default async function handler(req, res) {
 
     if (azione === 'dettagli') {
       if (!id) return res.status(400).json({ errore: 'Manca l\u2019id del gioco.' })
+      // Solo numeri separati da virgole: niente parametri aggiunti di nascosto.
+      if (!/^\d+(,\d+)*$/.test(String(id))) return res.status(400).json({ errore: 'Id del gioco non valido.' })
       // BGG accetta al massimo 20 id per volta.
       const ids = String(id).split(',').slice(0, 20).join(',')
       // Anche le espansioni: chi gioca un'espansione da sola (es. Hitster:
@@ -255,7 +294,7 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ errore: 'Azione sconosciuta.' })
   } catch (e) {
-    const codice = e.codice === 202 ? 202 : e.codice === 401 ? 401 : 502
+    const codice = [202, 401, 429].includes(e.codice) ? e.codice : 502
     return res.status(codice).json({ errore: e.message })
   }
 }
