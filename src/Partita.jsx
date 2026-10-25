@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.17.0 - 202610252200 (chiamate a BGG con la sessione; coda delle partite senza rete separata per persona)
+// v4.18.0 - 202610252330 (dopo il salvataggio la partita parte anche verso BGG, per chi l'ha collegato)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -9,6 +9,7 @@ import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
+import { inviaABggSeServe } from './invioBgg'
 
 // La partita in corso resta sul telefono finché non la salvi: se chiudi
 // la pagina o cade la linea, la ritrovi com'era.
@@ -85,6 +86,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       try {
         const esito = await inviaCoda(supabase, profilo)
         setInCoda(esito.rimaste)
+        if (esito.inviate > 0) inviaABggSeServe(profilo)
         if (esito.inviate > 0) {
           setMessaggio(
             esito.inviate === 1
@@ -640,6 +642,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
       try {
         const salvataId = await scriviPartita(supabase, profilo, dati)
+        inviaABggSeServe(profilo)   // verso BGG, senza far aspettare
         if (modifica) {
           setMessaggio('Partita aggiornata.')
           finitaModifica?.()

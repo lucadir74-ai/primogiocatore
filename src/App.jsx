@@ -1,4 +1,4 @@
-// Primo Giocatore v4.19.1 - 202610221300 (avviso BGA: le partite in sospeso non bloccano più le altre)
+// Primo Giocatore v4.20.0 - 202610252330 (invio delle partite a BGG all'apertura e dopo gli import da BGA)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -23,6 +23,7 @@ import Soci from './Soci.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
+import { inviaABggSeServe } from './invioBgg'
 import ImportaBga from './ImportaBga.jsx'
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
@@ -814,8 +815,19 @@ export default function App() {
   useEffect(() => {
     if (!profilo?.bga_id || daBga) return   // non nella scheda aperta dal segnalibro
     sincronizzaBgaSeServe(profilo)
-      .then((r) => { if (r) setAvvisoBga(r) })
+      .then((r) => {
+        if (r) setAvvisoBga(r)
+        // Partite nuove da BGA: verso BGG, se l'iscritto l'ha chiesto.
+        if (r?.nuove) inviaABggSeServe(profilo)
+      })
       .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
+  }, [profilo?.id])
+
+  // Invio a BGG delle partite in attesa (le tiene il database): qui per
+  // chi ha registrato senza rete o ha cancellato e corretto partite.
+  useEffect(() => {
+    if (!profilo?.id || daBga) return
+    inviaABggSeServe(profilo)
   }, [profilo?.id])
 
   function apriSezione(id) {

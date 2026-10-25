@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.7.0 - 202610252200 (le chiamate a BGG portano la sessione)
+// v1.8.0 - 202610252330 (le partite inviate da qui a BGG non rientrano come doppioni, né quelle cancellate qui e in attesa di essere tolte da BGG)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -45,6 +45,25 @@ function serveCompleto() {
     const c = localStorage.getItem(CHIAVE_COMPLETA)
     return !c || Date.now() - new Date(c) > COMPLETO_OGNI_GIORNI * 86400000
   } catch { return false }
+}
+
+// Le partite mandate da Primo Giocatore a BGG tornano indietro con la
+// lettura da BGG: si riconoscono dal numero che BGG ha dato loro. Lo
+// stesso per quelle cancellate qui e non ancora tolte da BGG, che
+// altrimenti rientrerebbero. Senza lo script invio_bgg.sql le colonne
+// non ci sono: allora non c'è niente da riconoscere.
+async function inviateDaQui(profiloId) {
+  try {
+    const [a, b] = await Promise.all([
+      tutteLeRighe(() => supabase.from('partite').select('bgg_play_id')
+        .eq('registrata_da', profiloId).not('bgg_play_id', 'is', null)),
+      tutteLeRighe(() => supabase.from('bgg_da_eliminare').select('bgg_play_id')
+        .eq('utente_id', profiloId), 1000, 'bgg_play_id'),
+    ])
+    return [...a, ...b].map((x) => x.bgg_play_id)
+  } catch {
+    return []
+  }
 }
 
 // Da che giorno leggere: l'ultima partita arrivata da BGG, meno il
@@ -130,6 +149,7 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
   const gia = await tutteLeRighe(() => supabase.from('partite')
     .select('chiave_esterna').eq('registrata_da', profiloId).like('chiave_esterna', 'bgg:%'))
   const giaBgg = new Set(gia.map((x) => x.chiave_esterna))
+  for (const id of await inviateDaQui(profiloId)) giaBgg.add(`bgg:${id}`)
   const daGuardare = tutte.filter((p) => !giaBgg.has(`bgg:${p.bgg_play_id}`))
 
   const presenti = await improntePresenti(supabase, profiloId)

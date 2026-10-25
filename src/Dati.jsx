@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v4.0.1 - 202610201930 (le sezioni a scomparsa ora sono un componente comune)
+// v4.1.0 - 202610252330 (sezione BGG: invio delle partite a BGG)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -8,6 +8,7 @@ import { impronta, improntePresenti, giaPresente } from './impronta'
 import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
 import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
 import ImportaBga from './ImportaBga.jsx'
+import InvioBgg from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -587,6 +588,7 @@ export default function Dati({ profilo }) {
             Rileggi tutto da BGG
           </button>
         </details>
+        <InvioBgg profilo={profilo} />
       </Sezione>
 
       <Sezione id="file" titolo="Importa da un file" nota="BG Stats o copia di Primo Giocatore">
