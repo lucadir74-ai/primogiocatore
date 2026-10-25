@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v4.1.0 - 202610252330 (sezione BGG: invio delle partite a BGG)
+// v4.2.0 - 202610260000 (un solo riquadro BoardGameGeek: lettura e invio insieme)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -8,7 +8,7 @@ import { impronta, improntePresenti, giaPresente } from './impronta'
 import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
 import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMiei'
 import ImportaBga from './ImportaBga.jsx'
-import InvioBgg from './InvioBgg.jsx'
+import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -26,6 +26,7 @@ function scarica(nomeFile, contenuto, tipo) {
 
 export default function Dati({ profilo }) {
   const [errore, setErrore] = useState('')
+  const invio = useInvioBgg(profilo)
   const [messaggio, setMessaggio] = useState('')
   const [lavorando, setLavorando] = useState(false)
   const fileRef = useRef(null)
@@ -565,7 +566,8 @@ export default function Dati({ profilo }) {
         <ImportaBga profilo={profilo} incorporata />
       </Sezione>
 
-      <Sezione id="bgg" titolo="BoardGameGeek" nota={profilo.bgg_username ? profilo.bgg_username : null}>
+      <Sezione id="bgg" titolo="BoardGameGeek"
+        nota={profilo.bgg_username ? `${profilo.bgg_username}${invio.stato?.collegato ? ' · invio attivo' : ''}` : null}>
         <div className="campo">
           <label htmlFor="d-bgg">Il tuo nome utente BGG</label>
           <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
@@ -581,14 +583,15 @@ export default function Dati({ profilo }) {
           })}.`}
         </p>
         {!anteprimaBgg && barra}
+        <InvioBggStato invio={invio} profilo={profilo} />
         <details className="dettagli-piccoli">
-          <summary>Controllo completo</summary>
+          <summary>Altre azioni</summary>
           <p className="aiuto">Rilegge tutto l&rsquo;archivio BGG: serve se hai pubblicato partite vecchie. Parte comunque da solo una volta a settimana.</p>
           <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
             Rileggi tutto da BGG
           </button>
+          <InvioBggAzioni invio={invio} />
         </details>
-        <InvioBgg profilo={profilo} />
       </Sezione>
 
       <Sezione id="file" titolo="Importa da un file" nota="BG Stats o copia di Primo Giocatore">
