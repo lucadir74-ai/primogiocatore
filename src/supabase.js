@@ -62,3 +62,12 @@ export async function tutteLeRighe(costruisciQuery, blocco = 1000, chiave = 'id'
   }
   return righe
 }
+
+// Le chiamate a /api/bgg portano la sessione: il server risponde solo a
+// chi è entrato nell'app, così nessuno usa il nostro token BGG da fuori.
+export async function fetchBgg(indirizzo) {
+  const { data: { session } } = await supabase.auth.getSession()
+  return fetch(indirizzo, {
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+  })
+}

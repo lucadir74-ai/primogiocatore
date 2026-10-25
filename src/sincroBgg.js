@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.6.0 - 202610181500 (con l'import diretto da BGA, le partite BGA non arrivano più da qui)
+// v1.7.0 - 202610252200 (le chiamate a BGG portano la sessione)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -10,7 +10,7 @@
 // numero BGG; una arrivata per altre strade (backup di BG Stats,
 // registrata a mano) dall'impronta, cioè gioco, giorno e punteggi.
 
-import { supabase, tutteLeRighe } from './supabase'
+import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome, ospitiPerImport } from './giochiMiei'
 
@@ -88,7 +88,7 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
   // 50.000 partite, cioè ben oltre qualsiasi archivio reale.
   while (pagina <= 500) {
     avanzamento({ fase: 'Leggo da BGG', fatto: tutte.length, totale: totale || 100 })
-    const r = await fetch(`/api/bgg?azione=partite&utente=${encodeURIComponent(utente)}&pagina=${pagina}`
+    const r = await fetchBgg(`/api/bgg?azione=partite&utente=${encodeURIComponent(utente)}&pagina=${pagina}`
       + (dal ? `&dal=${dal}` : ''))
     const dati = await r.json()
     if (!r.ok) throw new Error(dati.errore || 'Lettura da BGG non riuscita.')

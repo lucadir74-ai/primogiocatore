@@ -1,8 +1,8 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.16.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
+// v4.17.0 - 202610252200 (chiamate a BGG con la sessione; coda delle partite senza rete separata per persona)
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
 import { impronta } from './impronta'
 import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
@@ -69,7 +69,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [caricamento, setCaricamento] = useState(modifica)
-  const [inCoda, setInCoda] = useState(() => leggiCoda().length)
+  const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
   const [inviando, setInviando] = useState(false)
   const [ripresa, setRipresa] = useState(false)
   // Partita appena registrata: se è a punti si mostrano i record.
@@ -80,7 +80,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   // Appena la rete torna, le partite in attesa partono da sole.
   useEffect(() => {
     async function svuota() {
-      if (leggiCoda().length === 0 || inviando) return
+      if (leggiCoda(profilo?.id).length === 0 || inviando) return
       setInviando(true)
       try {
         const esito = await inviaCoda(supabase, profilo)
@@ -261,7 +261,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     if (filtro.trim().length < 2) return
     setErrore(''); setCercandoBgg(true); setSuBgg(null)
     try {
-      const r = await fetch(`/api/bgg?azione=cerca&q=${encodeURIComponent(filtro.trim())}`)
+      const r = await fetchBgg(`/api/bgg?azione=cerca&q=${encodeURIComponent(filtro.trim())}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Ricerca non riuscita.')
       setSuBgg({ righe: dati.risultati.slice(0, 40), totale: dati.risultati.length })
@@ -275,7 +275,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   async function aggiungiDaBgg(bggId) {
     setErrore('')
     try {
-      const r = await fetch(`/api/bgg?azione=dettagli&id=${bggId}`)
+      const r = await fetchBgg(`/api/bgg?azione=dettagli&id=${bggId}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Non sono riuscito a leggere il gioco.')
       const g = dati.giochi[0]
@@ -659,7 +659,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         // appena la linea torna. Una modifica invece richiede la rete:
         // rifarla a mano su dati vecchi creerebbe più danni.
         if (!eProblemaDiRete(e) || modifica) throw e
-        const quante = accodaPartita(dati)
+        const quante = accodaPartita(profilo.id, dati)
         setInCoda(quante)
         setMessaggio(
           quante === 1

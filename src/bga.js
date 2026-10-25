@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.5.0 - 202610250130 (sincronizzazione automatica: archivio letto una volta sola e, per le novità, solo le ultime settimane; avanzamento visibile nella scheda iscritto)
+// v3.6.0 - 202610252200 (un solo import BGA alla volta: l'automatica non parte se ne è in corso uno a mano, e quello a mano aspetta l'automatica)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -602,7 +602,7 @@ function scriviStorico(chiave, valore) {
 // con quale versione dell'app, quante partite, eventuale errore e a che
 // punto è lo storico. Se la tabella manca (script SQL non eseguito) o la
 // scrittura fallisce, la sincronizzazione va avanti lo stesso.
-const VERSIONE_SINCRO = '3.5.0'
+const VERSIONE_SINCRO = '3.6.0'
 async function registraEsito(profiloId, campi) {
   try {
     await supabase.from('bga_esiti').upsert(
@@ -611,8 +611,34 @@ async function registraEsito(profiloId, campi) {
   } catch { /* solo diagnostica: non deve fermare niente */ }
 }
 
+// Un solo import BGA alla volta sullo stesso telefono. Due insieme
+// (l'automatica all'apertura e «Aggiorna ora») creavano ospiti doppi,
+// si vedevano rifiutare blocchi interi di partite già entrate e si
+// sovrascrivevano a vicenda la sessione BGA.
+let sincroInCorso = null   // la sincronizzazione automatica, se sta girando
+let manuali = 0            // operazioni a mano in corso
+
+export const sincroAutomaticaInCorso = () => !!sincroInCorso
+
+// Per le operazioni a mano: aspetta che l'automatica finisca, e intanto
+// le impedisce di ripartire.
+export async function inEsclusiva(fn) {
+  manuali += 1
+  try {
+    if (sincroInCorso) await sincroInCorso.catch(() => {})
+    return await fn()
+  } finally {
+    manuali -= 1
+  }
+}
+
 export async function sincronizzaBgaSeServe(profilo) {
-  if (!profilo?.bga_id) return null
+  if (!profilo?.bga_id || manuali > 0 || sincroInCorso) return null
+  sincroInCorso = sincronizzaBga(profilo)
+  try { return await sincroInCorso } finally { sincroInCorso = null }
+}
+
+async function sincronizzaBga(profilo) {
   try {
     const ultima = Number(localStorage.getItem(`${CHIAVE_ORA}:${profilo.id}`) || 0)
     if (Date.now() - ultima < OGNI_ORE_BGA * 3600000) return null
@@ -625,11 +651,13 @@ export async function sincronizzaBgaSeServe(profilo) {
   let storico = null
   let da = 1
   const aPunto = () => (storico ? `storico fino a pagina ${da}` : 'solo le novità')
+  let fase = 'avvio'   // l'ultimo passaggio iniziato: in caso di errore si sa dove
   await registraEsito(profilo.id, { in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio' })
 
   try {
     storico = leggiStorico(chiave)
     if (storico?.fatto) storico = null
+    fase = 'cerco l’ultima partita BGA'
     const base = await baseSegnalibro(profilo)
     if (!storico && !base.fino) storico = { da: 1 }
     const fino = storico ? 0 : base.fino - 7 * 86400
@@ -644,7 +672,8 @@ export async function sincronizzaBgaSeServe(profilo) {
 
     let chiuso = false
     for (let giro = 0; giro < 200; giro++) {
-      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · leggo da BGA` })
+      fase = 'leggo da BGA'
+      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
       const r = await chiamaBga('leggi', { fino, da })
       if (r.scaduta) {
         await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
@@ -656,10 +685,12 @@ export async function sincronizzaBgaSeServe(profilo) {
       }
       if (r.tavoli?.length) {
         if (!memoria.righe) {
-          await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · leggo il tuo archivio` })
+          fase = 'leggo il tuo archivio'
+          await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
           memoria.righe = await archivio(profilo.id, dal)
         }
-        await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · confronto e salvo ${r.tavoli.length} partite (archivio: ${memoria.righe.length})` })
+        fase = `confronto e salvo ${r.tavoli.length} partite (archivio: ${memoria.righe.length})`
+        await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
         const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false }, memoria)
         nuove += esito.nuove
         inSospeso += esito.inSospeso
@@ -679,7 +710,7 @@ export async function sincronizzaBgaSeServe(profilo) {
   } catch (e) {
     await registraEsito(profilo.id, {
       in_corso: false, importate: nuove, in_sospeso: inSospeso,
-      errore: String(e?.message || e).slice(0, 300), storico: aPunto(),
+      errore: String(e?.message || e).slice(0, 300), storico: `${aPunto()} · fermo a: ${fase}`,
     })
     throw e
   }

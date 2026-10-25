@@ -1,8 +1,8 @@
 // Primo Giocatore - schermata Giochi
-// v4.17.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
+// v4.18.0 - 202610252200 (le chiamate a BGG portano la sessione)
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, tutteLeRighe } from './supabase'
+import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import Collezione from './Collezione.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 
@@ -76,7 +76,7 @@ export default function Giochi({ profilo }) {
     setMessaggio('')
     setCercando(true)
     try {
-      const r = await fetch(`/api/bgg?azione=cerca&q=${encodeURIComponent(query.trim())}`)
+      const r = await fetchBgg(`/api/bgg?azione=cerca&q=${encodeURIComponent(query.trim())}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Ricerca non riuscita.')
       setRisultati(dati.risultati.slice(0, 25))
@@ -93,7 +93,7 @@ export default function Giochi({ profilo }) {
     setErrore('')
     setMessaggio('')
     try {
-      const r = await fetch(`/api/bgg?azione=dettagli&id=${bggId}`)
+      const r = await fetchBgg(`/api/bgg?azione=dettagli&id=${bggId}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Non sono riuscito a leggere il gioco.')
       const g = dati.giochi[0]
@@ -117,7 +117,7 @@ export default function Giochi({ profilo }) {
     setMessaggio('Chiedo la collezione a BGG. La prima volta può volerci qualche secondo.')
     setImportando(true)
     try {
-      const r = await fetch(
+      const r = await fetchBgg(
         `/api/bgg?azione=collezione&utente=${encodeURIComponent(profilo.bgg_username)}`
       )
       const dati = await r.json()
@@ -180,7 +180,7 @@ export default function Giochi({ profilo }) {
         const gruppo = mancanti.slice(i, i + 20)
         gruppo.forEach((g) => giaTentati.current.add(g.bgg_id))
         try {
-          const r = await fetch(`/api/bgg?azione=dettagli&id=${gruppo.map((g) => g.bgg_id).join(',')}`)
+          const r = await fetchBgg(`/api/bgg?azione=dettagli&id=${gruppo.map((g) => g.bgg_id).join(',')}`)
           const dati = await r.json()
           if (!r.ok || !dati.giochi?.length) continue
           const righe = dati.giochi.map((g) => ({

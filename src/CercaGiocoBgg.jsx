@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del gioco di un tavolo
-// v1.3.0 - 202609302230
+// v1.4.0 - 202610252200 (le chiamate a BGG portano la sessione)
 //
 // Il gioco di un tavolo non viene dalla collezione di chi lo pubblica:
 // il gioco lo porta il dimostratore. Mentre scrivi cerca fra tutti i
@@ -9,7 +9,7 @@
 // Si tocca il nome del gioco per sceglierlo.
 
 import { useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, fetchBgg } from './supabase'
 import { assicuraGiocoBgg } from './giochiMiei'
 import { IMMAGINE_TAVOLO_LIBERO } from './immagini'
 
@@ -74,7 +74,7 @@ export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus =
     if (q.length < 2) return
     setErrore(''); setCercando(true)
     try {
-      const r = await fetch(`/api/bgg?azione=cerca&q=${encodeURIComponent(q)}`)
+      const r = await fetchBgg(`/api/bgg?azione=cerca&q=${encodeURIComponent(q)}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Ricerca su BoardGameGeek non riuscita.')
       const giaQui = new Set(locali.map((g) => g.bgg_id))
@@ -89,7 +89,7 @@ export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus =
   async function scegliDaBgg(r) {
     setErrore(''); setPrendendo(r.bgg_id)
     try {
-      const risposta = await fetch(`/api/bgg?azione=dettagli&id=${r.bgg_id}`)
+      const risposta = await fetchBgg(`/api/bgg?azione=dettagli&id=${r.bgg_id}`)
       const dati = await risposta.json()
       if (!risposta.ok) throw new Error(dati.errore || 'Non sono riuscito a leggere il gioco da BGG.')
       const g = dati.giochi?.[0]

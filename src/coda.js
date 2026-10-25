@@ -1,5 +1,5 @@
 // Primo Giocatore - partite in attesa di rete
-// v4.2.0 - 202610202100 (salva anche i parziali del segnapunti)
+// v4.3.0 - 202610252200 (una coda per persona: su un telefono condiviso le partite in attesa non finiscono nel profilo di un altro; invio mai doppio)
 //
 // Quando manca la linea la partita resta sul telefono e parte da sola
 // appena la rete torna. Vale solo per le partite nuove: modificarne
@@ -8,30 +8,49 @@
 import { impronta } from './impronta'
 import { trovaOCreaLuogo } from './giochiMiei'
 
+// Una coda per persona. Prima era una sola per telefono: su un tablet
+// condiviso le partite in attesa di uno partivano col profilo di chi
+// entrava dopo.
 const CODA = 'primo-giocatore:coda'
+const chiave = (profiloId) => `${CODA}:${profiloId}`
 
-export function leggiCoda() {
+// La coda vecchia, senza nome: va a chi la apre per primo, che quasi
+// sempre è chi l'ha riempita.
+function prendiCodaVecchia(profiloId) {
   try {
-    const grezzo = localStorage.getItem(CODA)
-    return grezzo ? JSON.parse(grezzo) : []
+    const vecchia = localStorage.getItem(CODA)
+    if (!vecchia) return
+    const mie = JSON.parse(localStorage.getItem(chiave(profiloId)) || '[]')
+    localStorage.setItem(chiave(profiloId), JSON.stringify([...mie, ...JSON.parse(vecchia)]))
+    localStorage.removeItem(CODA)
+  } catch { /* resta dov'è */ }
+}
+
+export function leggiCoda(profiloId) {
+  if (!profiloId) return []
+  prendiCodaVecchia(profiloId)
+  try {
+    const grezzo = localStorage.getItem(chiave(profiloId))
+    const righe = grezzo ? JSON.parse(grezzo) : []
+    return righe.filter((r) => !r.profilo_id || r.profilo_id === profiloId)
   } catch {
     return []
   }
 }
 
-function scriviCoda(righe) {
-  try { localStorage.setItem(CODA, JSON.stringify(righe)) } catch { /* spazio pieno */ }
+function scriviCoda(profiloId, righe) {
+  try { localStorage.setItem(chiave(profiloId), JSON.stringify(righe)) } catch { /* spazio pieno */ }
 }
 
-export function accodaPartita(dati) {
-  const righe = leggiCoda()
-  righe.push({ ...dati, accodataIl: new Date().toISOString(), id: crypto.randomUUID() })
-  scriviCoda(righe)
+export function accodaPartita(profiloId, dati) {
+  const righe = leggiCoda(profiloId)
+  righe.push({ ...dati, profilo_id: profiloId, accodataIl: new Date().toISOString(), id: crypto.randomUUID() })
+  scriviCoda(profiloId, righe)
   return righe.length
 }
 
-export function togliDallaCoda(id) {
-  scriviCoda(leggiCoda().filter((r) => r.id !== id))
+export function togliDallaCoda(profiloId, id) {
+  scriviCoda(profiloId, leggiCoda(profiloId).filter((r) => r.id !== id))
 }
 
 // Riconosce i guasti di rete dai rifiuti del database: i primi si
@@ -115,8 +134,18 @@ export async function scriviPartita(supabase, profilo, dati) {
 // Svuota la coda. Si ferma al primo guasto di rete, per non perdere
 // l'ordine; scarta invece le partite che il database rifiuta, dopo
 // averle segnalate a chi le ha scritte.
+// Un invio alla volta: due invii insieme (la rete che torna mentre
+// la pagina si apre) scrivevano due volte la stessa partita.
+let invioInCorso = null
+
 export async function inviaCoda(supabase, profilo, avviso = () => {}) {
-  const righe = leggiCoda()
+  if (invioInCorso) return invioInCorso
+  invioInCorso = inviaCodaOra(supabase, profilo, avviso)
+  try { return await invioInCorso } finally { invioInCorso = null }
+}
+
+async function inviaCodaOra(supabase, profilo, avviso) {
+  const righe = leggiCoda(profilo.id)
   if (righe.length === 0) return { inviate: 0, rimaste: 0, scartate: [] }
 
   let inviate = 0
@@ -125,15 +154,15 @@ export async function inviaCoda(supabase, profilo, avviso = () => {}) {
   for (const r of righe) {
     try {
       await scriviPartita(supabase, profilo, r)
-      togliDallaCoda(r.id)
+      togliDallaCoda(profilo.id, r.id)
       inviate++
       avviso({ inviate, totale: righe.length })
     } catch (e) {
       if (eProblemaDiRete(e)) break
-      togliDallaCoda(r.id)
+      togliDallaCoda(profilo.id, r.id)
       scartate.push({ quando: r.accodataIl, motivo: e.message })
     }
   }
 
-  return { inviate, rimaste: leggiCoda().length, scartate }
+  return { inviate, rimaste: leggiCoda(profilo.id).length, scartate }
 }

@@ -1,8 +1,8 @@
 // Primo Giocatore - Tavoli
-// v2.13.0 - 202609302300
+// v2.14.0 - 202610252200 (le chiamate a BGG portano la sessione)
 
 import { useEffect, useState } from 'react'
-import { supabase, daMostrare } from './supabase'
+import { supabase, daMostrare, fetchBgg } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import Locandina from './Locandina.jsx'
@@ -282,7 +282,7 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
         .from('giochi').select('bgg_id, immagine_grande').eq('id', giocoId).maybeSingle()
       if (!g?.bgg_id || g.immagine_grande) return
 
-      const r = await fetch(`/api/bgg?azione=dettagli&id=${g.bgg_id}`)
+      const r = await fetchBgg(`/api/bgg?azione=dettagli&id=${g.bgg_id}`)
       const dati = await r.json()
       if (!r.ok) return
       const grande = dati.giochi?.[0]?.immagine_grande

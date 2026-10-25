@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.1.0 - 202610242030 (Aggiorna ora tiene lo schermo acceso finché lavora, per non far cadere la connessione)
+// v3.2.0 - 202610252200 (un solo import BGA alla volta: se sta girando quello automatico, si aspetta che finisca)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import {
   segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
+  inEsclusiva, sincroAutomaticaInCorso,
   chiamaBga, leggiDaServer,
 } from './bga'
 
@@ -78,7 +79,8 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
     let schermo = null
     try { schermo = await navigator.wakeLock?.request('screen') } catch { /* non supportato: pazienza */ }
     try {
-      const dati = await leggiDaServer(profilo, { tutto, avanzamento: setAvanzamento })
+      if (sincroAutomaticaInCorso()) setAvanzamento({ fase: 'Aspetto che finisca l’aggiornamento automatico', fatto: 0, totale: 1 })
+      const dati = await inEsclusiva(() => leggiDaServer(profilo, { tutto, avanzamento: setAvanzamento }))
       if (dati.scaduta) {
         setCollegamento((c) => ({ ...c, ultimo_errore: 'scaduta' }))
         setErrore('La sessione BGA è scaduta: inserisci di nuovo la password per ricollegare.')
@@ -121,7 +123,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
     setErrore(''); setAvviso(''); setFase('lavoro')
     setAvanzamento({ fase: `Controllo ${dati.tavoli?.length || 0} partite`, fatto: 0, totale: 1 })
     try {
-      const a = await analizzaBga(profilo, dati)
+      const a = await inEsclusiva(() => analizzaBga(profilo, dati))
       setAnalisi(a)
       setSalto([])
       setAvanzamento(null)
@@ -189,7 +191,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
   async function importa(a = analisi, c = classi) {
     setErrore(''); setFase('lavoro')
     try {
-      const r = await importaBga({ profilo, analisi: a, classi: c, incerteNuove, avanzamento: setAvanzamento })
+      const r = await inEsclusiva(() => importaBga({ profilo, analisi: a, classi: c, incerteNuove, avanzamento: setAvanzamento }))
       setAvanzamento(null)
       setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati })
       setFase('fatto')
