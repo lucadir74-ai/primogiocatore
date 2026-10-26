@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.18.0 - 202610252200 (le chiamate a BGG portano la sessione)
+// v4.19.0 - 202610260115 (filtri che si sommano: In collezione + Solo giocati = Tutti; in collezione si vede quanti non hai mai giocato; la collezione BGG è senza espansioni, e lo dice)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
@@ -265,13 +265,17 @@ export default function Giochi({ profilo }) {
   // collezione e quante partite ci hai fatto. I filtri restringono.
   const tuoi = catalogo.filter((g) => posseduti.has(g.id) || giocati.has(g.id))
   const totaleMiei = tuoi.length
+  // I filtri si sommano: in collezione + solo giocati (non tuoi) = tutti.
+  // Prima «Giocati» contava anche quelli in collezione, e i numeri non
+  // tornavano.
   const quanti = {
     tutti: tuoi.length,
     collezione: tuoi.filter((g) => posseduti.has(g.id)).length,
-    giocati: tuoi.filter((g) => giocati.has(g.id)).length,
+    giocati: tuoi.filter((g) => giocati.has(g.id) && !posseduti.has(g.id)).length,
   }
+  const maiGiocati = tuoi.filter((g) => posseduti.has(g.id) && !giocati.has(g.id)).length
   const filtrati = tuoi.filter((g) => filtro === 'collezione' ? posseduti.has(g.id)
-    : filtro === 'giocati' ? giocati.has(g.id) : true)
+    : filtro === 'giocati' ? giocati.has(g.id) && !posseduti.has(g.id) : true)
 
   // Cosa dire accanto a un risultato della ricerca già presente nell'app.
   function statoRisultato(bggId) {
@@ -514,12 +518,17 @@ export default function Giochi({ profilo }) {
       ) : (
         <>
           <div className="sottoschede">
-            {[['tutti', 'Tutti'], ['collezione', 'In collezione'], ['giocati', 'Giocati']].map(([id, etichetta]) => (
+            {[['tutti', 'Tutti'], ['collezione', 'In collezione'], ['giocati', 'Solo giocati']].map(([id, etichetta]) => (
               <button key={id} type="button" className={filtro === id ? 'attiva' : ''} onClick={() => setFiltro(id)}>
                 {etichetta} {quanti[id]}
               </button>
             ))}
           </div>
+          <p className="aiuto">
+            {filtro === 'tutti' && `${quanti.collezione} in collezione e ${quanti.giocati} che hai giocato senza averli.`}
+            {filtro === 'collezione' && `Giochi base posseduti su BGG, senza espansioni${maiGiocati ? `: ${maiGiocati} non li hai ancora mai giocati` : ''}.`}
+            {filtro === 'giocati' && 'Giochi a cui hai giocato ma che non sono nella tua collezione.'}
+          </p>
           {filtrati.length === 0
             ? <p className="aiuto">
                 {filtro === 'collezione' ? 'Nessuno: importa la collezione da BGG qui sopra.' : 'Nessun gioco.'}
