@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.8.0 - 202610252200 (solo per chi è entrato nell'app; id solo numerici; pausa fra le richieste rispettata anche con più richieste insieme; nuovo tentativo se BGG risponde 429)
+// v1.9.0 - 202610260130 (collezione: anche le espansioni, chieste a parte e segnate come tali)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -231,25 +231,33 @@ export default async function handler(req, res) {
 
     if (azione === 'collezione') {
       if (!utente) return res.status(400).json({ errore: 'Manca il nome utente BGG.' })
-      // Le espansioni vengono escluse: BGG le etichetta in modo scorretto
-      // se mescolate ai giochi base.
-      const xml = await chiamaBGG(
-        `/collection?username=${encodeURIComponent(utente)}` +
-          '&own=1&excludesubtype=boardgameexpansion&brief=1'
-      )
-      const dati = parser.parse(xml)
-      if (dati?.errors) {
+      // Giochi base ed espansioni si chiedono separati: mescolati, BGG
+      // etichetta le espansioni come giochi base.
+      const radice = `/collection?username=${encodeURIComponent(utente)}&own=1&brief=1`
+      const datiBase = parser.parse(await chiamaBGG(`${radice}&excludesubtype=boardgameexpansion`))
+      if (datiBase?.errors) {
         return res.status(404).json({ errore: 'Utente BGG non trovato.' })
       }
-      const giochi = elenco(dati?.items?.item)
+      const datiEsp = parser.parse(await chiamaBGG(`${radice}&subtype=boardgameexpansion`))
+      const leggi = (dati, espansione) => elenco(dati?.items?.item)
         .map((i) => ({
           bgg_id: Number(i.objectid),
           nome: nomePrincipale(i.name),
           anno: i.yearpublished ?? null,
+          espansione,
         }))
         // Senza nome la riga è inutile e il database la rifiuterebbe.
         .filter((g) => g.nome && Number.isFinite(g.bgg_id))
-      return res.status(200).json({ giochi, totale: giochi.length, unici: new Set(giochi.map((g) => g.bgg_id)).size })
+      const base = leggi(datiBase, false)
+      const idBase = new Set(base.map((g) => g.bgg_id))
+      const espansioni = leggi(datiEsp, true).filter((g) => !idBase.has(g.bgg_id))
+      const giochi = [...base, ...espansioni]
+      return res.status(200).json({
+        giochi,
+        totale: giochi.length,
+        unici: new Set(giochi.map((g) => g.bgg_id)).size,
+        espansioni: new Set(espansioni.map((g) => g.bgg_id)).size,
+      })
     }
 
     if (azione === 'partite') {
