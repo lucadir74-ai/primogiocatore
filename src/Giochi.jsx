@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.19.0 - 202610260115 (filtri che si sommano: In collezione + Solo giocati = Tutti; in collezione si vede quanti non hai mai giocato; la collezione BGG è senza espansioni, e lo dice)
+// v4.20.0 - 202610260130 (la collezione BGG comprende le espansioni, segnate come tali; filtri che si sommano: In collezione + Solo giocati = Tutti)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
@@ -59,8 +59,15 @@ export default function Giochi({ profilo }) {
   async function caricaCatalogo() {
     try {
       // Solo i propri giochi: il catalogo comune contiene le collezioni altrui.
-      const righe = await giochiMiei(profilo.id,
-        'id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da')
+      const campi = 'id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da'
+      let righe
+      try {
+        righe = await giochiMiei(profilo.id, `${campi}, espansione`)
+      } catch (e) {
+        // Senza lo script espansioni.sql la colonna non c'è ancora.
+        if (!/espansione/.test(e?.message || '')) throw e
+        righe = await giochiMiei(profilo.id, campi)
+      }
       setCatalogo(righe)
     } catch (e) {
       setErrore(e.message)
@@ -133,7 +140,7 @@ export default function Giochi({ profilo }) {
       // ("cannot affect row a second time"). Si tiene una riga per gioco.
       const unici = [...new Map(dati.giochi.map((g) => [g.bgg_id, g])).values()]
       const salvati = await assicuraGiochi(unici.map((g) => ({
-        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno,
+        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno, espansione: Boolean(g.espansione),
       })))
 
       const possedute = [...new Map(salvati.filter(Boolean).map((g) => [g.id, {
@@ -148,7 +155,10 @@ export default function Giochi({ profilo }) {
         if (error) throw error
       }
 
-      setMessaggio(`Collezione importata: ${possedute.length} giochi.`)
+      const nEsp = salvati.filter((g) => g?.espansione).length
+      setMessaggio(nEsp
+        ? `Collezione importata: ${possedute.length - nEsp} giochi e ${nEsp} espansioni.`
+        : `Collezione importata: ${possedute.length} giochi.`)
       caricaCatalogo()
       caricaMiei()
     } catch (e) {
@@ -273,7 +283,9 @@ export default function Giochi({ profilo }) {
     collezione: tuoi.filter((g) => posseduti.has(g.id)).length,
     giocati: tuoi.filter((g) => giocati.has(g.id) && !posseduti.has(g.id)).length,
   }
-  const maiGiocati = tuoi.filter((g) => posseduti.has(g.id) && !giocati.has(g.id)).length
+  // Le espansioni non si giocano da sole: «mai giocati» conta solo i giochi base.
+  const maiGiocati = tuoi.filter((g) => posseduti.has(g.id) && !g.espansione && !giocati.has(g.id)).length
+  const espansioniMie = tuoi.filter((g) => posseduti.has(g.id) && g.espansione).length
   const filtrati = tuoi.filter((g) => filtro === 'collezione' ? posseduti.has(g.id)
     : filtro === 'giocati' ? giocati.has(g.id) && !posseduti.has(g.id) : true)
 
@@ -307,7 +319,7 @@ export default function Giochi({ profilo }) {
               <strong>{g.nome}</strong>
               {g.anno ? <span className="anno"> {g.anno}</span> : null}
               <span className="anno block">
-                {posseduti.has(g.id) ? 'in collezione · ' : ''}{partite(giocati.get(g.id))}
+                {g.espansione ? 'espansione · ' : ''}{posseduti.has(g.id) ? 'in collezione · ' : ''}{partite(giocati.get(g.id))}
               </span>
               {posso(g) ? (
                 <>
@@ -526,7 +538,10 @@ export default function Giochi({ profilo }) {
           </div>
           <p className="aiuto">
             {filtro === 'tutti' && `${quanti.collezione} in collezione e ${quanti.giocati} che hai giocato senza averli.`}
-            {filtro === 'collezione' && `Giochi base posseduti su BGG, senza espansioni${maiGiocati ? `: ${maiGiocati} non li hai ancora mai giocati` : ''}.`}
+            {filtro === 'collezione' && (espansioniMie
+              ? `${quanti.collezione - espansioniMie} giochi e ${espansioniMie} espansioni posseduti su BGG`
+              : 'Giochi posseduti su BGG')}
+            {filtro === 'collezione' && (maiGiocati ? `; ${maiGiocati} giochi non li hai ancora mai giocati.` : '.')}
             {filtro === 'giocati' && 'Giochi a cui hai giocato ma che non sono nella tua collezione.'}
           </p>
           {filtrati.length === 0

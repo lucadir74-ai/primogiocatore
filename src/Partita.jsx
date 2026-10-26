@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.18.0 - 202610252330 (dopo il salvataggio la partita parte anche verso BGG, per chi l'ha collegato)
+// v4.19.0 - 202610260130 (nella ricerca del gioco le espansioni sono segnate come tali)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -786,6 +786,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                     <span className="voce-testo">
                       <strong>{g.nome}</strong>
                       {g.anno ? <span className="anno"> {g.anno}</span> : null}
+                      {g.espansione && <span className="anno"> · espansione</span>}
                       {miaCollezione.has(g.id)
                         ? <span className="anno"> · tuo</span>
                         : nomeDoppio(g) && (

@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.2.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
+// v2.3.0 - 202610260130 (i giochi salvati possono essere segnati come espansioni)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -28,7 +28,7 @@ export async function giochiMiei(profiloId, campi) {
 }
 
 const CAMPI_GIOCO = ['bgg_id', 'nome', 'anno', 'min_giocatori', 'max_giocatori', 'durata_minuti',
-  'immagine_url', 'immagine_grande', 'tipo_punteggio', 'usa_fazioni']
+  'immagine_url', 'immagine_grande', 'tipo_punteggio', 'usa_fazioni', 'espansione']
 
 // Trova o crea i giochi, a blocchi. Restituisce le righe nello stesso
 // ordine di quelle passate.
