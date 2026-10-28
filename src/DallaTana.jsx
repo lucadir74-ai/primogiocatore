@@ -1,5 +1,5 @@
 // Primo Giocatore - striscia "Dalla Tana nazionale"
-// v1.0.0 - 202610281200 (prima versione: ultime 3 notizie di goblins.net, si aprono sul sito)
+// v1.0.1 - 202610281300 (tolta la riga di spiegazione sotto la striscia)
 //
 // Una fila compatta in fondo alla pagina Tavoli. Non è una sezione
 // dell'app: niente menu, niente notifiche. Le notizie si leggono sul
@@ -101,8 +101,6 @@ export default function DallaTana() {
           )}
         </div>
       )}
-
-      <p className="aiuto">Dal sito della Tana dei Goblin: si aprono su goblins.net.</p>
     </section>
   )
 }
