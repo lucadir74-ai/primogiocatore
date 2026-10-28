@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.14.0 - 202610281700 (Home di atterraggio e striscia compatta della Tana)
+/* Primo Giocatore - foglio di stile v1.15.0 - 202610282000 (indirizzi dei luoghi con «Trova» e tavoli vicini da una zona)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2397,3 +2397,47 @@ button.numerone:active { transform: scale(0.98); }
 .dalla-tana.compatta .tana-data { font-size: 0.72rem; }
 .dalla-tana.compatta .tana-titolo { font-size: 0.8rem; font-weight: 500; -webkit-line-clamp: 2; }
 .dalla-tana.compatta .freccia-menu { bottom: auto; height: 4.6rem; }
+
+/* ---------- Indirizzi dei luoghi e tavoli vicini ---------- */
+
+.riga-trova { display: flex; gap: 0.5rem; align-items: stretch; }
+.riga-trova input { flex: 1; min-width: 0; }
+.riga-trova .bottone { width: auto; margin: 0; flex: none; }
+
+.cerca-vicini { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0; }
+.cerca-vicini > .bottone { margin: 0; }
+
+.risultati-indirizzo {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--superficie);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.risultati-indirizzo li + li { border-top: 1px solid var(--bordo); }
+.risultati-indirizzo button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  border: 0;
+  background: transparent;
+  color: var(--inchiostro);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.risultati-indirizzo button:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+.risultati-indirizzo span { font-size: 0.78rem; color: var(--inchiostro-tenue); }
+
+.indirizzo-scelto { margin: 0.2rem 0 0; }
+.indirizzo-scelto .bottone-piatto { margin-top: 0.2rem; }
+.campo-indirizzo .spunta-fazioni { margin-top: 0.5rem; }
+.errore-testo { color: var(--rosso); }
+.elenco li:has(.luogo-indirizzo) { flex-wrap: wrap; }
+.luogo-indirizzo { flex: 1 0 100%; width: 100%; margin-top: 0.5rem; }

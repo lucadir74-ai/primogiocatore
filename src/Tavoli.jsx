@@ -1,10 +1,12 @@
 // Primo Giocatore - Tavoli
-// v2.16.0 - 202610281700 (la striscia della Tana passa nella Home; dalla Home si apre direttamente un tavolo)
+// v2.17.0 - 202610282000 (indirizzo dei luoghi con «Trova», case private protette, tavoli vicini anche da una zona e con raggio)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
+import { cercaIndirizzo } from './indirizzo'
+import CampoIndirizzo from './CampoIndirizzo.jsx'
 import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
@@ -29,7 +31,10 @@ const VUOTO = {
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
   dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
+  posizione: null,   // nuova posizione del luogo scelta qui: { indirizzo, zona, lat, lon, pubblica }
 }
+
+const RAGGI = [5, 10, 25]
 
 export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
   const [tavoli, setTavoli] = useState([])
@@ -46,7 +51,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
   const [disponibili, setDisponibili] = useState([])
   const [luoghiNoti, setLuoghiNoti] = useState([])
   const [serateFuture, setSerateFuture] = useState([])
-  const [miaPosizione, setMiaPosizione] = useState(null)
+  const [miaPosizione, setMiaPosizione] = useState(null)   // { lat, lon, etichetta? }
+  const [raggio, setRaggio] = useState(null)               // km, null = tutti
+  const [zonaCercata, setZonaCercata] = useState('')
+  // Posizione di ogni tavolo, dal database: esatta solo per chi può vederla.
+  const [posizioni, setPosizioni] = useState(new Map())
+  // Posizione già nota del luogo scritto nel modulo (null = non ancora chiesta).
+  const [luogoNoto, setLuogoNoto] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
   // Dalla Home si arriva già sul tavolo toccato.
@@ -60,12 +71,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
 
   async function carica() {
     setCaricamento(true)
-    const [t, pr, lu, se] = await Promise.all([
+    const [t, pr, lu, se, po] = await Promise.all([
       supabase
         .from('tavoli')
         .select(`
           *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-          luoghi ( nome, tipo, latitudine, longitudine, posizione_pubblica ),
+          luoghi ( nome, tipo ),
           iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id, nome_visibile )
         `)
         .order('inizio', { ascending: true }),
@@ -74,7 +85,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
       // Le prossime serate: nella scelta del giorno sono segnate.
       supabase.from('serate').select('data, ora_inizio')
         .gte('data', new Date().toISOString().slice(0, 10)).eq('annullata', false).order('data'),
+      supabase.rpc('posizioni_tavoli'),
     ])
+    // Prima di lanciare posizione_luoghi.sql la funzione non c'è: niente distanze, il resto va.
+    if (!po.error && Array.isArray(po.data)) setPosizioni(new Map(po.data.map((x) => [String(x.tavolo_id), x])))
     if (t.error) setErrore(t.error.message)
     else setTavoli(t.data || [])
     if (pr.data) setPersone(pr.data)
@@ -90,6 +104,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
     fra2ore.setMinutes(0, 0, 0)
     const inizio = perCampo(fra2ore)
     setModulo({ ...VUOTO, inizio })
+    setLuogoNoto(null)
     caricaDisponibili(inizio)
     setMessaggio('')
   }
@@ -115,7 +130,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
       dimostratore_gioca: t.dimostratore_gioca !== false,
       chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
       pubblicato: t.pubblicato,
+      posizione: null,
     })
+    setLuogoNoto(null)
     caricaDisponibili(perCampo(t.inizio))
     setMessaggio('')
   }
@@ -214,7 +231,18 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
     if (!modulo.inizio) { setErrore('Metti data e ora.'); return }
 
     try {
-      const luogoId = await trovaOCreaLuogo(modulo.luogo, profilo.id, 'sede')
+      const luogoId = await trovaOCreaLuogo(modulo.luogo, profilo.id,
+        modulo.posizione && !modulo.posizione.pubblica ? 'casa' : 'sede')
+      let avvisoPosizione = ''
+      if (luogoId && modulo.posizione) {
+        const pos = modulo.posizione
+        const { error: ep } = await supabase.from('luoghi_posizione').upsert({
+          luogo_id: luogoId, indirizzo: pos.indirizzo, zona: pos.zona,
+          latitudine: pos.lat, longitudine: pos.lon, pubblica: pos.pubblica,
+        }, { onConflict: 'luogo_id' })
+        if (ep) avvisoPosizione = ` L\u2019indirizzo però non è stato salvato (${ep.message}).`
+        else if (!pos.pubblica) await supabase.from('luoghi').update({ tipo: 'casa' }).eq('id', luogoId)
+      }
 
       // Tavolo libero: i nomi di tutti, il primo come riferimento.
       const primo = modulo.libero ? modulo.dimostratori[0] : null
@@ -251,14 +279,14 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
       if (modulo.id) {
         const { error } = await supabase.from('tavoli').update(campi).eq('id', modulo.id)
         if (error) throw error
-        setMessaggio('Tavolo aggiornato.')
+        setMessaggio('Tavolo aggiornato.' + avvisoPosizione)
       } else {
         const { data, error } = await supabase
           .from('tavoli').insert({ ...campi, host_id: profilo.id, stato: 'aperto' })
           .select('id').single()
         if (error) throw error
         tavoloId = data.id
-        setMessaggio('Tavolo pubblicato.')
+        setMessaggio('Tavolo pubblicato.' + avvisoPosizione)
       }
 
       if (modulo.libero) await sistemaDimostratori(tavoloId, modulo.dimostratori)
@@ -497,10 +525,41 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
     }
   }
 
+  const posizioneDi = (t) => posizioni.get(String(t.id)) || null
   const distanzaDi = (t) => {
-    if (!miaPosizione || !t.luoghi?.latitudine) return null
-    return distanza(miaPosizione.lat, miaPosizione.lon, t.luoghi.latitudine, t.luoghi.longitudine)
+    const p = posizioneDi(t)
+    if (!miaPosizione || !p) return null
+    return distanza(miaPosizione.lat, miaPosizione.lon, p.lat, p.lon)
   }
+
+  // Al posto del GPS: una zona scritta a mano («Tuscolano», «piazza Bologna»).
+  async function cercaZona() {
+    setErrore('')
+    if (zonaCercata.trim().length < 3) { setErrore('Scrivi una zona, una piazza o un indirizzo.'); return }
+    setCercandoPosizione(true)
+    try {
+      const [primo] = await cercaIndirizzo(zonaCercata)
+      if (!primo) { setErrore('Zona non trovata: prova ad aggiungere la città.'); return }
+      setMiaPosizione({ lat: primo.lat, lon: primo.lon, etichetta: primo.zona || primo.indirizzo })
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setCercandoPosizione(false)
+    }
+  }
+
+  // Il luogo scritto nel modulo ha già una posizione? Si chiede al
+  // database poco dopo che si è smesso di scrivere.
+  const luogoModulo = modulo?.luogo?.trim() || ''
+  useEffect(() => {
+    if (!luogoModulo) { setLuogoNoto(null); return }
+    let finito = false
+    const attesa = setTimeout(async () => {
+      const { data, error } = await supabase.rpc('posizione_luogo_nome', { p_nome: luogoModulo })
+      if (!finito) setLuogoNoto(error ? { ha_posizione: false, puo_cambiare: true, assente: true } : data)
+    }, 500)
+    return () => { finito = true; clearTimeout(attesa) }
+  }, [luogoModulo])
 
   function condividi(t) {
     const link = `${window.location.origin}/?t=${t.id}`
@@ -792,6 +851,37 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
           </datalist>
         </div>
 
+        {luogoModulo && luogoNoto && (
+          <div className="campo">
+            <label htmlFor="t-indirizzo">Indirizzo</label>
+            {luogoNoto.ha_posizione && !modulo.posizione ? (
+              <p className="indirizzo-scelto">
+                {luogoNoto.puo_vedere
+                  ? <strong>{luogoNoto.indirizzo || luogoNoto.zona || 'Posizione registrata'}</strong>
+                  : <strong>Posizione già registrata{luogoNoto.zona ? ` (${luogoNoto.zona})` : ''}</strong>}
+                <span className="anno block">
+                  {luogoNoto.pubblica ? 'Visibile a tutti.' : 'Casa privata: la vede solo chi ha l\u2019iscrizione confermata.'}
+                </span>
+                {luogoNoto.puo_cambiare && (
+                  <button type="button" className="bottone-piatto"
+                    onClick={() => setModulo({ ...modulo, posizione: null, cambiaPosizione: true })}>cambia</button>
+                )}
+              </p>
+            ) : (!luogoNoto.ha_posizione || modulo.cambiaPosizione || modulo.posizione) && luogoNoto.puo_cambiare ? (
+              <>
+                <CampoIndirizzo id="t-indirizzo" valore={modulo.posizione}
+                  onCambia={(v) => setModulo((m) => ({ ...m, posizione: v }))} />
+                {!modulo.posizione && (
+                  <p className="aiuto">
+                    Facoltativo, ma senza indirizzo il tavolo non compare fra quelli vicini.
+                    Si mette una volta sola: le prossime volte basta scegliere il luogo.
+                  </p>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+
         <div className="riga-campi">
           <div className="campo">
             <label htmlFor="t-min">Minimo</label>
@@ -918,8 +1008,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
 
   // --- Vetrina ---
   const adesso = new Date()
-  const prossimi = tavoli
-    .filter((t) => new Date(t.inizio) >= adesso)
+  const futuri = tavoli.filter((t) => new Date(t.inizio) >= adesso)
+  const prossimi = futuri
+    .filter((t) => {
+      if (!miaPosizione || raggio == null) return true
+      const d = distanzaDi(t)
+      return d != null && d <= raggio
+    })
     .sort((a, b) => {
       if (!miaPosizione) return 0   // senza posizione resta l'ordine per data
       const da = distanzaDi(a)
@@ -950,8 +1045,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
             <span className="anno block">
               {t.luoghi?.nome || 'luogo da definire'}
               {(() => {
+                const p = posizioneDi(t)
                 const d = distanzaDi(t)
-                return d != null ? ` · a ${scriviDistanza(d)}` : ''
+                const zona = p?.zona && !(t.luoghi?.nome || '').includes(p.zona) ? ` · ${p.zona}` : ''
+                return zona + (d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : '')
               })()}
               {' · '}{conf}
               {t.posti_max ? `/${t.posti_max}` : ''} iscritti
@@ -1012,23 +1109,56 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
       )}
 
       {!miaPosizione ? (
-        <button className="bottone bottone-secondario" onClick={trovaminiVicini} disabled={cercandoPosizione}>
-          {cercandoPosizione ? 'Cerco dove sei…' : 'Mostra prima i tavoli vicini'}
-        </button>
-      ) : (
-        <p className="aiuto">
-          Tavoli ordinati per distanza da dove sei.{' '}
-          <button className="bottone-piatto" onClick={() => setMiaPosizione(null)}>
-            torna all'ordine per data
+        <div className="cerca-vicini">
+          <button className="bottone bottone-secondario" onClick={trovaminiVicini} disabled={cercandoPosizione}>
+            {cercandoPosizione ? 'Cerco…' : 'Mostra prima i tavoli vicini'}
           </button>
-        </p>
+          <div className="riga-trova">
+            <input value={zonaCercata} onChange={(e) => setZonaCercata(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); cercaZona() } }}
+              placeholder="oppure vicino a… (zona o indirizzo)" aria-label="Cerca i tavoli vicino a una zona" />
+            <button type="button" className="bottone bottone-secondario" onClick={cercaZona} disabled={cercandoPosizione}>
+              Trova
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="aiuto">
+            Tavoli ordinati per distanza {miaPosizione.etichetta ? `da ${miaPosizione.etichetta}` : 'da dove sei'}.{' '}
+            <button className="bottone-piatto" onClick={() => { setMiaPosizione(null); setRaggio(null) }}>
+              torna all'ordine per data
+            </button>
+          </p>
+          <div className="sottoschede" role="group" aria-label="Distanza massima">
+            {[...RAGGI, null].map((r) => (
+              <button key={r ?? 'tutti'} type="button" className={raggio === r ? 'attiva' : ''}
+                aria-pressed={raggio === r} onClick={() => setRaggio(r)}>
+                {r ? `entro ${r} km` : 'tutti'}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       <h3 className="titolo-sezione">
         In programma <span className="conteggio">{prossimi.length}</span>
       </h3>
+      {raggio != null && futuri.some((t) => !posizioneDi(t)) && (
+        <p className="aiuto">
+          {(() => {
+            const n = futuri.filter((t) => !posizioneDi(t)).length
+            return n === 1 ? 'Un tavolo non ha l\u2019indirizzo e resta fuori dal filtro.' : `${n} tavoli non hanno l\u2019indirizzo e restano fuori dal filtro.`
+          })()}{' '}
+          <button className="bottone-piatto" onClick={() => setRaggio(null)}>mostrali tutti</button>
+        </p>
+      )}
       {prossimi.length === 0 ? (
-        <p className="aiuto">Nessun tavolo in programma.</p>
+        <p className="aiuto">
+          {raggio != null && futuri.length > 0
+            ? `Nessun tavolo entro ${raggio} km.`
+            : 'Nessun tavolo in programma.'}
+        </p>
       ) : prossimi.map(scheda)}
 
       {passati.length > 0 && (

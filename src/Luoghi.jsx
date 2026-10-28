@@ -1,10 +1,11 @@
 // Primo Giocatore - gestione dei luoghi
-// v4.2.0 - 202610181930 (casella unica per unire due luoghi)
+// v4.3.0 - 202610282000 (posizione nella tabella protetta luoghi_posizione; indirizzo anche scritto, con «Trova»)
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { chiediPosizione } from './posizione'
 import CercaScegli from './CercaScegli.jsx'
+import CampoIndirizzo from './CampoIndirizzo.jsx'
 
 const TIPI = [
   { id: 'sede', etichetta: 'Sede' },
@@ -32,15 +33,24 @@ export default function Luoghi({ profilo }) {
 
   async function carica() {
     try {
-      const [l, p, t] = await Promise.all([
-        tutteLeRighe(() => supabase.from('luoghi')
-          .select('id, nome, tipo, latitudine, longitudine, posizione_pubblica').order('nome')),
+      const [l, p, t, po] = await Promise.all([
+        tutteLeRighe(() => supabase.from('luoghi').select('id, nome, tipo').order('nome')),
         tutteLeRighe(() => supabase.from('partite').select('luogo_id').not('luogo_id', 'is', null)),
         tutteLeRighe(() => supabase.from('tavoli').select('luogo_id').not('luogo_id', 'is', null)),
+        // Si vedono solo le posizioni pubbliche, le proprie e (per gli organizzatori) tutte.
+        supabase.from('luoghi_posizione').select('luogo_id, indirizzo, zona, latitudine, longitudine, pubblica'),
       ])
+      const posizioni = new Map((po.data || []).map((x) => [String(x.luogo_id), x]))
       const conta = new Map()
       for (const r of [...p, ...t]) conta.set(r.luogo_id, (conta.get(r.luogo_id) || 0) + 1)
-      setLuoghi(l.map((x) => ({ ...x, usi: conta.get(x.id) || 0 })))
+      setLuoghi(l.map((x) => {
+        const pos = posizioni.get(String(x.id))
+        return {
+          ...x, usi: conta.get(x.id) || 0, posizione: pos || null,
+          // nomi di prima, così il resto della pagina non cambia
+          latitudine: pos?.latitudine ?? null, posizione_pubblica: pos?.pubblica ?? false,
+        }
+      }))
     } catch (e) {
       setErrore(e.message)
     }
@@ -76,12 +86,13 @@ export default function Luoghi({ profilo }) {
     setErrore(''); setMessaggio('')
     try {
       const p = await chiediPosizione()
-      const { error } = await supabase.from('luoghi').update({
+      const { error } = await supabase.from('luoghi_posizione').upsert({
+        luogo_id: l.id,
         latitudine: p.lat,
         longitudine: p.lon,
-        // Una sede si può mostrare a tutti, una casa no.
-        posizione_pubblica: l.tipo === 'sede',
-      }).eq('id', l.id)
+        // Una casa no: la posizione la vede solo chi è iscritto ai suoi tavoli.
+        pubblica: l.tipo !== 'casa',
+      }, { onConflict: 'luogo_id' })
       if (error) throw error
       setMessaggio(`Posizione di «${l.nome}» registrata, precisa a circa ${Math.round(p.precisione)} metri.`)
       carica()
@@ -91,16 +102,30 @@ export default function Luoghi({ profilo }) {
   }
 
   async function togliPosizione(l) {
-    const { error } = await supabase.from('luoghi')
-      .update({ latitudine: null, longitudine: null, posizione_pubblica: false }).eq('id', l.id)
+    const { error } = await supabase.from('luoghi_posizione').delete().eq('luogo_id', l.id)
     if (error) setErrore(error.message)
     else carica()
   }
 
   async function cambiaVisibilita(l, pubblica) {
-    const { error } = await supabase.from('luoghi').update({ posizione_pubblica: pubblica }).eq('id', l.id)
+    const { error } = await supabase.from('luoghi_posizione').update({ pubblica }).eq('luogo_id', l.id)
     if (error) setErrore(error.message)
     else setLuoghi((righe) => righe.map((x) => (x.id === l.id ? { ...x, posizione_pubblica: pubblica } : x)))
+  }
+
+  // Indirizzo scritto a mano, con «Trova»: per i luoghi dove non sei ora.
+  const [conIndirizzo, setConIndirizzo] = useState(null)   // id del luogo aperto
+  async function salvaIndirizzo(l, v) {
+    setErrore(''); setMessaggio('')
+    if (!v) return
+    const { error } = await supabase.from('luoghi_posizione').upsert({
+      luogo_id: l.id, indirizzo: v.indirizzo, zona: v.zona,
+      latitudine: v.lat, longitudine: v.lon, pubblica: l.tipo === 'casa' ? false : v.pubblica,
+    }, { onConflict: 'luogo_id' })
+    if (error) { setErrore(error.message); return }
+    setConIndirizzo(null)
+    setMessaggio(`Indirizzo di «${l.nome}» salvato.`)
+    carica()
   }
 
   async function salvaNome() {
@@ -165,8 +190,9 @@ export default function Luoghi({ profilo }) {
         Marca come online le piattaforme
       </button>
       <p className="aiuto">
-        «Sono qui» registra la posizione del luogo usando il telefono: vai sul posto e
-        premilo. Serve a mostrare i tavoli vicini a chi cerca dove giocare. Per le sedi
+        «Sono qui» registra la posizione del luogo usando il telefono, stando sul posto;
+        «scrivi l&rsquo;indirizzo» la cerca dall&rsquo;indirizzo. Serve a mostrare i tavoli vicini
+        a chi cerca dove giocare. Per le sedi
         la posizione è visibile a tutti; per le case resta nascosta, e chi non è iscritto
         al tavolo vede solo la distanza approssimativa.
       </p>
@@ -217,20 +243,31 @@ export default function Luoghi({ profilo }) {
                   {l.tipo !== 'online' && (
                     l.latitudine != null ? (
                       <>
-                        <span className="anno">posizione registrata</span>
+                        <span className="anno">{l.posizione?.indirizzo || l.posizione?.zona || 'posizione registrata'}</span>
                         <button className="bottone-piatto" onClick={() => segnaPosizione(l)}>aggiorna</button>
                         <button className="bottone-piatto pericolo" onClick={() => togliPosizione(l)}>togli</button>
                       </>
                     ) : (
-                      <button className="bottone-piatto" onClick={() => segnaPosizione(l)}>
-                        sono qui
-                      </button>
+                      <>
+                        <button className="bottone-piatto" onClick={() => segnaPosizione(l)}>
+                          sono qui
+                        </button>
+                        <button className="bottone-piatto" onClick={() => setConIndirizzo(conIndirizzo === l.id ? null : l.id)}>
+                          scrivi l&rsquo;indirizzo
+                        </button>
+                      </>
                     )
                   )}
                   {l.usi === 0 && (
                     <button className="bottone-piatto pericolo" onClick={() => elimina(l)}>elimina</button>
                   )}
                 </span>
+                {conIndirizzo === l.id && (
+                  <div className="campo luogo-indirizzo">
+                    <CampoIndirizzo id={`ind-${l.id}`} valore={null} casa={l.tipo === 'casa'}
+                      onCambia={(v) => salvaIndirizzo(l, v)} />
+                  </div>
+                )}
               </>
             )}
           </li>

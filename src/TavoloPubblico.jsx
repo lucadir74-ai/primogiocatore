@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.5.0 - 202609302300
+// v4.6.0 - 202610282000 (indirizzo del luogo con link alla mappa; per le case private solo agli iscritti confermati)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { copertinaTavolo } from './immagini'
+import { linkMappa } from './indirizzo'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -17,6 +18,7 @@ const quando = (d) =>
 
 export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
   const [tavolo, setTavolo] = useState(null)
+  const [posizione, setPosizione] = useState(null)   // dal database: esatta solo se puoi vederla
   const [iscritti, setIscritti] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -46,7 +48,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
         id, titolo, descrizione, inizio, posti_min, posti_max, stato, pubblicato,
         dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
         giochi:tavoli_gioco_id_fkey ( nome, immagine_url, immagine_grande, min_giocatori, max_giocatori, durata_minuti ),
-        luoghi ( nome, tipo, indirizzo, piattaforma )
+        luoghi ( nome, tipo, piattaforma )
       `)
       .eq('id', tavoloId)
       .maybeSingle()
@@ -55,6 +57,8 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
     else if (!data) setErrore('Questo tavolo non esiste, oppure non è più pubblicato.')
     else {
       setTavolo(data)
+      const { data: po } = await supabase.rpc('posizioni_tavoli', { p_tavolo: String(tavoloId) })
+      setPosizione(Array.isArray(po) && po[0] ? po[0] : null)
       const { data: is } = await supabase
         .from('iscrizioni_tavolo')
         .select('id, stato, nome_visibile, utente_id, ruolo, disposto_a_dimostrare, profili:utente_id ( nome, nickname )')
@@ -150,6 +154,18 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
               {tavolo.luoghi.nome}
               {tavolo.luoghi.piattaforma ? ` · ${tavolo.luoghi.piattaforma}` : ''}
             </strong>
+            {posizione?.esatta ? (
+              <span className="anno block">
+                {posizione.indirizzo || posizione.zona || ''}{' '}
+                <a className="bottone-piatto" href={linkMappa(posizione.lat, posizione.lon)}
+                  target="_blank" rel="noopener noreferrer">Apri nella mappa</a>
+              </span>
+            ) : posizione ? (
+              <span className="anno block">
+                {posizione.zona ? `Zona: ${posizione.zona}. ` : ''}
+                L&rsquo;indirizzo lo vedi quando la tua iscrizione è confermata.
+              </span>
+            ) : null}
           </li>
         )}
         <li>
