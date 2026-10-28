@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.17.0 - 202610282000 (indirizzo dei luoghi con «Trova», case private protette, tavoli vicini anche da una zona e con raggio)
+// v2.18.0 - 202610282130 (tavoli pubblicabili da tutti gli iscritti; chi non organizza vede i contatti solo dei confermati)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -642,7 +642,11 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
                     )}
                     <span className="anno block">
                       {i.stato === 'attesa' ? 'in attesa · ' : i.stato === 'annullato' ? 'annullato · ' : ''}
-                      {c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}
+                      {c.email || c.telefono
+                        ? <>{c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}</>
+                        : i.stato === 'attesa' && !profilo.organizzatore
+                          ? 'contatti visibili dopo la conferma'
+                          : '—'}
                     </span>
                     <span className="azioni-iscritto">
                       {c.telefono && (
@@ -1104,9 +1108,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      {profilo.organizzatore && (
-        <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
-      )}
+      <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
 
       {!miaPosizione ? (
         <div className="cerca-vicini">
@@ -1166,12 +1168,6 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
           <h3 className="titolo-sezione">Passati</h3>
           {passati.slice(0, 10).map(scheda)}
         </>
-      )}
-
-      {!profilo.organizzatore && (
-        <p className="aiuto">
-          Per pubblicare tavoli serve un account da organizzatore.
-        </p>
       )}
 
       </>}
