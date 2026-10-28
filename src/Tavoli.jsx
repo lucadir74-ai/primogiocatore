@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.15.0 - 202610281200 (in fondo la striscia «Dalla Tana nazionale» con le ultime notizie di goblins.net)
+// v2.16.0 - 202610281700 (la striscia della Tana passa nella Home; dalla Home si apre direttamente un tavolo)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -7,7 +7,6 @@ import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
-import DallaTana from './DallaTana.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
@@ -32,7 +31,7 @@ const VUOTO = {
   chiusura_iscrizioni: '', pubblicato: true,
 }
 
-export default function Tavoli({ profilo, onRegistraPartita }) {
+export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
   const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -50,7 +49,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
   const [miaPosizione, setMiaPosizione] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
-  const [aperto, setAperto] = useState(null)   // tavolo visto come lo vede chi arriva dal link
+  // Dalla Home si arriva già sul tavolo toccato.
+  const [aperto, setAperto] = useState(apriSubito ? { id: apriSubito } : null)   // tavolo visto come lo vede chi arriva dal link
   const [sessione, setSessione] = useState(null)
 
   useEffect(() => { carica() }, [])
@@ -1043,8 +1043,6 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           Per pubblicare tavoli serve un account da organizzatore.
         </p>
       )}
-
-      <DallaTana />
 
       </>}
     </div>

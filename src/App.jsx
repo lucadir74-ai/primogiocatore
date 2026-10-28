@@ -1,4 +1,4 @@
-// Primo Giocatore v4.20.0 - 202610252330 (invio delle partite a BGG all'apertura e dopo gli import da BGA)
+// Primo Giocatore v4.21.0 - 202610281700 (Home di atterraggio: si apre all'avvio e toccando il logo)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -27,6 +27,7 @@ import { inviaABggSeServe } from './invioBgg'
 import ImportaBga from './ImportaBga.jsx'
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
+import Home from './Home.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -117,15 +118,18 @@ function Icona({ nome }) {
   )
 }
 
-function Marchio() {
+function Marchio({ onClick }) {
+  // Dentro l'app il marchio porta alla Home (un link: può contenere il titolo).
+  const Contenitore = onClick ? 'a' : 'div'
   return (
-    <div className="marchio">
+    <Contenitore className={'marchio' + (onClick ? ' marchio-tasto' : '')}
+      {...(onClick ? { href: '/', title: 'Home', onClick: (e) => { e.preventDefault(); onClick() } } : {})}>
       <img className="logo-tana" src="/logo-tdg-roma.png" alt="Tana dei Goblin Roma" />
       <h1>
         Primo Giocatore
         <span>by TdG Roma</span>
       </h1>
-    </div>
+    </Contenitore>
   )
 }
 
@@ -725,9 +729,10 @@ function InAttesa({ profilo, onRicontrolla }) {
 // Ogni pagina ha il suo indirizzo (/tavoli, /storico, /profilo/dati...):
 // il tasto indietro del telefono torna alla pagina di prima invece di
 // chiudere l'app, e un indirizzo si può salvare o riaprire.
-const PAGINE = ['partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'profilo']
+const PAGINE = ['home', 'partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'profilo']
 
 function percorsoDi(scheda, partitaId, sezione) {
+  if (scheda === 'home') return '/'
   if (scheda === 'partita') return partitaId ? `/partita/${partitaId}` : '/partita'
   if (scheda === 'profilo') return sezione && sezione !== 'profilo' ? `/profilo/${sezione}` : '/profilo'
   return '/' + scheda
@@ -736,6 +741,7 @@ function percorsoDi(scheda, partitaId, sezione) {
 function leggiPercorso() {
   try {
     const [, a, b] = window.location.pathname.split('/')
+    if (!a) return { scheda: 'home', partitaId: null, sezione: null }
     if (!PAGINE.includes(a)) return null
     return {
       scheda: a,
@@ -775,7 +781,9 @@ export default function App() {
   const [ammesso, setAmmesso] = useState(null)
   const [orgTana, setOrgTana] = useState(false)
   const [pronto, setPronto] = useState(false)
-  const [scheda, setScheda] = useState(() => leggiPercorso()?.scheda || 'partita')
+  const [scheda, setScheda] = useState(() => leggiPercorso()?.scheda || 'home')
+  // Tavolo da aprire subito arrivando dalla Home: { id, quando }.
+  const [apriTavolo, setApriTavolo] = useState(null)
   const [erroreProfilo, setErroreProfilo] = useState('')
   const [partitaId, setPartitaId] = useState(() => leggiPercorso()?.partitaId || null)
   const [mira, setMira] = useState(null)
@@ -939,6 +947,13 @@ export default function App() {
     setScheda('partita')
   }
 
+  function vaiAllaHome() {
+    setRitornoStorico(null)
+    setPartitaId(null)
+    setScheda('home')
+    window.scrollTo({ top: 0 })
+  }
+
   // L'omino in testata apre sempre la scheda Profilo, non l'ultima sezione vista.
   function vaiAlProfilo() {
     setRitornoStorico(null)
@@ -950,7 +965,7 @@ export default function App() {
   return (
     <div className="guscio">
       <header className="testata">
-        <Marchio />
+        <Marchio onClick={inApp ? vaiAllaHome : null} />
         <div className="tasti-testata">
           <Condividi />
           {inApp && (
@@ -1031,6 +1046,7 @@ export default function App() {
                   // Dal menu in basso si riparte da capo: il ritorno alla
                   // partita aperta vale solo subito dopo una modifica.
                   setRitornoStorico(null)
+                  if (id === 'tavoli') setApriTavolo(null)
                   setScheda(id)
                 }}
                 aria-current={scheda === id ? 'page' : undefined}
@@ -1076,7 +1092,16 @@ export default function App() {
             </div>
           )}
 
-          {scheda === 'partita' ? (
+          {scheda === 'home' ? (
+            <Home
+              profilo={profilo}
+              onNuovaPartita={() => { setPartitaId(null); setScheda('partita'); window.scrollTo({ top: 0 }) }}
+              onTavoli={() => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
+              onApriTavolo={(id) => { setApriTavolo({ id, quando: Date.now() }); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
+              onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
+              onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
+            />
+          ) : scheda === 'partita' ? (
             <Partita
               key={partitaId || 'nuova'}
               profilo={profilo}
@@ -1108,6 +1133,8 @@ export default function App() {
             />
           ) : scheda === 'tavoli' ? (
             <Tavoli
+              key={apriTavolo?.quando || 'tavoli'}
+              apriSubito={apriTavolo?.id}
               profilo={profilo}
               onRegistraPartita={apriPartita}
             />
@@ -1137,7 +1164,8 @@ export default function App() {
             />
           ) : scheda === 'classifiche' ? (
             <Classifiche profilo={profilo} onIndietro={() => {
-              if (window.history.state?.ritornoA === '/statistiche') window.history.back()
+              const da = window.history.state?.ritornoA
+              if (da === '/statistiche' || da === '/') window.history.back()
               else setScheda('statistiche')
             }} />
           ) : scheda === 'giochi' ? (

@@ -1,5 +1,5 @@
 // Primo Giocatore - notizie dalla Tana dei Goblin nazionale
-// v1.0.0 - 202610281200 (prima versione: le ultime notizie dal feed RSS di goblins.net)
+// v1.1.0 - 202610281700 (fino a 10 notizie, tutte quelle del feed, per la Home)
 //
 // Legge il feed ufficiale https://www.goblins.net/rss.xml e restituisce
 // solo quello che serve alla striscia "Dalla Tana": titolo, riga
@@ -8,7 +8,7 @@
 // permette da altri domini), per questo passa da qui.
 //
 // Come si usa:
-//   /api/tana            → le ultime 6 notizie
+//   /api/tana            → le ultime notizie (il feed ne porta 10)
 //
 // Il risultato resta in memoria un'ora, qui e sulla rete di Vercel:
 // goblins.net viene interpellato al massimo una volta all'ora.
@@ -17,7 +17,7 @@ import { XMLParser } from 'fast-xml-parser'
 
 const FEED = 'https://www.goblins.net/rss.xml'
 const SITO = 'https://www.goblins.net'
-const QUANTE = 6
+const QUANTE = 10
 const DURATA_CACHE = 1000 * 60 * 60 // un'ora
 
 let memoria = null // { quando, notizie }

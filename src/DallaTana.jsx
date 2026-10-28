@@ -1,20 +1,19 @@
 // Primo Giocatore - striscia "Dalla Tana nazionale"
-// v1.0.1 - 202610281300 (tolta la riga di spiegazione sotto la striscia)
+// v1.1.0 - 202610281700 (versione compatta per la Home: card piccole, fino a 10 notizie)
 //
-// Una fila compatta in fondo alla pagina Tavoli. Non è una sezione
+// Una fila compatta nella Home. Non è una sezione
 // dell'app: niente menu, niente notifiche. Le notizie si leggono sul
 // sito della Tana; qui ci sono solo titolo, immagine e data.
 // Si carica quando arriva in vista; se il sito non risponde sparisce.
 
 import { useEffect, useRef, useState } from 'react'
 
-const QUANTE = 3
 const TUTTE = 'https://www.goblins.net/articoli'
 
 const giorno = (iso) =>
   new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 
-export default function DallaTana() {
+export default function DallaTana({ quante = 10, compatta = false }) {
   const contenitore = useRef(null)
   const fila = useRef(null)
   const [notizie, setNotizie] = useState(null) // null = non ancora caricate
@@ -32,7 +31,7 @@ export default function DallaTana() {
         const d = await r.json()
         if (finito) return
         if (!r.ok || !Array.isArray(d.notizie) || d.notizie.length === 0) setNascosta(true)
-        else setNotizie(d.notizie.slice(0, QUANTE))
+        else setNotizie(d.notizie.slice(0, quante))
       } catch {
         if (!finito) setNascosta(true)
       }
@@ -66,8 +65,11 @@ export default function DallaTana() {
   if (nascosta) return null
 
   return (
-    <section className="dalla-tana" ref={contenitore} aria-labelledby="dalla-tana-titolo">
-      <h3 className="titolo-sezione" id="dalla-tana-titolo">Dalla Tana nazionale</h3>
+    <section className={'dalla-tana' + (compatta ? ' compatta' : '')} ref={contenitore} aria-labelledby="dalla-tana-titolo">
+      <div className="dalla-tana-testa">
+        <h3 className="titolo-sezione" id="dalla-tana-titolo">Dalla Tana nazionale</h3>
+        <a className="bottone-piatto" href={TUTTE} target="_blank" rel="noopener noreferrer">Tutte</a>
+      </div>
 
       {notizie && (
         <div className="menu-scorrevole">
@@ -89,11 +91,6 @@ export default function DallaTana() {
                 </a>
               </li>
             ))}
-            <li>
-              <a className="tana-notizia tana-tutte" href={TUTTE} target="_blank" rel="noopener noreferrer">
-                Tutte le notizie su goblins.net
-              </a>
-            </li>
           </ul>
           {bordi.destra && (
             <button type="button" className="freccia-menu destra" onClick={() => sposta(1)}

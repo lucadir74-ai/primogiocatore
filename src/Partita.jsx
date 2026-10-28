@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.19.0 - 202610260130 (nella ricerca del gioco le espansioni sono segnate come tali)
+// v4.20.0 - 202610281700 (bozza in src/bozza.js; «Rifai l'ultima» dalla Home arriva con gioco e giocatori già messi)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -10,26 +10,9 @@ import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
+import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 
-// La partita in corso resta sul telefono finché non la salvi: se chiudi
-// la pagina o cade la linea, la ritrovi com'era.
-const BOZZA = 'primo-giocatore:bozza'
 const LIMITE_NOMI = 12
-
-function leggiBozza() {
-  try {
-    const grezzo = localStorage.getItem(BOZZA)
-    return grezzo ? JSON.parse(grezzo) : null
-  } catch { return null }
-}
-
-function scriviBozza(dati) {
-  try { localStorage.setItem(BOZZA, JSON.stringify(dati)) } catch { /* spazio pieno */ }
-}
-
-function cancellaBozza() {
-  try { localStorage.removeItem(BOZZA) } catch { /* niente da fare */ }
-}
 
 // Orologio della partita: ore, minuti e secondi, come 0:12:34.
 // "2026-09-14T21:30" per il campo data/ora del browser.
@@ -126,7 +109,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setAccumulati(b.accumulati || 0)
     setAvviatoIl(b.avviatoIl || null)
     setInCorso(Boolean(b.avviatoIl))
-    setRipresa(true)
+    // Da «Rifai l'ultima» nella Home: non è una partita lasciata a metà.
+    setRipresa(b.rifatta ? 'rifatta' : true)
   }, [modifica])
 
   // Ogni cambiamento viene messo da parte.
@@ -758,7 +742,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
       {ripresa && !modifica && (
         <div className="avviso ok">
-          Ripresa la partita lasciata a metà.{' '}
+          {ripresa === 'rifatta'
+            ? 'Stesso gioco e stessi giocatori dell\u2019ultima partita.'
+            : 'Ripresa la partita lasciata a metà.'}{' '}
           <button className="bottone-piatto" onClick={azzera}>ricomincia da capo</button>
         </div>
       )}
