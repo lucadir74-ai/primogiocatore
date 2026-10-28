@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.20.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
+// v3.21.0 - 202610281200 (scheda gioco: link agli articoli e recensioni sul sito della Tana dei Goblin)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -988,6 +988,12 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
   )
 }
 
+// Ricerca del gioco fra le pagine di goblins.net (recensioni, articoli, scheda).
+// Passa dal motore di ricerca limitato al sito: trova anche i titoli scritti
+// in modo un po' diverso da come sono in Primo Giocatore.
+const cercaSullaTana = (nome) =>
+  `https://www.google.com/search?q=${encodeURIComponent(`site:goblins.net "${nome}"`)}`
+
 function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onModifica, onCancella, vaiAlGiocatore }) {
   if (d.sue.length === 0) return <p className="aiuto">Nessuna partita a questo gioco.</p>
   return (
@@ -1025,6 +1031,12 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
       </div>
 
       <p className="aiuto">Tocca un numero per sapere cosa vuol dire.{d.ultima && ` Ultima volta: ${giorno(d.ultima)}.`}</p>
+
+      {nome && (
+        <a className="link-tana" href={cercaSullaTana(nome)} target="_blank" rel="noopener noreferrer">
+          Recensioni e articoli su {nome} nella Tana dei Goblin
+        </a>
+      )}
 
       {io && io.competitive.length > 0 && (
         <>

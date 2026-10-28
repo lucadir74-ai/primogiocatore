@@ -2246,3 +2246,68 @@ button.numerone:active { transform: scale(0.98); }
   color: var(--inchiostro-tenue);
 }
 .benvenuto-nota a { color: var(--blu); font-weight: 600; }
+
+/* ---------- Dalla Tana nazionale: striscia di notizie in fondo a Tavoli ---------- */
+/* Volutamente sobria: piccola, in fondo, senza colori d'accento. */
+
+.dalla-tana { margin-top: 2.2rem; }
+.dalla-tana .titolo-sezione { margin-top: 0; }
+
+.tana-fila {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.3rem;
+  display: flex;
+  gap: 0.7rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.tana-fila::-webkit-scrollbar { display: none; }
+.tana-fila > li { flex: 0 0 13.5rem; scroll-snap-align: start; }
+
+.tana-notizia {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  overflow: hidden;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  text-decoration: none;
+}
+.tana-notizia:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+
+.tana-foto {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--carta);
+}
+.tana-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.tana-testo { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.55rem 0.7rem 0.7rem; }
+.tana-data { font-size: 0.75rem; color: var(--inchiostro-tenue); }
+.tana-titolo {
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tana-tutte {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--blu);
+  border-style: dashed;
+}
+.tana-fila > li:last-child { flex-basis: 9rem; }
+
+.link-tana { display: inline-block; margin-top: 0.8rem; color: var(--blu); font-weight: 600; font-size: 0.9rem; }

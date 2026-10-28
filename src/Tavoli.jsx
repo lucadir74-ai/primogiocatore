@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.14.0 - 202610252200 (le chiamate a BGG portano la sessione)
+// v2.15.0 - 202610281200 (in fondo la striscia «Dalla Tana nazionale» con le ultime notizie di goblins.net)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -7,6 +7,7 @@ import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
+import DallaTana from './DallaTana.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
@@ -1042,6 +1043,8 @@ export default function Tavoli({ profilo, onRegistraPartita }) {
           Per pubblicare tavoli serve un account da organizzatore.
         </p>
       )}
+
+      <DallaTana />
 
       </>}
     </div>
