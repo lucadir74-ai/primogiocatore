@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.16.3 - 202610292300 (banner della Tana nello stile dei riquadri della Home; ripristinato lo stile della Home)
+/* Primo Giocatore - foglio di stile v1.17.0 - 202610292330 («Sei tu?» con l'elenco unico delle schede da spuntare)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2412,3 +2412,7 @@ button.numerone:active { transform: scale(0.98); }
 .errore-testo { color: var(--rosso); }
 .elenco li:has(.luogo-indirizzo) { flex-wrap: wrap; }
 .luogo-indirizzo { flex: 1 0 100%; width: 100%; margin-top: 0.5rem; }
+
+/* ---------- «Sei tu?»: schede da spuntare ---------- */
+.sei-tu-scelta { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; cursor: pointer; }
+.sei-tu-scelta input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; accent-color: var(--verde); }
