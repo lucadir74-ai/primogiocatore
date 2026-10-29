@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.0.0 - 202610281700 (prima versione, bozza B «Cruscotto»: quattro riquadri, notizie della Tana, tavoli in programma, ultime partite)
+// v1.1.0 - 202610292300 (banner della Tana nazionale in fondo, dopo «Tutto lo storico»)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -160,8 +160,6 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
         </button>
       </div>
 
-      <DallaTana compatta quante={10} />
-
       <h3 className="titolo-sezione">In programma</h3>
       {tavoli == null ? (
         <p className="aiuto">Un attimo&hellip;</p>
@@ -224,6 +222,8 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
           <button type="button" className="bottone-piatto" onClick={onStorico}>Tutto lo storico</button>
         </>
       )}
+
+      <DallaTana />
     </div>
   )
 }
