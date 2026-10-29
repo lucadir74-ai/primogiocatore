@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.16.2 - 202610292300 (banner della Tana nello stile dei riquadri della Home)
+/* Primo Giocatore - foglio di stile v1.16.3 - 202610292300 (banner della Tana nello stile dei riquadri della Home; ripristinato lo stile della Home)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2270,6 +2270,88 @@ button.numerone:active { transform: scale(0.98); }
 .banner-tana-titolo { font-weight: 700; font-size: 0.95rem; line-height: 1.25; }
 .banner-tana-link { font-size: 0.85rem; font-weight: 600; color: var(--verde); }
 
+.link-tana { display: inline-block; margin-top: 0.8rem; color: var(--blu); font-weight: 600; font-size: 0.9rem; }
+
+/* ---------- Home di atterraggio (bozza B «Cruscotto») ---------- */
+
+.marchio-tasto { display: flex; align-items: center; color: inherit; text-decoration: none; border-radius: var(--raggio); }
+.marchio-tasto:focus-visible { outline: 2px solid var(--testata-testo); outline-offset: 3px; }
+
+.home-saluto {
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+}
+
+.home-riquadri {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.home-riquadro {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  min-height: 7rem;
+  padding: 0.9rem;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-riquadro:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+.home-riquadro:disabled { opacity: 0.7; cursor: wait; }
+.home-riquadro > span { display: flex; flex-direction: column; }
+.home-riquadro.primario { background: var(--primario); border-color: var(--primario); color: var(--su-primario); }
+
+.home-riquadro-titolo { font-weight: 600; font-size: 1rem; }
+.home-riquadro-sotto { font-size: 0.82rem; color: var(--inchiostro-tenue); }
+.home-numero { font-family: var(--display); font-size: 1.9rem; font-weight: 700; line-height: 1; }
+.home-copertina { width: 2.6rem; height: 2.6rem; border-radius: 8px; object-fit: cover; background: var(--carta); }
+
+.home-elenco {
+  list-style: none;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--superficie);
+  overflow: hidden;
+}
+.home-elenco > li + li { border-top: 1px solid var(--bordo); }
+
+.home-riga {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.4rem;
+  padding: 0.7rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: var(--inchiostro);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-riga:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+
+.home-data { display: flex; flex-direction: column; align-items: center; width: 2.4rem; flex: none; }
+.home-data > span { font-size: 0.72rem; color: var(--inchiostro-tenue); }
+.home-data > strong { font-family: var(--display); font-size: 1.25rem; line-height: 1.1; }
+.home-mini { width: 2.4rem; height: 2.4rem; border-radius: 6px; object-fit: cover; flex: none; background: var(--carta); }
+
+.home-riga-testo { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.home-riga-testo > strong { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-riga-testo > span { font-size: 0.82rem; color: var(--inchiostro-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-azione { flex: none; font-size: 0.85rem; font-weight: 600; color: var(--verde); }
 .home-quando { flex: none; font-size: 0.8rem; color: var(--inchiostro-tenue); }
 
