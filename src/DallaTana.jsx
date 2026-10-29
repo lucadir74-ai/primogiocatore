@@ -1,103 +1,24 @@
-// Primo Giocatore - striscia "Dalla Tana nazionale"
-// v1.1.0 - 202610281700 (versione compatta per la Home: card piccole, fino a 10 notizie)
+// Primo Giocatore - banner "Notizie dalla Tana nazionale"
+// v2.0.0 - 202610292245 (banner fisso al posto della striscia di notizie)
 //
-// Una fila compatta nella Home. Non è una sezione
-// dell'app: niente menu, niente notifiche. Le notizie si leggono sul
-// sito della Tana; qui ci sono solo titolo, immagine e data.
-// Si carica quando arriva in vista; se il sito non risponde sparisce.
+// Un banner sempre uguale nella Home, con il logo della Tana
+// nazionale e la grafica del sito goblins.net. Non legge più il
+// feed del sito: toccandolo si apre la pagina degli articoli.
 
-import { useEffect, useRef, useState } from 'react'
+const ARTICOLI = 'https://www.goblins.net/articoli'
 
-const TUTTE = 'https://www.goblins.net/articoli'
-
-const giorno = (iso) =>
-  new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
-
-export default function DallaTana({ quante = 10, compatta = false }) {
-  const contenitore = useRef(null)
-  const fila = useRef(null)
-  const [notizie, setNotizie] = useState(null) // null = non ancora caricate
-  const [nascosta, setNascosta] = useState(false)
-  const [bordi, setBordi] = useState({ sinistra: false, destra: false })
-
-  // Si chiede al server solo quando la striscia sta per entrare in vista.
-  useEffect(() => {
-    const el = contenitore.current
-    if (!el) return
-    let finito = false
-    const carica = async () => {
-      try {
-        const r = await fetch('/api/tana')
-        const d = await r.json()
-        if (finito) return
-        if (!r.ok || !Array.isArray(d.notizie) || d.notizie.length === 0) setNascosta(true)
-        else setNotizie(d.notizie.slice(0, quante))
-      } catch {
-        if (!finito) setNascosta(true)
-      }
-    }
-    if (!('IntersectionObserver' in window)) { carica(); return () => { finito = true } }
-    const osserva = new IntersectionObserver((voci) => {
-      if (voci.some((v) => v.isIntersecting)) { osserva.disconnect(); carica() }
-    }, { rootMargin: '300px' })
-    osserva.observe(el)
-    return () => { finito = true; osserva.disconnect() }
-  }, [])
-
-  function misura() {
-    const el = fila.current
-    if (!el) return
-    setBordi({
-      sinistra: el.scrollLeft > 4,
-      destra: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
-    })
-  }
-
-  useEffect(() => {
-    misura()
-    window.addEventListener('resize', misura)
-    return () => window.removeEventListener('resize', misura)
-  }, [notizie])
-
-  const sposta = (verso) =>
-    fila.current?.scrollBy({ left: verso * fila.current.clientWidth * 0.8, behavior: 'smooth' })
-
-  if (nascosta) return null
-
+export default function DallaTana() {
   return (
-    <section className={'dalla-tana' + (compatta ? ' compatta' : '')} ref={contenitore} aria-labelledby="dalla-tana-titolo">
-      <div className="dalla-tana-testa">
-        <h3 className="titolo-sezione" id="dalla-tana-titolo">Dalla Tana nazionale</h3>
-        <a className="bottone-piatto" href={TUTTE} target="_blank" rel="noopener noreferrer">Tutte</a>
-      </div>
-
-      {notizie && (
-        <div className="menu-scorrevole">
-          {bordi.sinistra && (
-            <button type="button" className="freccia-menu sinistra" onClick={() => sposta(-1)}
-              aria-label="Notizie precedenti">‹</button>
-          )}
-          <ul className="tana-fila" ref={fila} onScroll={misura}>
-            {notizie.map((n) => (
-              <li key={n.link}>
-                <a className="tana-notizia" href={n.link} target="_blank" rel="noopener noreferrer">
-                  <span className="tana-foto">
-                    {n.immagine && <img src={n.immagine} alt="" loading="lazy" decoding="async" />}
-                  </span>
-                  <span className="tana-testo">
-                    {n.data && <span className="tana-data">{giorno(n.data)}</span>}
-                    <span className="tana-titolo">{n.titolo}</span>
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-          {bordi.destra && (
-            <button type="button" className="freccia-menu destra" onClick={() => sposta(1)}
-              aria-label="Altre notizie">›</button>
-          )}
-        </div>
-      )}
-    </section>
+    <a className="banner-tana" href={ARTICOLI} target="_blank" rel="noopener noreferrer"
+      aria-label="Notizie dalla Tana nazionale: apri gli articoli su goblins.net">
+      <span className="banner-tana-striscia">La Tana dei Goblin</span>
+      <span className="banner-tana-corpo">
+        <img src="/logo-tdg-nazionale.png" alt="" width="180" height="92" />
+        <span className="banner-tana-testo">
+          <span className="banner-tana-titolo">Notizie dalla Tana nazionale</span>
+          <span className="banner-tana-link">Leggi tutti gli articoli →</span>
+        </span>
+      </span>
+    </a>
   )
 }
