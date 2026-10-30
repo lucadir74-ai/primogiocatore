@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli organizzatori
-// v3.11.0 - 202610211945 (toccando un nome si apre la scheda dell'iscritto)
+// v3.12.0 - 202610292345 (la ricerca trova anche nome e cognome)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
@@ -18,7 +18,7 @@ export default function Organizzatori({ profilo }) {
     try {
       const righe = await tutteLeRighe(() => supabase
         .from('profili')
-        .select('id, nome, nickname, citta, organizzatore, dimostratore, creato_il')
+        .select('id, nome, cognome, nickname, citta, organizzatore, dimostratore, creato_il')
         .order('nome'))
       setPersone(righe)
     } catch (e) {
@@ -39,7 +39,7 @@ export default function Organizzatori({ profilo }) {
 
   const q = cerca.trim().toLowerCase()
   const elenco = q
-    ? persone.filter((p) => (p.nickname || p.nome || '').toLowerCase().includes(q))
+    ? persone.filter((p) => [p.nickname, p.nome, p.cognome].filter(Boolean).join(' ').toLowerCase().includes(q))
     : persone
   const attuali = persone.filter((p) => p.organizzatore)
   const dimostratori = persone.filter((p) => p.dimostratore)

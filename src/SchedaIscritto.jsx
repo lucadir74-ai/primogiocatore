@@ -1,5 +1,5 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.3.0 - 202610222200 (esito dell'ultima sincronizzazione BGA automatica)
+// v1.4.0 - 202610292345 (nome e cognome nei dati base)
 // Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
 // Dall'elenco soci arriva anche la riga del socio (socio): se non ha
 // ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
@@ -127,7 +127,7 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
 
               <h4 className="finestra-sottotitolo">Dati base</h4>
               <ul className="elenco">
-                {p.nickname && p.nome && p.nome !== p.nickname && <Riga etichetta="Nome" valore={p.nome} />}
+                {(p.nome || p.cognome) && <Riga etichetta="Nome e cognome" valore={[p.nome, p.cognome].filter(Boolean).join(' ')} />}
                 <Riga etichetta="Email" valore={s.email ? <a href={`mailto:${s.email}`}>{s.email}</a> : '—'} />
                 <Riga etichetta="Città" valore={p.citta || 'non indicata'} tono={p.citta ? null : 'no'} />
                 <Riga etichetta="Iscritto il" valore={giorno(p.creato_il) || '—'} />

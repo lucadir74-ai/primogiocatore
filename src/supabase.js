@@ -22,7 +22,9 @@ export const COLORI = [
 // Come si chiama una persona dentro l'app: il soprannome se ce l'ha,
 // altrimenti nome e cognome. Un posto solo, per non doverlo ricordare.
 export const daMostrare = (p) =>
-  (p?.nickname && p.nickname.trim()) || p?.nome || 'Sconosciuto'
+  (p?.nickname && p.nickname.trim())
+  || [p?.nome, p?.cognome].filter(Boolean).join(' ')
+  || 'Sconosciuto'
 
 // Supabase restituisce al massimo mille righe per interrogazione.
 // Questa funzione le chiede a blocchi finché non finiscono: senza,

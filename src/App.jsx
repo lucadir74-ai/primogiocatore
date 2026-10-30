@@ -1,4 +1,4 @@
-// Primo Giocatore v4.21.0 - 202610281700 (Home di atterraggio: si apre all'avvio e toccando il logo)
+// Primo Giocatore v4.22.0 - 202610292345 (nome, cognome e città obbligatori; «Completa il profilo» per chi è già iscritto)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -204,6 +204,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
   const [nonTrovata, setNonTrovata] = useState(false)
   const [nickname, setNickname] = useState('')
   const [nome, setNome] = useState('')
+  const [cognome, setCognome] = useState('')
+  const [citta, setCitta] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [attesa, setAttesa] = useState(false)
@@ -240,8 +242,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
       setErrore('L\u2019iscrizione è riservata ai soci della Tana: se non lo sei, scrivi a Dario su WhatsApp.')
       return
     }
-    if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim())) {
-      setErrore('Scrivi nickname e nome e cognome.')
+    if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim() || !cognome.trim() || !citta.trim())) {
+      setErrore('Servono nickname, nome, cognome e città: aiutano a riconoscerti nelle partite degli altri.')
       return
     }
     if (modo === 'iscriviti' && password.length < 8) {
@@ -267,7 +269,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { nome: nome.trim(), nickname: nickname.trim() } },
+          options: { data: { nome: nome.trim(), cognome: cognome.trim(), citta: citta.trim(), nickname: nickname.trim() } },
         })
         if (error) throw error
         if (data.session) return
@@ -366,8 +368,17 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
               autoComplete="nickname" placeholder="Come ti chiamano al tavolo" />
           </div>
           <div className="campo">
-            <label htmlFor="nome">Nome e cognome</label>
-            <input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="name" />
+            <label htmlFor="nome">Nome</label>
+            <input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="given-name" />
+          </div>
+          <div className="campo">
+            <label htmlFor="cognome">Cognome</label>
+            <input id="cognome" value={cognome} onChange={(e) => setCognome(e.target.value)} autoComplete="family-name" />
+          </div>
+          <div className="campo">
+            <label htmlFor="citta">Città</label>
+            <input id="citta" value={citta} onChange={(e) => setCitta(e.target.value)} autoComplete="address-level2" />
+            <p className="aiuto">Nome e cognome servono a riconoscerti se qualcuno ti ha già inserito come ospite nelle sue partite.</p>
           </div>
         </>
       )}
@@ -491,6 +502,80 @@ function NuovaPassword({ fatto }) {
 
 /* ---------------- Profilo ---------------- */
 
+// Nome, cognome, soprannome e città sono obbligatori: servono a
+// riconoscere le persone fra gli ospiti delle partite degli altri e a
+// non perdere informazioni nelle statistiche.
+function profiloIncompleto(p) {
+  return !p.nome?.trim() || !p.cognome?.trim() || !p.nickname?.trim() || !p.citta?.trim()
+}
+
+// Chi si era iscritto prima trova nome e cognome in un campo solo:
+// li propone già divisi (l'ultima parola come cognome), da controllare.
+function dividiNome(p) {
+  const nome = (p.nome || '').trim()
+  if (p.cognome?.trim() || !nome.includes(' ')) return { nome, cognome: p.cognome || '' }
+  const parole = nome.split(/\s+/)
+  return { nome: parole.slice(0, -1).join(' '), cognome: parole[parole.length - 1] }
+}
+
+function CompletaProfilo({ profilo, setProfilo }) {
+  const iniziale = dividiNome(profilo)
+  const [nome, setNome] = useState(iniziale.nome)
+  const [cognome, setCognome] = useState(iniziale.cognome)
+  const [nickname, setNickname] = useState(profilo.nickname || '')
+  const [citta, setCitta] = useState(profilo.citta || '')
+  const [errore, setErrore] = useState('')
+  const [attesa, setAttesa] = useState(false)
+
+  async function salva() {
+    setErrore('')
+    const dati = { nome: nome.trim(), cognome: cognome.trim(), nickname: nickname.trim(), citta: citta.trim() }
+    if (!dati.nome || !dati.cognome || !dati.nickname || !dati.citta) {
+      setErrore('Compila tutti e quattro i campi.')
+      return
+    }
+    setAttesa(true)
+    const { error } = await supabase.from('profili').update(dati).eq('id', profilo.id)
+    setAttesa(false)
+    if (error) { setErrore(traduciErrore(error)); return }
+    setProfilo((p) => ({ ...p, ...dati }))
+  }
+
+  return (
+    <div className="scheda">
+      <h2>Completa il profilo</h2>
+      <p className="sottotitolo">
+        Da ora nome, cognome e città sono obbligatori: servono a riconoscerti nelle partite
+        in cui altri ti hanno inserito come ospite. Controlla che siano giusti.
+      </p>
+      <Avviso tipo="errore" testo={errore} />
+      <div className="campo">
+        <label htmlFor="c-nick">Soprannome</label>
+        <input id="c-nick" value={nickname} onChange={(e) => setNickname(e.target.value)} autoComplete="nickname" />
+      </div>
+      <div className="campo">
+        <label htmlFor="c-nome">Nome</label>
+        <input id="c-nome" value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="given-name" />
+      </div>
+      <div className="campo">
+        <label htmlFor="c-cognome">Cognome</label>
+        <input id="c-cognome" value={cognome} onChange={(e) => setCognome(e.target.value)} autoComplete="family-name" />
+      </div>
+      <div className="campo">
+        <label htmlFor="c-citta">Città</label>
+        <input id="c-citta" value={citta} onChange={(e) => setCitta(e.target.value)} autoComplete="address-level2"
+          onKeyDown={(e) => e.key === 'Enter' && salva()} />
+      </div>
+      <button className="bottone" onClick={salva} disabled={attesa}>
+        {attesa ? 'Salvo\u2026' : 'Salva e continua'}
+      </button>
+      <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>
+        Esci dall'account
+      </button>
+    </div>
+  )
+}
+
 function Profilo({ sessione, profilo, setProfilo }) {
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState('')
@@ -504,8 +589,8 @@ function Profilo({ sessione, profilo, setProfilo }) {
   async function salva() {
     setErrore('')
     setOk('')
-    if (!profilo.nome?.trim()) {
-      setErrore('Il nome non può restare vuoto.')
+    if (!profilo.nome?.trim() || !profilo.cognome?.trim() || !profilo.nickname?.trim() || !profilo.citta?.trim()) {
+      setErrore('Nome, cognome, soprannome e città non possono restare vuoti.')
       return
     }
     setSalvataggio(true)
@@ -513,6 +598,7 @@ function Profilo({ sessione, profilo, setProfilo }) {
       .from('profili')
       .update({
         nome: profilo.nome.trim(),
+        cognome: profilo.cognome.trim(),
         nickname: profilo.nickname?.trim() || null,
         citta: profilo.citta?.trim() || null,
         colore: profilo.colore || null,
@@ -542,7 +628,12 @@ function Profilo({ sessione, profilo, setProfilo }) {
 
       <div className="campo">
         <label htmlFor="p-nome">Nome</label>
-        <input id="p-nome" value={profilo.nome || ''} onChange={(e) => aggiorna('nome', e.target.value)} />
+        <input id="p-nome" value={profilo.nome || ''} onChange={(e) => aggiorna('nome', e.target.value)} autoComplete="given-name" />
+      </div>
+
+      <div className="campo">
+        <label htmlFor="p-cognome">Cognome</label>
+        <input id="p-cognome" value={profilo.cognome || ''} onChange={(e) => aggiorna('cognome', e.target.value)} autoComplete="family-name" />
       </div>
 
       <div className="campo">
@@ -1022,6 +1113,8 @@ export default function App() {
         </div>
       ) : ammesso === false ? (   // mentre controlla si entra: i dati li protegge il database
         <InAttesa profilo={profilo} onRicontrolla={controllaAccesso} />
+      ) : profiloIncompleto(profilo) ? (
+        <CompletaProfilo profilo={profilo} setProfilo={setProfilo} />
       ) : daBga ? (
         <ImportaBga profilo={profilo} daLink onChiudi={() => {
           try { window.history.replaceState(null, '', window.location.pathname) } catch { /* niente */ }
