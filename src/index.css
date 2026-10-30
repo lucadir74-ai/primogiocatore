@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.19.0 - 202610301200 («Chi ce l'ha?» e richieste di tavolo)
+/* Primo Giocatore - foglio di stile v1.20.0 - 202610301800 (suggerimenti dei giochi in «Chi ce l'ha?»)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2454,3 +2454,11 @@ button.numerone:active { transform: scale(0.98); }
 }
 .chi-richiesta textarea:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; background: var(--superficie); }
 .richieste-tavolo { margin-bottom: 1.2rem; }
+
+/* ---------- «Chi ce l'ha?»: suggerimenti mentre scrivi ---------- */
+.suggerimenti-gioco { list-style: none; margin: 0.4rem 0 0; padding: 0; border: 1px solid var(--bordo); border-radius: 12px; overflow: hidden; background: var(--superficie); }
+.suggerimenti-gioco li + li { border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent); }
+.suggerimenti-gioco button { display: flex; align-items: center; gap: 0.7rem; width: 100%; padding: 0.55rem 0.7rem; border: 0; background: transparent; color: var(--inchiostro); font: inherit; text-align: left; cursor: pointer; }
+.suggerimenti-gioco button:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+.suggerimenti-gioco img, .suggerimenti-gioco .segnaposto { width: 2.4rem; height: 2.4rem; object-fit: cover; border-radius: 6px; flex: none; }
+.suggerimenti-gioco .segnaposto { background: color-mix(in srgb, var(--bordo) 50%, transparent); }
