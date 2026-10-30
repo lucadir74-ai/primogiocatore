@@ -95,7 +95,7 @@ export default function ChiCeLha({ profilo }) {
       <div className="campo">
         <label htmlFor="chi-cerca">Che gioco cerchi?</label>
         <div className="riga-ricerca">
-          <input id="chi-cerca" value={cerca} placeholder="Supplì Battle, Brass…" autoComplete="off"
+          <input id="chi-cerca" value={cerca} placeholder="Brass, Azul, Scythe…" autoComplete="off"
             onChange={(e) => { setCerca(e.target.value); setMostraSuggeriti(true) }}
             onKeyDown={(e) => e.key === 'Enter' && trova()} />
           <button className="bottone bottone-stretto" onClick={trova} disabled={cercando}>
