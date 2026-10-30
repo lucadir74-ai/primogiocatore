@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.20.0 - 202610281700 (bozza in src/bozza.js; «Rifai l'ultima» dalla Home arriva con gioco e giocatori già messi)
+// v4.21.0 - 202610300000 (giocatori cercati anche per nome, cognome e nomi collegati; ospiti nuovi con nome e cognome)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -14,6 +14,10 @@ import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 
 const LIMITE_NOMI = 12
 
+// Nome intero di un ospite (il cognome c'è per quelli nuovi).
+const nomeOspite = (o) => [o?.nome, o?.cognome].filter(Boolean).join(' ') || 'Sconosciuto'
+const minuscolo = (t) => (t || '').trim().toLowerCase()
+
 // Orologio della partita: ore, minuti e secondi, come 0:12:34.
 // "2026-09-14T21:30" per il campo data/ora del browser.
 function perCampo(d) {
@@ -27,6 +31,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   const [catalogo, setCatalogo] = useState([])
   const [persone, setPersone] = useState([])
+  const [nomiCollegati, setNomiCollegati] = useState(new Map())  // utente → nomi con cui era stato inserito
+  const [nuovoOspite, setNuovoOspite] = useState(null)   // { nome, cognome, per: 'aggiungi' | chiave da sostituire }
   const [ospiti, setOspiti] = useState([])
 
   const [gioco, setGioco] = useState(null)
@@ -156,15 +162,28 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   async function caricaElenchi() {
     const [g, p, o, f, l, c] = await Promise.all([
       giochiMiei(profilo.id, '*'),
-      tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname, colore').order('nome')),
-      tutteLeRighe(() => supabase.from('ospiti').select('id, nome').order('nome')),
+      tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
+      tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato').order('nome')),
       tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
       tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
       tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
     ])
     setCatalogo(g)
     setPersone(p)
-    setOspiti(o)
+    // Gli ospiti già collegati a un account non si mostrano: c'è la persona.
+    setOspiti(o.filter((x) => !x.utente_collegato))
+
+    // I nomi con cui le persone erano state inserite come ospiti
+    // («kaihla», «gess»...): scrivendoli si trova l'account giusto.
+    {
+      const { data: nc } = await supabase.from('nomi_collegati').select('utente_id, nome, cognome')
+      const m = new Map()
+      for (const r of nc || []) {
+        if (!m.has(r.utente_id)) m.set(r.utente_id, [])
+        m.get(r.utente_id).push([r.nome, r.cognome].filter(Boolean).join(' '))
+      }
+      setNomiCollegati(m)
+    }
     setLuoghiNoti(l.map((x) => x.nome))
     setMiaCollezione(new Set(c.map((x) => x.gioco_id)))
 
@@ -206,7 +225,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
           id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
-          profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome ),
+          profili:utente_id ( nome, cognome, nickname ), ospiti:ospite_id ( nome, cognome ),
           dettagli_punteggio ( categoria, valore )
         )
       `)
@@ -226,7 +245,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
         utente_id: p.utente_id || undefined,
         ospite_id: p.ospite_id || undefined,
-        nome: p.profili ? daMostrare(p.profili) : (p.ospiti?.nome || 'Sconosciuto'),
+        nome: p.profili ? daMostrare(p.profili) : nomeOspite(p.ospiti),
         punteggio: p.punteggio_totale == null ? '' : String(p.punteggio_totale),
         posizione: p.posizione == null ? '' : String(p.posizione),
         spareggio: p.spareggio == null ? '' : String(p.spareggio),
@@ -332,7 +351,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   function aggiungiOspite(o) {
     if (righe.some((r) => r.ospite_id === o.id)) return
-    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: o.nome, punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
+    setRighe([...righe, { chiave: `o-${o.id}`, ospite_id: o.id, nome: nomeOspite(o), punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null }])
   }
 
   const [frequenza, setFrequenza] = useState(new Map())
@@ -366,18 +385,60 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     return () => { vivo = false }
   }, [gioco?.id, gioco?.usa_fazioni])
 
-  // Chi non c'è fra i nomi trovati diventa ospite, con il nome scritto
-  // nella stessa casella di ricerca.
-  async function creaOspite() {
-    const nome = cercaGiocatore.trim()
-    if (!nome) return
-    const { data, error } = await supabase
-      .from('ospiti').insert({ nome, creato_da: profilo.id }).select().single()
-    if (error) { setErrore(error.message); return }
-    setOspiti([...ospiti, data])
-    aggiungiOspite(data)
-    setCercaGiocatore('')
+  // Chi non c'è fra gli iscritti diventa ospite, con nome e cognome
+  // per intero: servono a riconoscerlo se un giorno si iscrive.
+  // Si parte da quello scritto nella ricerca (prima parola = nome).
+  function apriNuovoOspite(testo, per) {
+    const parole = testo.trim().split(/\s+/)
+    setNuovoOspite({ nome: parole[0] || '', cognome: parole.slice(1).join(' '), per })
+    setErrore('')
   }
+
+  async function salvaNuovoOspite() {
+    const nome = nuovoOspite.nome.trim()
+    const cognome = nuovoOspite.cognome.trim()
+    if (!nome || !cognome) { setErrore('Per un ospite servono nome e cognome per intero.'); return }
+    const per = nuovoOspite.per
+
+    // Un ospite con lo stesso nome e cognome c'è già: si usa quello.
+    let o = ospiti.find((x) => minuscolo(x.nome) === minuscolo(nome) && minuscolo(x.cognome) === minuscolo(cognome))
+    if (!o) {
+      const { data, error } = await supabase
+        .from('ospiti').insert({ nome, cognome, creato_da: profilo.id }).select().single()
+      if (error) { setErrore(error.message); return }
+      o = data
+      // Il database lo ha riconosciuto: è già un iscritto.
+      if (o.utente_collegato) {
+        const persona = persone.find((x) => x.id === o.utente_collegato)
+        if (persona) {
+          const x = { chiave: `u-${persona.id}`, nome: daMostrare(persona), tipo: 'utente', dato: persona }
+          if (per === 'aggiungi') aggiungiPersona(persona); else sostituisci(per, x)
+          setNuovoOspite(null); setCercaGiocatore('')
+          return
+        }
+      }
+      setOspiti([...ospiti, o])
+    }
+    if (per === 'aggiungi') { aggiungiOspite(o); setCercaGiocatore('') }
+    else sostituisci(per, { chiave: `o-${o.id}`, nome: nomeOspite(o), tipo: 'ospite', dato: o })
+    setNuovoOspite(null)
+  }
+
+  // Il riquadro per scrivere nome e cognome di un ospite nuovo.
+  const formOspite = nuovoOspite && (
+    <div className="nuovo-ospite">
+      <p className="aiuto">Non è fra gli iscritti: scrivi nome e cognome per intero, così se un giorno si iscrive lo riconosciamo.</p>
+      <div className="riga-ospite">
+        <input value={nuovoOspite.nome} placeholder="Nome" aria-label="Nome dell'ospite" autoFocus
+          onChange={(e) => setNuovoOspite({ ...nuovoOspite, nome: e.target.value })} />
+        <input value={nuovoOspite.cognome} placeholder="Cognome" aria-label="Cognome dell'ospite"
+          onChange={(e) => setNuovoOspite({ ...nuovoOspite, cognome: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); salvaNuovoOspite() } }} />
+      </div>
+      <button className="bottone" onClick={salvaNuovoOspite}>Aggiungi ospite</button>
+      <button className="bottone-piatto" onClick={() => setNuovoOspite(null)}>annulla</button>
+    </div>
+  )
 
   // Dopo una scelta fatta cercando, la casella si svuota per il prossimo.
   // Un tocco solo per rimettere al tavolo tutti quelli dell'ultima partita.
@@ -388,7 +449,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         .filter((x) => !rs.some((r) => r.chiave === x.chiave))
         .map((x) => ({
           chiave: x.chiave,
-          ...(x.tipo === 'utente' ? { utente_id: x.dato.id, nome: daMostrare(x.dato) } : { ospite_id: x.dato.id, nome: x.dato.nome }),
+          ...(x.tipo === 'utente' ? { utente_id: x.dato.id, nome: daMostrare(x.dato) } : { ospite_id: x.dato.id, nome: nomeOspite(x.dato) }),
           punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
         })),
     ])
@@ -455,15 +516,10 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setErrore('')
   }
 
-  // Un ospite creato al volo mentre si sostituisce.
-  async function creaESostituisci(chiave) {
-    const nome = cercaSostituto.trim()
-    if (!nome) return
-    const { data, error } = await supabase
-      .from('ospiti').insert({ nome, creato_da: profilo.id }).select().single()
-    if (error) { setErrore(error.message); return }
-    setOspiti([...ospiti, data])
-    sostituisci(chiave, { chiave: `o-${data.id}`, nome: data.nome, tipo: 'ospite', dato: data })
+  // Un ospite creato al volo mentre si sostituisce: stesso riquadro.
+  function creaESostituisci(chiave) {
+    if (!cercaSostituto.trim()) return
+    apriNuovoOspite(cercaSostituto, chiave)
   }
 
   // Si tocca nell'ordine in cui si è giocato: 1 a chi ha iniziato.
@@ -680,10 +736,17 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const tuttiDisponibili = [
     ...persone
       .filter((p) => !righe.some((r) => r.utente_id === p.id))
-      .map((p) => ({ chiave: `u-${p.id}`, nome: daMostrare(p), tipo: 'utente', dato: p })),
+      .map((p) => {
+        const intero = [p.nome, p.cognome].filter(Boolean).join(' ')
+        const nomi = [p.nickname, p.nome, p.cognome, intero, ...(nomiCollegati.get(p.id) || [])].map(minuscolo).filter(Boolean)
+        return {
+          chiave: `u-${p.id}`, nome: daMostrare(p), tipo: 'utente', dato: p, nomi,
+          dettaglio: intero && minuscolo(intero) !== minuscolo(daMostrare(p)) ? intero : '',
+        }
+      }),
     ...ospiti
       .filter((o) => !righe.some((r) => r.ospite_id === o.id))
-      .map((o) => ({ chiave: `o-${o.id}`, nome: o.nome, tipo: 'ospite', dato: o })),
+      .map((o) => ({ chiave: `o-${o.id}`, nome: nomeOspite(o), tipo: 'ospite', dato: o, nomi: [minuscolo(nomeOspite(o))] })),
   ].sort((a, b) => {
     // prima chi era all'ultima partita, poi i compagni più frequenti
     const ua = ultimaPartita.indexOf(a.chiave), ub = ultimaPartita.indexOf(b.chiave)
@@ -694,14 +757,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
   const filtroNomi = cercaGiocatore.trim().toLowerCase()
   const trovatiNomi = filtroNomi
-    ? tuttiDisponibili.filter((x) => x.nome.toLowerCase().includes(filtroNomi))
+    ? tuttiDisponibili.filter((x) => x.nomi.some((n) => n.includes(filtroNomi)))
     : tuttiDisponibili
   const disponibili = filtroNomi ? trovatiNomi.slice(0, 30) : trovatiNomi.slice(0, LIMITE_NOMI)
   const restanti = Math.max(0, tuttiDisponibili.length - LIMITE_NOMI)
   // Il tasto «aggiungi come ospite» compare solo se nessuno, fra chi è
   // già al tavolo e chi si può aggiungere, ha esattamente quel nome.
   const nomeEsatto = filtroNomi && (
-    tuttiDisponibili.some((x) => x.nome.trim().toLowerCase() === filtroNomi)
+    tuttiDisponibili.some((x) => x.nomi.includes(filtroNomi))
     || righe.some((r) => (r.nome || '').trim().toLowerCase() === filtroNomi))
   const offriOspite = Boolean(filtroNomi) && !nomeEsatto
 
@@ -943,7 +1006,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                         <div className="pastiglie-persone">
                           {tuttiDisponibili
                             .filter((x) => !cercaSostituto.trim()
-                              || x.nome.toLowerCase().includes(cercaSostituto.trim().toLowerCase()))
+                              || x.nomi.some((n) => n.includes(minuscolo(cercaSostituto))))
                             .slice(0, 8)
                             .map((x) => (
                               <button
@@ -954,13 +1017,14 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                                 {x.nome}
                               </button>
                             ))}
-                          {cercaSostituto.trim() && (
+                          {cercaSostituto.trim() && nuovoOspite?.per !== r.chiave && (
                             <button className="pastiglia-nome nuovo"
                               onClick={() => creaESostituisci(r.chiave)}>
-                              + {cercaSostituto.trim()}
+                              + {cercaSostituto.trim()} come ospite
                             </button>
                           )}
                         </div>
+                        {nuovoOspite?.per === r.chiave && formOspite}
                         <button className="bottone-piatto" onClick={() => setSostituendo(null)}>
                           annulla
                         </button>
@@ -1104,7 +1168,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                 if (e.key !== 'Enter' || !filtroNomi) return
                 e.preventDefault()
                 if (disponibili.length === 1) scegliNome(disponibili[0])
-                else if (disponibili.length === 0 && offriOspite) creaOspite()
+                else if (disponibili.length === 0 && offriOspite) apriNuovoOspite(cercaGiocatore, 'aggiungi')
               }}
               placeholder="Cerca un nome"
             />
@@ -1120,14 +1184,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}${!filtroNomi && ultimaPartita.includes(x.chiave) ? ' ultima' : ''}`}
                   onClick={() => scegliNome(x)}>
                   {x.nome}
+                  {filtroNomi && x.dettaglio && <span className="pastiglia-dettaglio"> · {x.dettaglio}</span>}
                 </button>
               ))}
-              {offriOspite && (
-                <button className="pastiglia-nome nuovo" onClick={creaOspite}>
+              {offriOspite && !nuovoOspite && (
+                <button className="pastiglia-nome nuovo" onClick={() => apriNuovoOspite(cercaGiocatore, 'aggiungi')}>
                   + Aggiungi «{cercaGiocatore.trim()}» come ospite
                 </button>
               )}
             </div>
+            {nuovoOspite?.per === 'aggiungi' && formOspite}
 
             {!cercaGiocatore.trim() && restanti > 0 && (
               <p className="aiuto">

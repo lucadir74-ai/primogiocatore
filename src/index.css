@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.17.0 - 202610292330 («Sei tu?» con l'elenco unico delle schede da spuntare)
+/* Primo Giocatore - foglio di stile v1.18.0 - 202610300000 (ospite nuovo con nome e cognome; nome intero accanto al soprannome nella ricerca)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2416,3 +2416,20 @@ button.numerone:active { transform: scale(0.98); }
 /* ---------- «Sei tu?»: schede da spuntare ---------- */
 .sei-tu-scelta { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; cursor: pointer; }
 .sei-tu-scelta input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; accent-color: var(--verde); }
+
+/* ---------- Partita: ospite nuovo con nome e cognome ---------- */
+.nuovo-ospite { margin-top: 0.7rem; padding: 0.8rem; border: 1px solid var(--bordo); border-radius: 12px; }
+.nuovo-ospite .aiuto { margin-top: 0; }
+.riga-ospite { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+.riga-ospite input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+}
+.riga-ospite input:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; background: var(--superficie); }
+.pastiglia-dettaglio { font-weight: 400; opacity: 0.75; }
