@@ -1,6 +1,7 @@
 // Primo Giocatore - schermata Giochi
-// v4.20.0 - 202610260130 (la collezione BGG comprende le espansioni, segnate come tali; filtri che si sommano: In collezione + Solo giocati = Tutti)
+// v4.21.0 - 202610301200 (nuova sottoscheda «Chi ce l'ha?»: cerca un gioco nelle collezioni di tutti e chiedi un tavolo)
 
+import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import Collezione from './Collezione.jsx'
@@ -375,9 +376,12 @@ export default function Giochi({ profilo }) {
         <button className={vista === 'collezione' ? 'attiva' : ''} onClick={() => setVista('collezione')}>
           La mia collezione
         </button>
+        <button className={vista === 'chi' ? 'attiva' : ''} onClick={() => setVista('chi')}>
+          Chi ce l&rsquo;ha?
+        </button>
       </div>
 
-      {vista === 'collezione' ? <Collezione profilo={profilo} /> : <>
+      {vista === 'chi' ? <ChiCeLha profilo={profilo} /> : vista === 'collezione' ? <Collezione profilo={profilo} /> : <>
 
       <p className="sottotitolo">
         Cerca un gioco su BoardGameGeek e aggiungilo, oppure porta dentro tutta la tua collezione.

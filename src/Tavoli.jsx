@@ -1,6 +1,7 @@
 // Primo Giocatore - Tavoli
-// v2.18.0 - 202610282130 (tavoli pubblicabili da tutti gli iscritti; chi non organizza vede i contatti solo dei confermati)
+// v2.19.0 - 202610301200 (richieste di tavolo: «Lo organizzo io» apre il modulo con il gioco già messo e iscrive chi aveva chiesto)
 
+import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
 import Serate from './Serate.jsx'
@@ -36,7 +37,8 @@ const VUOTO = {
 
 const RAGGI = [5, 10, 25]
 
-export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
+export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste }) {
+  const [giroRichieste, setGiroRichieste] = useState(0)   // per ricaricare le richieste di tavolo
   const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
@@ -107,6 +109,20 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
     setLuogoNoto(null)
     caricaDisponibili(inizio)
     setMessaggio('')
+  }
+
+  // «Lo organizzo io» da una richiesta: modulo con il gioco già messo.
+  function organizzaRichiesta(r) {
+    apriNuovo()
+    setModulo((m) => ({
+      ...m,
+      gioco_id: r.gioco_id,
+      gioco: { id: r.gioco_id, nome: r.gioco, immagine_url: r.immagine_url,
+               min_giocatori: r.min_giocatori, max_giocatori: r.max_giocatori },
+      posti_max: r.max_giocatori ? String(r.max_giocatori) : '',
+      richiesta: { id: r.id, chi: r.chi },
+    }))
+    window.scrollTo({ top: 0 })
   }
 
   function apriModifica(t) {
@@ -287,6 +303,17 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
         if (error) throw error
         tavoloId = data.id
         setMessaggio('Tavolo pubblicato.' + avvisoPosizione)
+
+        // Nato da una richiesta: chi aveva chiesto viene iscritto.
+        if (modulo.richiesta && modulo.gioco_id) {
+          const { error: e2 } = await supabase.rpc('richiesta_tavolo_organizzata', {
+            p_richiesta: modulo.richiesta.id, p_tavolo: tavoloId,
+          })
+          if (e2) setMessaggio('Tavolo pubblicato, ma la richiesta non si è chiusa: ' + e2.message)
+          else setMessaggio(`Tavolo pubblicato: ${modulo.richiesta.chi} è già iscritto.` + avvisoPosizione)
+          setGiroRichieste((n) => n + 1)
+          onRichieste?.()
+        }
       }
 
       if (modulo.libero) await sistemaDimostratori(tavoloId, modulo.dimostratori)
@@ -782,6 +809,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
     return (
       <div className="scheda">
         <h2>{modulo.id ? 'Modifica tavolo' : 'Nuovo tavolo'}</h2>
+        {modulo.richiesta && (
+          <p className="aiuto">Lo organizzi per la richiesta di {modulo.richiesta.chi}: appena pubblichi, è già iscritto.</p>
+        )}
         {errore && <div className="avviso errore">{errore}</div>}
 
         <div className="campo">
@@ -1107,6 +1137,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      <RichiesteTavolo aggiorna={giroRichieste}
+        onOrganizza={organizzaRichiesta}
+        onApriTavolo={(id) => setAperto({ id })} />
 
       <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
 

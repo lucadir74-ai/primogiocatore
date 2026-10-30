@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.18.0 - 202610300000 (ospite nuovo con nome e cognome; nome intero accanto al soprannome nella ricerca)
+/* Primo Giocatore - foglio di stile v1.19.0 - 202610301200 («Chi ce l'ha?» e richieste di tavolo)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2433,3 +2433,24 @@ button.numerone:active { transform: scale(0.98); }
 }
 .riga-ospite input:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; background: var(--superficie); }
 .pastiglia-dettaglio { font-weight: 400; opacity: 0.75; }
+
+/* ---------- «Chi ce l'ha?» e richieste di tavolo ---------- */
+.chi-gioco { margin: 1rem 0; padding: 0.9rem; border: 1px solid var(--bordo); border-radius: 14px; background: var(--superficie); }
+.chi-tana { margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent); }
+.chi-tana-nome { margin: 0; font-weight: 700; }
+.chi-persone { margin: 0.2rem 0 0.4rem; opacity: 0.85; }
+.chi-richiesta { margin-top: 0.5rem; }
+.chi-richiesta textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  margin: 0.3rem 0 0.6rem;
+  resize: vertical;
+}
+.chi-richiesta textarea:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; background: var(--superficie); }
+.richieste-tavolo { margin-bottom: 1.2rem; }

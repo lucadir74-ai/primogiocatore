@@ -1,4 +1,4 @@
-// Primo Giocatore v4.22.0 - 202610292345 (nome, cognome e città obbligatori; «Completa il profilo» per chi è già iscritto)
+// Primo Giocatore v4.23.0 - 202610301200 (richieste di tavolo: avviso in cima, «Chi ce l'ha?» si toglie dal profilo)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -21,6 +21,7 @@ import Classifiche from './Classifiche.jsx'
 import Organizzatori from './Organizzatori.jsx'
 import Soci from './Soci.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
+import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
 import { inviaABggSeServe } from './invioBgg'
@@ -604,6 +605,7 @@ function Profilo({ sessione, profilo, setProfilo }) {
         colore: profilo.colore || null,
         bgg_username: profilo.bgg_username?.trim() || null,
         bga_username: profilo.bga_username?.trim() || null,
+        collezione_condivisa: profilo.collezione_condivisa !== false,
       })
       .eq('id', sessione.user.id)
 
@@ -646,6 +648,15 @@ function Profilo({ sessione, profilo, setProfilo }) {
         <label htmlFor="p-citta">Città</label>
         <input id="p-citta" value={profilo.citta || ''} onChange={(e) => aggiorna('citta', e.target.value)} />
       </div>
+
+      <label className="sei-tu-scelta">
+        <input type="checkbox" checked={profilo.collezione_condivisa !== false}
+          onChange={(e) => aggiorna('collezione_condivisa', e.target.checked)} />
+        <span>
+          La mia collezione compare in «Chi ce l&rsquo;ha?»
+          <span className="anno block">Chi cerca un gioco vede che ce l&rsquo;hai e può chiederti di organizzare un tavolo.</span>
+        </span>
+      </label>
 
       <fieldset className="campo colori-campo">
         <label style={{ display: 'block' }}>
@@ -897,6 +908,7 @@ export default function App() {
   // Dati da allegare al prossimo passo, es. { ritornoA: '/storico' }.
   const statoProssimo = useRef(null)
   const [daApprovare, setDaApprovare] = useState(0)
+  const [tavoliChiesti, setTavoliChiesti] = useState(0)   // richieste di tavolo per me
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
   const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
 
@@ -939,6 +951,7 @@ export default function App() {
   useEffect(() => {
     if (!profilo) return
     contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)
+    contaRichiesteTavolo().then(setTavoliChiesti)
   }, [profilo?.id, scheda])
 
   // Una volta entrato su questo telefono, la prossima volta si parte dall'accesso.
@@ -1185,6 +1198,18 @@ export default function App() {
             </div>
           )}
 
+          {scheda !== 'tavoli' && tavoliChiesti > 0 && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {tavoliChiesti === 1
+                  ? 'Qualcuno ti chiede di organizzare un tavolo.'
+                  : `${tavoliChiesti} richieste di organizzare un tavolo.`}{' '}
+                <button className="bottone-piatto"
+                  onClick={() => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}>Guarda</button>
+              </p>
+            </div>
+          )}
+
           {scheda === 'home' ? (
             <Home
               profilo={profilo}
@@ -1229,6 +1254,7 @@ export default function App() {
               key={apriTavolo?.quando || 'tavoli'}
               apriSubito={apriTavolo?.id}
               profilo={profilo}
+              onRichieste={() => contaRichiesteTavolo().then(setTavoliChiesti)}
               onRegistraPartita={apriPartita}
             />
           ) : scheda === 'storico' ? (
