@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.6.0 - 202610282000 (indirizzo del luogo con link alla mappa; per le case private solo agli iscritti confermati)
+// v4.7.0 - 202610301900 (iscrizioni su approvazione: si chiede di partecipare e si aspetta di essere accettati)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -45,7 +45,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
     const { data, error } = await supabase
       .from('tavoli')
       .select(`
-        id, titolo, descrizione, inizio, posti_min, posti_max, stato, pubblicato,
+        id, titolo, descrizione, inizio, posti_min, posti_max, su_approvazione, stato, pubblicato,
         dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
         giochi:tavoli_gioco_id_fkey ( nome, immagine_url, immagine_grande, min_giocatori, max_giocatori, durata_minuti ),
         luoghi ( nome, tipo, piattaforma )
@@ -87,6 +87,10 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
   const giaIscritto = sessione
     ? iscritti.some((i) => i.utente_id === sessione.user.id)
     : false
+  // Su approvazione: chi si iscrive aspetta che chi organizza lo accetti.
+  const approvazione = !!tavolo?.su_approvazione
+  const inAttesaDiOk = approvazione && sessione
+    && iscritti.some((i) => i.utente_id === sessione.user.id && i.stato === 'attesa')
 
   async function iscrivi() {
     setErrore('')
@@ -105,7 +109,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           tavolo_id: tavoloId,
           utente_id: sessione?.user?.id || null,
           nome_visibile: nome.trim(),
-          stato: pieno ? 'attesa' : 'confermato',
+          stato: pieno || approvazione ? 'attesa' : 'confermato',
           disposto_a_dimostrare: libero && disposto,
         })
         .select('id').single()
@@ -176,6 +180,9 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
             {pieno ? ' · al completo' : ''}
           </strong>
         </li>
+        {approvazione && (
+          <li><span className="etichetta-dato">Iscrizioni</span><strong>su approvazione di chi organizza</strong></li>
+        )}
         {tavolo.giochi?.durata_minuti && (
           <li><span className="etichetta-dato">Durata</span><strong>circa {tavolo.giochi.durata_minuti} min</strong></li>
         )}
@@ -235,15 +242,22 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
       {fatto ? (
         <div className="avviso ok">
-          Iscrizione registrata{pieno ? ' in lista d\u2019attesa' : ''}. Ci vediamo al tavolo.
+          {approvazione
+            ? 'Richiesta inviata: chi organizza deve accettarti. Lo vedi nell\u2019app, in Tavoli.'
+            : <>Iscrizione registrata{pieno ? ' in lista d\u2019attesa' : ''}. Ci vediamo al tavolo.</>}
         </div>
       ) : chiuse ? (
         <div className="avviso errore">Le iscrizioni a questo tavolo sono chiuse.</div>
       ) : giaIscritto ? (
-        <div className="avviso ok">Sei già iscritto a questo tavolo.</div>
+        <div className="avviso ok">
+          {inAttesaDiOk ? 'Hai chiesto di partecipare: aspetta che chi organizza ti accetti.' : 'Sei già iscritto a questo tavolo.'}
+        </div>
       ) : (
         <>
-          <h3 className="titolo-sezione">{pieno ? 'Mettiti in lista d\u2019attesa' : 'Iscriviti'}</h3>
+          <h3 className="titolo-sezione">
+            {approvazione ? 'Chiedi di partecipare' : pieno ? 'Mettiti in lista d\u2019attesa' : 'Iscriviti'}
+          </h3>
+          {approvazione && <p className="aiuto">A questo tavolo chi organizza sceglie chi accettare.</p>}
 
           {errore && <div className="avviso errore">{errore}</div>}
 
@@ -291,7 +305,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           </label>
 
           <button className="bottone" onClick={iscrivi} disabled={invio}>
-            {invio ? 'Ti iscrivo…' : pieno ? 'Mettimi in attesa' : 'Iscrivimi'}
+            {invio ? 'Invio…' : approvazione ? 'Chiedi di partecipare' : pieno ? 'Mettimi in attesa' : 'Iscrivimi'}
           </button>
 
           {!sessione && (

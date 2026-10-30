@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.19.0 - 202610301200 (richieste di tavolo: «Lo organizzo io» apre il modulo con il gioco già messo e iscrive chi aveva chiesto)
+// v2.20.0 - 202610301900 (iscrizioni su approvazione: chi si iscrive aspetta che chi organizza lo accetti)
 
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
@@ -28,7 +28,7 @@ const perCampo = (d) => {
 }
 
 const VUOTO = {
-  titolo: '', gioco_id: null, gioco: null, libero: false, dimostratori: [], luogo: '', inizio: '', posti_min: '', posti_max: '',
+  titolo: '', gioco_id: null, gioco: null, libero: false, dimostratori: [], luogo: '', inizio: '', posti_min: '', posti_max: '', su_approvazione: false,
   descrizione: '', dimostratore_nome: '', dimostratore_foto: '',
   dimostratore_id: null, dimostratore_ospite_id: null, dimostratore_gioca: true,
   chiusura_iscrizioni: '', pubblicato: true,
@@ -138,6 +138,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       inizio: perCampo(t.inizio),
       posti_min: t.posti_min || '',
       posti_max: t.posti_max || '',
+      su_approvazione: !!t.su_approvazione,
       descrizione: t.descrizione || '',
       dimostratore_nome: t.dimostratore_nome || '',
       dimostratore_foto: t.dimostratore_foto || '',
@@ -281,6 +282,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         inizio: new Date(modulo.inizio).toISOString(),
         posti_min: modulo.posti_min ? Number(modulo.posti_min) : null,
         posti_max: modulo.posti_max ? Number(modulo.posti_max) : null,
+        su_approvazione: !!modulo.su_approvazione,
         descrizione: modulo.descrizione.trim() || null,
         ...dim,
         dimostratore_foto: modulo.dimostratore_foto || null,
@@ -668,7 +670,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
                       <span className="distintivo verde">Disposto a spiegare</span>
                     )}
                     <span className="anno block">
-                      {i.stato === 'attesa' ? 'in attesa · ' : i.stato === 'annullato' ? 'annullato · ' : ''}
+                      {i.stato === 'attesa' ? (gestito.su_approvazione ? 'da accettare · ' : 'in attesa · ')
+                        : i.stato === 'annullato' ? 'annullato · ' : ''}
                       {c.email || c.telefono
                         ? <>{c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}</>
                         : i.stato === 'attesa' && !profilo.organizzatore
@@ -683,7 +686,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
                       {c.email && <a className="bottone-piatto" href={`mailto:${c.email}`}>Email</a>}
                       {i.stato === 'attesa' && (
                         <button className="bottone-piatto"
-                          onClick={() => cambiaIscrizione(i.id, { stato: 'confermato' })}>conferma</button>
+                          onClick={() => cambiaIscrizione(i.id, { stato: 'confermato' })}>
+                          {gestito.su_approvazione ? 'accetta' : 'conferma'}
+                        </button>
                       )}
                       {!gestito.gioco_id && i.stato !== 'annullato' && (
                         i.ruolo === 'dimostratore' ? (
@@ -696,7 +701,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
                           </button>
                         )
                       )}
-                      <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>togli</button>
+                      <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>
+                        {i.stato === 'attesa' && gestito.su_approvazione ? 'rifiuta' : 'togli'}
+                      </button>
                     </span>
                   </div>
                   <label className="vince">
@@ -929,6 +936,17 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           </div>
         </div>
 
+        <div className="campo">
+          <label className="sei-tu-scelta">
+            <input type="checkbox" checked={!!modulo.su_approvazione}
+              onChange={(e) => setModulo({ ...modulo, su_approvazione: e.target.checked })} />
+            <span>
+              Iscrizioni su approvazione
+              <span className="anno block">Chi si iscrive resta in attesa finché non lo accetti tu. Utile per i tavoli a casa.</span>
+            </span>
+          </label>
+        </div>
+
         {modulo.libero ? (
         <div className="campo">
           <label>Chi spiega i giochi</label>
@@ -1062,6 +1080,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
   const scheda = (t) => {
     const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
+    const daAccettare = t.su_approvazione
+      ? (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'attesa').length : 0
     // Chi l'ha pubblicato, chi organizza e il dimostratore del tavolo lo
     // gestiscono: iscritti, modifiche, partita. Eliminarlo no, il
     // dimostratore non può.
@@ -1086,6 +1106,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
               })()}
               {' · '}{conf}
               {t.posti_max ? `/${t.posti_max}` : ''} iscritti
+              {t.su_approvazione ? ' · su approvazione' : ''}
+              {mio && daAccettare > 0 ? ` · ${daAccettare} da accettare` : ''}
               {!t.pubblicato ? ' · bozza' : ''}
               {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
             </span>
