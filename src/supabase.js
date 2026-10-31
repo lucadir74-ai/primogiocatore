@@ -1,14 +1,24 @@
+// Primo Giocatore - collegamento a Supabase
+// v1.1.0 - 202610311300 (usabile anche dal server: la sincronizzazione BGA programmata usa lo stesso codice dell'app)
+
 import { createClient } from '@supabase/supabase-js'
 
 // Questi due valori arrivano dalle variabili d'ambiente (vedi README, passo 4).
-const url = import.meta.env.VITE_SUPABASE_URL
-const chiave = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Sul server (api/sincro.js) import.meta.env non esiste: lì il client lo
+// passa il server con usaClient, entrato come l'iscritto.
+const env = import.meta.env || {}
+const url = env.VITE_SUPABASE_URL
+const chiave = env.VITE_SUPABASE_ANON_KEY
 
 export const configurato = Boolean(url && chiave)
 
-export const supabase = configurato
+export let supabase = configurato
   ? createClient(url, chiave)
   : null
+
+// Solo per il server: tutti i moduli che importano «supabase» usano da
+// qui in poi questo client (gli import ES seguono il valore aggiornato).
+export function usaClient(client) { supabase = client }
 
 // I colori dei segnalini: identità della persona dentro l'app.
 export const COLORI = [

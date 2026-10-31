@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.2.0 - 202610242100 (risposte più frequenti: ogni chiamata legge al massimo ~15 secondi, così il telefono non resta in attesa a lungo e la connessione non cade)
+// v1.3.0 - 202610311300 (la lettura è usata anche dalla sincronizzazione programmata, api/sincro.js)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -189,7 +189,7 @@ async function stato(db, utenteId) {
   return { collegato: true, bga_id, bga_nome, collegata_il, ultima_lettura, ultimo_errore }
 }
 
-async function leggi(db, utenteId, { fino = 0, da = 1 }) {
+export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
   const { data: s } = await db.from('bga_sessioni').select('*').eq('utente_id', utenteId).maybeSingle()
   if (!s) return { collegato: false }
 

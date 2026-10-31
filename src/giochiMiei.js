@@ -10,7 +10,7 @@
 // vedi e restituisce quello giusto. Luoghi e ospiti invece restano di
 // chi li crea: fra quelli visibili si preferiscono i propri.
 
-import { supabase, tutteLeRighe } from './supabase'
+import { supabase, tutteLeRighe } from './supabase.js'
 
 export async function giochiMiei(profiloId, campi) {
   const [c, p, m] = await Promise.all([

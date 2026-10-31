@@ -1,5 +1,5 @@
 // Primo Giocatore - invio delle partite a BoardGameGeek
-// v1.0.0 - 202610252330
+// v1.1.0 - 202610311300 (l'invio si può chiamare anche dalla sincronizzazione programmata, api/sincro.js)
 //
 // Come fa BG Stats: si entra su BGG con nome utente e password dell'iscritto
 // e si registra la partita dalla pagina interna del sito (geekplay.php).
@@ -238,7 +238,7 @@ async function collega(db, utenteId, { password }) {
   return stato(db, utenteId)
 }
 
-async function invia(db, utenteId) {
+export async function invia(db, utenteId, tempoMax = TEMPO_MAX) {
   const partenza = Date.now()
   const { data: s } = await db.from('bgg_sessioni').select('*').eq('utente_id', utenteId).maybeSingle()
   if (!s) return { collegato: false }
@@ -250,7 +250,7 @@ async function invia(db, utenteId) {
   }
   const io = { utente_id: utenteId, bgg_username: s.bgg_username }
   const esito = { collegato: true, inviate: 0, aggiornate: 0, eliminate: 0, errori: 0, continua: false }
-  const tempo = () => Date.now() - partenza < TEMPO_MAX
+  const tempo = () => Date.now() - partenza < tempoMax
 
   const scaduta = async () => {
     await db.from('bgg_sessioni').update({ ultimo_errore: 'scaduta' }).eq('utente_id', utenteId)

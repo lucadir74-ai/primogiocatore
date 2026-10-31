@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.6.0 - 202610252200 (un solo import BGA alla volta: l'automatica non parte se ne è in corso uno a mano, e quello a mano aspetta l'automatica)
+// v3.7.0 - 202610311300 (la sincronizzazione gira anche sul server, ogni ora a telefono spento: l'app non la ripete se il server l'ha appena fatta)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -26,9 +26,9 @@
 // - i giocatori si riconoscono dal numero BGA, che non cambia, poi dal
 //   nome (ospiti collegati compresi, come negli altri import).
 
-import { supabase, tutteLeRighe } from './supabase'
-import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei'
-import { impronta } from './impronta'
+import { supabase, tutteLeRighe } from './supabase.js'
+import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei.js'
+import { impronta } from './impronta.js'
 
 const LUOGO_BGA = 'Board Game Arena'
 
@@ -155,7 +155,7 @@ export async function baseSegnalibro(profilo) {
 // dal (AAAA-MM-GG, facoltativo): solo le partite da quel giorno in poi.
 // Basta per le novità: i tavoli BGA recenti si confrontano con le
 // partite delle stesse settimane, non con un archivio di anni.
-async function archivio(profiloId, dal = null) {
+export async function archivio(profiloId, dal = null) {
   try {
     return await tutteLeRighe(() => {
       let q = supabase.from('partite')
@@ -562,7 +562,7 @@ const OGNI_ORE_BGA = 1
 // le partite nuove di giochi già riconosciuti e quelle che coincidono
 // esattamente con una che hai già. Restano fuori, e si contano, i
 // tavoli di giochi da abbinare e le partite incerte.
-async function importaSicure(profilo, arrivo, memoria) {
+export async function importaSicure(profilo, arrivo, memoria) {
   const a = await analizzaBga(profilo, arrivo, memoria)
   if (!a.tavoli.length) return { nuove: 0, inSospeso: 0 }
   const c = await classificaBga(a)
@@ -602,7 +602,14 @@ function scriviStorico(chiave, valore) {
 // con quale versione dell'app, quante partite, eventuale errore e a che
 // punto è lo storico. Se la tabella manca (script SQL non eseguito) o la
 // scrittura fallisce, la sincronizzazione va avanti lo stesso.
-const VERSIONE_SINCRO = '3.6.0'
+const VERSIONE_SINCRO = '3.7.0'
+// Un giro fatto dall'app azzera il segno «dal server» (se la colonna c'è).
+async function senzaServer() {
+  try {
+    const { error } = await supabase.from('bga_esiti').select('dal_server').limit(1)
+    return error ? {} : { dal_server: false }
+  } catch { return {} }
+}
 async function registraEsito(profiloId, campi) {
   try {
     await supabase.from('bga_esiti').upsert(
@@ -645,6 +652,15 @@ async function sincronizzaBga(profilo) {
     localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
   } catch { /* senza memoria si prova lo stesso */ }
 
+  // Se il server ha sincronizzato da poco (o lo sta facendo adesso),
+  // l'app non ripete il lavoro: due import insieme si pestano i piedi.
+  try {
+    const { data: e } = await supabase.from('bga_esiti').select('quando, in_corso, dal_server')
+      .eq('utente_id', profilo.id).maybeSingle()
+    const fa = e?.quando ? Date.now() - new Date(e.quando).getTime() : Infinity
+    if (e?.dal_server && ((e.in_corso && fa < 10 * 60000) || (!e.in_corso && fa < OGNI_ORE_BGA * 3600000))) return null
+  } catch { /* colonna non ancora creata: si va avanti come prima */ }
+
   const chiave = `${CHIAVE_STORICO}:${profilo.id}`
   let nuove = 0
   let inSospeso = 0
@@ -652,7 +668,7 @@ async function sincronizzaBga(profilo) {
   let da = 1
   const aPunto = () => (storico ? `storico fino a pagina ${da}` : 'solo le novità')
   let fase = 'avvio'   // l'ultimo passaggio iniziato: in caso di errore si sa dove
-  await registraEsito(profilo.id, { in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio' })
+  await registraEsito(profilo.id, { in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio', ...(await senzaServer()) })
 
   try {
     storico = leggiStorico(chiave)
