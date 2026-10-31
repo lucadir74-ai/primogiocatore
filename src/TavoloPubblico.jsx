@@ -1,10 +1,11 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.7.0 - 202610301900 (iscrizioni su approvazione: si chiede di partecipare e si aspetta di essere accettati)
+// v4.8.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
 // che restano visibili solo a chi organizza.
 
+import { nomeLuogo } from './luoghiNome'
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { copertinaTavolo } from './immagini'
@@ -48,7 +49,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
         id, titolo, descrizione, inizio, posti_min, posti_max, su_approvazione, stato, pubblicato,
         dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
         giochi:tavoli_gioco_id_fkey ( nome, immagine_url, immagine_grande, min_giocatori, max_giocatori, durata_minuti ),
-        luoghi ( nome, tipo, piattaforma )
+        luoghi ( nome, tipo, piattaforma, creato_da, nome_per_altri )
       `)
       .eq('id', tavoloId)
       .maybeSingle()
@@ -155,7 +156,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           <li>
             <span className="etichetta-dato">Dove</span>
             <strong>
-              {tavolo.luoghi.nome}
+              {nomeLuogo(tavolo.luoghi, profilo?.id)}
               {tavolo.luoghi.piattaforma ? ` · ${tavolo.luoghi.piattaforma}` : ''}
             </strong>
             {posizione?.esatta ? (

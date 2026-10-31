@@ -1,5 +1,5 @@
 // Primo Giocatore - l'archivio delle partite, uno solo per tutta l'app
-// v1.2.0 - 202610311900 (archivio salvato sul telefono: all'apertura si scaricano solo le partite cambiate)
+// v1.3.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
 //
 // Storico e Statistiche leggevano ognuno, a ogni apertura, tutte le
 // partite (migliaia, con giocatori e punteggi). Ora le legge una volta
@@ -12,6 +12,7 @@
 // chiedere di nuovo: la rilettura riporta tutto in pari.
 
 import { supabase, tutteLeRighe } from './supabase'
+import { luoghiPerChiGuarda } from './luoghiNome'
 
 const CAMPI = `
   id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, registrata_da,
@@ -44,7 +45,7 @@ const ascoltatori = new Set()
    'tutti' = per tutti, 'spento' = mai (si legge tutto ogni volta). */
 export const ARCHIVIO_LOCALE = 'prova'
 const CHIAVE_PROVA = 'primo-giocatore:archivio-locale'
-const VERSIONE_CACHE = 1
+const VERSIONE_CACHE = 2   // 2: luoghi con proprietario e nome per gli altri
 const RILETTURA_COMPLETA = 7 * 86400000   // una settimana
 const MARGINE = 5 * 60000                 // si richiedono anche gli ultimi 5 minuti già letti
 
@@ -143,7 +144,7 @@ async function oraDatabase() {
 async function leggiTuttoESalva(utente) {
   let lettoFino = null
   try { lettoFino = await oraDatabase() } catch { /* senza archivio_locale.sql: niente memoria */ }
-  const righe = await leggiTutto()
+  const righe = luoghiPerChiGuarda(await leggiTutto(), utente)
   if (lettoFino) {
     const record = { utente, versione: VERSIONE_CACHE, letto_fino: lettoFino, completo_il: Date.now(), righe }
     stato.cache = record
@@ -156,7 +157,7 @@ async function leggiTuttoESalva(utente) {
 async function aggiorna(utente, cache) {
   const lettoFino = await oraDatabase()
   const [cambiate, cancellate] = await Promise.all([
-    leggiVeloce(cache.letto_fino),
+    leggiVeloce(cache.letto_fino).then((r) => luoghiPerChiGuarda(r, utente)),
     supabase.rpc('archivio_cancellate', { p_dal: cache.letto_fino }).then(({ data, error }) => {
       if (error) throw error
       return (data || []).map((x) => (typeof x === 'string' ? x : x.archivio_cancellate || x.id))
@@ -180,7 +181,7 @@ function pubblica(utente, righe) {
 }
 
 async function leggiConMemoria(utente, forzaTutto) {
-  if (!archivioLocaleAttivo()) return leggiTutto()
+  if (!archivioLocaleAttivo()) return luoghiPerChiGuarda(await leggiTutto(), utente)
   if (forzaTutto) { stato.cache = null; await cancellaCache(utente) }
   if (stato.cache === undefined) stato.cache = await leggiCache(utente)
   const cache = stato.cache

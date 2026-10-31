@@ -1,10 +1,11 @@
 // Primo Giocatore - locandina del tavolo
-// v4.18.0 - 202610211200 (testata con il logo della Tana dei Goblin Roma)
+// v4.19.0 - 202611011100 (le case si vedono come «Casa di …»: la locandina la legge chiunque)
 //
 // Un foglio A5 da stampare e appoggiare sul tavolo vero: chi passa
 // inquadra il codice e si iscrive, senza che nessuno debba spiegare
 // niente.
 
+import { nomeLuogo } from './luoghiNome'
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 
@@ -56,7 +57,7 @@ export default function Locandina({ tavolo, onChiudi }) {
         )}
 
         <p className="locandina-quando">{quando(tavolo.inizio)}</p>
-        {tavolo.luoghi?.nome && <p className="locandina-dove">{tavolo.luoghi.nome}</p>}
+        {tavolo.luoghi?.nome && <p className="locandina-dove">{nomeLuogo(tavolo.luoghi, null)}</p>}
 
         {codice && <img src={codice} alt="Codice da inquadrare" className="locandina-qr" />}
 

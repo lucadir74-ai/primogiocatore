@@ -1,10 +1,11 @@
 // Primo Giocatore - Home di atterraggio
-// v1.1.0 - 202610292300 (banner della Tana nazionale in fondo, dopo «Tutto lo storico»)
+// v1.2.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
 // nazionale stanno in una striscia piccola, poi i tavoli e le partite.
 
+import { nomeLuogo } from './luoghiNome'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio } from './archivio'
@@ -57,7 +58,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       .from('tavoli')
       .select(`id, titolo, inizio, posti_max, stato, pubblicato,
         giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-        luoghi ( nome ), iscrizioni_tavolo ( stato )`)
+        luoghi ( nome, creato_da, nome_per_altri ), iscrizioni_tavolo ( stato )`)
       .eq('stato', 'aperto')
       .gte('inizio', new Date().toISOString())
       .order('inizio', { ascending: true })
@@ -180,7 +181,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
                   <span className="home-riga-testo">
                     <strong>{nomeTavolo(t)}</strong>
                     <span>
-                      {ora(t.inizio)}{t.luoghi?.nome ? ` · ${t.luoghi.nome}` : ''}
+                      {ora(t.inizio)}{t.luoghi?.nome ? ` · ${nomeLuogo(t.luoghi, profilo.id)}` : ''}
                       {liberi != null ? ` · ${liberi === 0 ? 'completo' : liberi === 1 ? '1 posto' : `${liberi} posti`}` : ''}
                     </span>
                   </span>

@@ -1,6 +1,7 @@
 // Primo Giocatore - Tavoli
-// v2.20.0 - 202610301900 (iscrizioni su approvazione: chi si iscrive aspetta che chi organizza lo accetti)
+// v2.21.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
 
+import { nomeLuogo } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -78,7 +79,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         .from('tavoli')
         .select(`
           *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-          luoghi ( nome, tipo ),
+          luoghi ( nome, tipo, creato_da, nome_per_altri ),
           iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id, nome_visibile )
         `)
         .order('inizio', { ascending: true }),
@@ -594,7 +595,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     const link = `${window.location.origin}/?t=${t.id}`
     const testo =
       `${t.titolo || t.giochi?.nome} — ${quando(t.inizio)}` +
-      `${t.luoghi?.nome ? ` presso ${t.luoghi.nome}` : ''}\n${link}`
+      `${t.luoghi?.nome ? ` presso ${nomeLuogo(t.luoghi, null)}` : ''}\n${link}`
     if (navigator.share) navigator.share({ title: t.titolo || t.giochi?.nome, text: testo, url: link })
     else {
       navigator.clipboard?.writeText(link)
@@ -1097,11 +1098,11 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
             <span className="anno block">{quando(t.inizio)}</span>
             <span className="anno block">
-              {t.luoghi?.nome || 'luogo da definire'}
+              {nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'}
               {(() => {
                 const p = posizioneDi(t)
                 const d = distanzaDi(t)
-                const zona = p?.zona && !(t.luoghi?.nome || '').includes(p.zona) ? ` · ${p.zona}` : ''
+                const zona = p?.zona && !nomeLuogo(t.luoghi, profilo?.id).includes(p.zona) ? ` · ${p.zona}` : ''
                 return zona + (d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : '')
               })()}
               {' · '}{conf}
