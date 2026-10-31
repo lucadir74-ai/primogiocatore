@@ -1,4 +1,4 @@
-// Primo Giocatore v4.23.0 - 202610301200 (richieste di tavolo: avviso in cima, «Chi ce l'ha?» si toglie dal profilo)
+// Primo Giocatore v4.24.0 - 202610311500 (avviso in cima per le partite BGA che aspettano una scelta)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -934,6 +934,16 @@ export default function App() {
       .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
   }, [profilo?.id])
 
+  // Partite BGA rimaste in sospeso (anche dalla sincronizzazione sul
+  // server, a telefono spento): si ricontrolla cambiando pagina, così
+  // l'avviso sparisce appena la scelta è fatta in Dati e import.
+  const [sospeseBga, setSospeseBga] = useState(0)
+  useEffect(() => {
+    if (!profilo?.bga_id || daBga) return
+    supabase.from('bga_esiti').select('in_sospeso').eq('utente_id', profilo.id).maybeSingle()
+      .then(({ data }) => setSospeseBga(data?.in_sospeso || 0), () => {})
+  }, [profilo?.id, scheda])
+
   // Invio a BGG delle partite in attesa (le tiene il database): qui per
   // chi ha registrato senza rete o ha cancellato e corretto partite.
   useEffect(() => {
@@ -1173,11 +1183,29 @@ export default function App() {
             </div>
           )}
 
+          {scheda !== 'profilo' && sospeseBga > 0 && !avvisoBga?.inSospeso && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {sospeseBga === 1
+                  ? 'Una partita da BGA aspetta una tua scelta.'
+                  : `${sospeseBga} partite da BGA aspettano una tua scelta.`}{' '}
+                <button className="bottone-piatto"
+                  onClick={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}>Guarda</button>
+              </p>
+            </div>
+          )}
+
           {avvisoBga && (
             <div className="scheda scheda-sottile">
               <p className="aiuto" style={{ margin: 0 }}>
                 {avvisoBga.nuove > 0 && `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}. `}
-                {avvisoBga.inSospeso > 0 && `Da BGA: ${avvisoBga.inSospeso} partite aspettano una tua scelta (giochi da riconoscere o partite da confermare); le altre sono già entrate. Per vederle: Dati e import → Board Game Arena → Rileggi tutto lo storico. `}
+                {avvisoBga.inSospeso > 0 && (
+                  <>
+                    {`Da BGA: ${avvisoBga.inSospeso === 1 ? 'una partita aspetta' : `${avvisoBga.inSospeso} partite aspettano`} una tua scelta; le altre sono già entrate. `}
+                    <button className="bottone-piatto"
+                      onClick={() => { setAvvisoBga(null); apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}>Guarda</button>{' '}
+                  </>
+                )}
                 {avvisoBga.scaduta && 'La sessione BGA è scaduta: ricollegala in Dati e import → Board Game Arena. '}
                 <button className="bottone-piatto" onClick={() => setAvvisoBga(null)}>ok</button>
               </p>

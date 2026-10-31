@@ -535,9 +535,11 @@ export async function chiamaBga(azione, extra = {}) {
 
 // Le partite dal server, pagina dopo pagina (una chiamata non basta
 // per uno storico lungo). tutto: rilegge dall'inizio.
-export async function leggiDaServer(profilo, { tutto = false, avanzamento = () => {} } = {}) {
+// dal (secondi, facoltativo): legge da quel momento in poi, per ritrovare
+// le partite rimaste in sospeso dopo la sincronizzazione sul server.
+export async function leggiDaServer(profilo, { tutto = false, dal = null, avanzamento = () => {} } = {}) {
   const base = await baseSegnalibro(profilo)
-  const fino = tutto || !base.fino ? 0 : base.fino - 7 * 86400
+  const fino = tutto || !base.fino ? 0 : (dal ?? base.fino - 7 * 86400)
   const tavoli = []
   let da = 1
   let ultima = null
@@ -713,7 +715,10 @@ async function sincronizzaBga(profilo) {
       }
       if (!r.continua) {
         if (storico) { scriviStorico(chiave, { fatto: true }); storico = null; da = 0 }
-        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: da === 0 ? 'storico completo' : 'solo le novità' })
+        await registraEsito(profilo.id, {
+          in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: da === 0 ? 'storico completo' : 'solo le novità',
+          sospese_dal: inSospeso && fino ? new Date(fino * 1000).toISOString() : null,
+        })
         chiuso = true
         break
       }

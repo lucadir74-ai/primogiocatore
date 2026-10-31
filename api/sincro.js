@@ -1,5 +1,5 @@
 // Primo Giocatore - sincronizzazione programmata con Board Game Arena
-// v1.0.1 - 202610311330 (segreto proprio, SINCRO_SECRET: CRON_SECRET resta al Primeggio)
+// v1.1.0 - 202610311500 (partite in sospeso: si salva da quando rileggerle, per l'avviso nell'app)
 //
 // Gira sul server, chiamata da Supabase (pg_cron) ogni 10 minuti: così
 // le partite BGA entrano anche a telefono spento, su iPhone come su
@@ -36,7 +36,7 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PUBBLICA = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 const SEGRETO = process.env.SINCRO_SECRET
-const VERSIONE = 'server 1.0.0'
+const VERSIONE = 'server 1.1.0'
 
 const OGNI = 55 * 60000          // ogni iscritto al massimo una volta all'ora
 const NUOVO_ISCRITTO_FINO = 30000 // dopo 30 secondi non si comincia un altro iscritto
@@ -104,6 +104,8 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
 
     await esito({
       in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null,
+      // Da quando rileggere per ritrovarle (null: tutto lo storico).
+      sospese_dal: inSospeso && fino ? new Date(fino * 1000).toISOString() : null,
       storico: finito ? (storico ? 'storico completo' : 'solo le novità') : `${aPunto()}, riprende al prossimo giro`,
       pagina_storico: finito ? null : (storico ? da : null),
     })

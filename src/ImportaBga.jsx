@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.2.0 - 202610252200 (un solo import BGA alla volta: se sta girando quello automatico, si aspetta che finisca)
+// v3.3.0 - 202610311500 (partite in sospeso dalla sincronizzazione sul server: avviso e tasto per ritrovarle)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -11,6 +11,7 @@
 // subito: un aggiornamento normale è un tocco su BGA e uno qui.
 
 import { useEffect, useRef, useState } from 'react'
+import { supabase } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import {
   segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
@@ -44,6 +45,20 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
   const [utenteBga, setUtenteBga] = useState('')
   const [passwordBga, setPasswordBga] = useState('')
   const [occupato, setOccupato] = useState(false)
+  const [sospese, setSospese] = useState(null)   // { in_sospeso, sospese_dal } dalla sincronizzazione
+
+  useEffect(() => {
+    if (daLink) return
+    supabase.from('bga_esiti').select('in_sospeso, sospese_dal').eq('utente_id', profilo.id).maybeSingle()
+      .then(({ data }) => setSospese(data?.in_sospeso > 0 ? data : null), () => {})
+  }, [profilo.id, daLink])
+
+  // Fatta la scelta, l'avviso sparisce (il server ricontrolla al prossimo giro).
+  function azzeraSospese() {
+    if (!sospese) return
+    setSospese(null)
+    supabase.from('bga_esiti').update({ in_sospeso: 0, sospese_dal: null }).eq('utente_id', profilo.id).then(() => {}, () => {})
+  }
 
   // Collegato con password? (Nella scheda aperta dal segnalibro non serve.)
   useEffect(() => {
@@ -57,7 +72,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       const r = await chiamaBga('collega', { utente: utenteBga.trim(), password: passwordBga })
       setCollegamento({ collegato: true, bga_id: r.bgaId, bga_nome: r.nome })
       profilo.bga_id = r.bgaId   // per questa sessione: il profilo si ricarica alla prossima apertura
-      setAvviso(`Collegato come ${r.nome}. Le partite nuove arriveranno da sole quando apri l’app.`)
+      setAvviso(`Collegato come ${r.nome}. Le partite nuove arriveranno da sole, anche ad app chiusa.`)
     } catch (e) { setErrore(e.message) } finally { setPasswordBga(''); setOccupato(false) }
   }
 
@@ -71,7 +86,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
     } catch (e) { setErrore(e.message) } finally { setOccupato(false) }
   }
 
-  async function aggiornaOra(tutto = false) {
+  async function aggiornaOra(tutto = false, dal = null) {
     setErrore(''); setAvviso(''); setFase('lavoro')
     // Uno storico lungo richiede minuti: se il telefono spegne lo schermo
     // il browser taglia la connessione («Failed to fetch»). Si tiene
@@ -80,7 +95,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
     try { schermo = await navigator.wakeLock?.request('screen') } catch { /* non supportato: pazienza */ }
     try {
       if (sincroAutomaticaInCorso()) setAvanzamento({ fase: 'Aspetto che finisca l’aggiornamento automatico', fatto: 0, totale: 1 })
-      const dati = await inEsclusiva(() => leggiDaServer(profilo, { tutto, avanzamento: setAvanzamento }))
+      const dati = await inEsclusiva(() => leggiDaServer(profilo, { tutto, dal, avanzamento: setAvanzamento }))
       if (dati.scaduta) {
         setCollegamento((c) => ({ ...c, ultimo_errore: 'scaduta' }))
         setErrore('La sessione BGA è scaduta: inserisci di nuovo la password per ricollegare.')
@@ -130,6 +145,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       if (!a.tavoli.length) {
         setEsito({ niente: true, giaImportati: a.giaImportati })
         setFase('fatto')
+        azzeraSospese()
       } else if (a.giochiDaAbbinare.length) setFase('giochi')
       else await prepara(a, true)
     } catch (e) {
@@ -195,6 +211,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       setAvanzamento(null)
       setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati })
       setFase('fatto')
+      azzeraSospese()
     } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('anteprima') }
   }
 
@@ -230,7 +247,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
         <>
           <p className="aiuto">
             Collegato come <strong>{collegamento.bga_nome || 'giocatore BGA'}</strong>.
-            {' '}Le partite nuove arrivano da sole, al massimo una volta all&rsquo;ora, quando apri l&rsquo;app.
+            {' '}Le partite nuove arrivano da sole circa una volta all&rsquo;ora, anche ad app chiusa.
             {collegamento.ultima_lettura && ` Ultima lettura: ${new Date(collegamento.ultima_lettura).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`}
           </p>
           {collegamento.ultimo_errore === 'scaduta' ? (
@@ -240,7 +257,22 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
                 occupato={occupato} onInvia={collega} etichetta="Ricollega" />
             </>
           ) : (
-            <button className="bottone" onClick={() => aggiornaOra(false)} disabled={occupato}>Aggiorna ora</button>
+            <>
+              {sospese && (
+                <div className="avviso">
+                  {sospese.in_sospeso === 1
+                    ? 'Una partita da BGA aspetta una tua scelta (un gioco da riconoscere o una partita da confermare).'
+                    : `${sospese.in_sospeso} partite da BGA aspettano una tua scelta (giochi da riconoscere o partite da confermare).`}
+                  {' '}<button className="bottone" disabled={occupato}
+                    onClick={() => (sospese.sospese_dal
+                      ? aggiornaOra(false, Math.floor(new Date(sospese.sospese_dal).getTime() / 1000))
+                      : aggiornaOra(true))}>
+                    {sospese.in_sospeso === 1 ? 'Mostramela' : 'Mostramele'}
+                  </button>
+                </div>
+              )}
+              <button className="bottone" onClick={() => aggiornaOra(false)} disabled={occupato}>Aggiorna ora</button>
+            </>
           )}
           <details className="dettagli-piccoli">
             <summary>Altre azioni</summary>
