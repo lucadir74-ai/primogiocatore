@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.3.0 - 202610311300 (la lettura è usata anche dalla sincronizzazione programmata, api/sincro.js)
+// v1.4.0 - 202610312300 (niente più tetto di 1000 pagine: con 10 partite a pagina lo storico si fermava a 10.000 partite)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -213,7 +213,9 @@ export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
   const tavoli = []
   let pagina = Number(da) || 1
   let continua = null
-  for (; pagina <= 1000; pagina++) {
+  // BGA dà 10 partite a pagina: il limite vero è il tempo (TEMPO_LETTURA),
+  // questo tetto serve solo a non girare all'infinito.
+  for (; pagina <= 100000; pagina++) {
     if (Date.now() - inizio > TEMPO_LETTURA) { continua = pagina; break }
     const rp = await b.chiama(`/gamestats/gamestats/getGames.html?player=${id}&opponent_id=0&finished=1&page=${pagina}&updateStats=0`, {
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Request-Token': token, Referer: `${b.origine()}/gamestats?player=${id}` },

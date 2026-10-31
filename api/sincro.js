@@ -1,5 +1,5 @@
 // Primo Giocatore - sincronizzazione programmata con Board Game Arena
-// v1.2.0 - 202610312000 (più leggera: prima si guarda su BGA, e si entra come l'iscritto solo se c'è qualcosa da importare)
+// v1.3.0 - 202610312300 (storico a metà: si continua a leggerlo, ogni 10 minuti, anche se ci sono già partite BGA)
 //
 // Gira sul server, chiamata da Supabase (pg_cron) ogni 10 minuti: così
 // le partite BGA entrano anche a telefono spento, su iPhone come su
@@ -36,7 +36,7 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PUBBLICA = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 const SEGRETO = process.env.SINCRO_SECRET
-const VERSIONE = 'server 1.2.0'
+const VERSIONE = 'server 1.3.0'
 
 const OGNI = 55 * 60000          // ogni iscritto al massimo una volta all'ora
 const NUOVO_ISCRITTO_FINO = 30000 // dopo 30 secondi non si comincia un altro iscritto
@@ -73,7 +73,8 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
     .order('giocata_il', { ascending: false }).limit(1)
   const ultimaBga = ultima?.[0]?.giocata_il ? Math.floor(new Date(ultima[0].giocata_il).getTime() / 1000) : 0
   let primaLettura = null
-  if (ultimaBga) {
+  // Con uno storico ancora da finire non si fa il controllo leggero.
+  if (ultimaBga && !precedente?.pagina_storico) {
     const r = await leggi(db, utenteId, { fino: ultimaBga - 7 * 86400, da: 1 })
     if (r.scaduta) {
       await esito({ in_corso: false, importate: 0, in_sospeso: 0, errore: 'sessione BGA scaduta', storico: 'solo le novità' })
@@ -105,7 +106,9 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
     if (error) throw error
 
     const base = await baseSegnalibro(profilo)
-    const storico = !base.fino
+    // Storico: se non c'è ancora nessuna partita BGA, o se lo storico è
+    // rimasto a metà (pagina_storico segnata): si riprende da lì.
+    const storico = !base.fino || Boolean(precedente?.pagina_storico)
     const fino = storico ? 0 : base.fino - 7 * 86400
     let da = storico ? (precedente?.pagina_storico || 1) : 1
     const dal = fino ? new Date((fino - 30 * 86400) * 1000).toISOString().slice(0, 10) : null
@@ -178,6 +181,8 @@ export default async function handler(req, res) {
     .filter(({ e }) => {
       const fa = e?.quando ? ora - new Date(e.quando).getTime() : Infinity
       if (e?.in_corso && fa < 10 * 60000) return false   // sta già girando (app o server)
+      // Chi sta ancora leggendo lo storico va avanti a ogni giro.
+      if (e?.pagina_storico) return fa >= 9 * 60000
       return fa >= OGNI
     })
     .sort((a, b) => new Date(a.e?.quando || 0) - new Date(b.e?.quando || 0))
