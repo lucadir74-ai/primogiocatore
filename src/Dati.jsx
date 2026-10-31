@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v4.2.0 - 202610260000 (un solo riquadro BoardGameGeek: lettura e invio insieme)
+// v4.3.0 - 202610311900 (sezione «Archivio sul telefono»: prova dell'archivio salvato e «Ricarica tutto»)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -10,6 +10,7 @@ import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMie
 import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
+import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
 
@@ -22,6 +23,42 @@ function scarica(nomeFile, contenuto, tipo) {
   a.download = nomeFile
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// L'archivio partite salvato sul telefono: in prova si accende qui.
+function ArchivioTelefono({ profilo }) {
+  const [attivo, setAttivo] = useState(archivioLocaleAttivo())
+  const [stato, setStato] = useState('')
+  const [lavoro, setLavoro] = useState(false)
+  if (ARCHIVIO_LOCALE === 'spento') return null
+  async function ricarica() {
+    setLavoro(true); setStato('Ricarico tutto l’archivio…')
+    try {
+      const righe = await ricaricaTuttoArchivio(profilo.id)
+      setStato(`Fatto: ${righe.length} partite.`)
+    } catch (e) { setStato(`Errore: ${e.message}`) } finally { setLavoro(false) }
+  }
+  function cambia(e) {
+    impostaArchivioLocale(e.target.checked)
+    setAttivo(e.target.checked)
+    setStato(e.target.checked ? 'Attivo: la prossima apertura salva l’archivio sul telefono.' : 'Spento: l’archivio si scarica tutto a ogni apertura.')
+  }
+  return (
+    <Sezione id="archivio-telefono" titolo="Archivio sul telefono" nota={ARCHIVIO_LOCALE === 'prova' ? (attivo ? 'prova attiva' : 'prova') : null}>
+      {ARCHIVIO_LOCALE === 'prova' && (
+        <label className="riga-spunta">
+          <input type="checkbox" checked={attivo} onChange={cambia} />
+          {' '}Tieni l&rsquo;archivio sul telefono (prova)
+        </label>
+      )}
+      <p className="aiuto">
+        Le partite restano salvate sul telefono e a ogni apertura arrivano solo quelle nuove o cambiate:
+        l&rsquo;app è più veloce e consuma meno dati. Una volta a settimana si rilegge tutto da sola.
+      </p>
+      <button className="bottone bottone-secondario" onClick={ricarica} disabled={lavoro}>Ricarica tutto l&rsquo;archivio</button>
+      {stato && <p className="aiuto">{stato}</p>}
+    </Sezione>
+  )
 }
 
 export default function Dati({ profilo }) {
@@ -610,6 +647,8 @@ export default function Dati({ profilo }) {
           aria-label="Scegli il file da importare"
         />
       </Sezione>
+
+      <ArchivioTelefono profilo={profilo} />
 
       <Sezione id="esporta" titolo="Esporta" nota="una copia delle tue partite">
         <button className="bottone" onClick={esportaJson} disabled={lavorando}>
