@@ -1,5 +1,5 @@
 // Primo Giocatore - sincronizzazione programmata con Board Game Arena
-// v1.1.0 - 202610311500 (partite in sospeso: si salva da quando rileggerle, per l'avviso nell'app)
+// v1.2.0 - 202610312000 (più leggera: prima si guarda su BGA, e si entra come l'iscritto solo se c'è qualcosa da importare)
 //
 // Gira sul server, chiamata da Supabase (pg_cron) ogni 10 minuti: così
 // le partite BGA entrano anche a telefono spento, su iPhone come su
@@ -36,7 +36,7 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PUBBLICA = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 const SEGRETO = process.env.SINCRO_SECRET
-const VERSIONE = 'server 1.1.0'
+const VERSIONE = 'server 1.2.0'
 
 const OGNI = 55 * 60000          // ogni iscritto al massimo una volta all'ora
 const NUOVO_ISCRITTO_FINO = 30000 // dopo 30 secondi non si comincia un altro iscritto
@@ -66,6 +66,38 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
   let inSospeso = 0
   await esito({ in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio (server)' })
 
+  // Prima, senza entrare come l'iscritto: c'è qualcosa di nuovo su BGA?
+  // Quasi sempre no, e il giro finisce qui in un paio di secondi.
+  const { data: ultima } = await db.from('partite').select('giocata_il')
+    .eq('registrata_da', utenteId).not('bga_tavolo', 'is', null)
+    .order('giocata_il', { ascending: false }).limit(1)
+  const ultimaBga = ultima?.[0]?.giocata_il ? Math.floor(new Date(ultima[0].giocata_il).getTime() / 1000) : 0
+  let primaLettura = null
+  if (ultimaBga) {
+    const r = await leggi(db, utenteId, { fino: ultimaBga - 7 * 86400, da: 1 })
+    if (r.scaduta) {
+      await esito({ in_corso: false, importate: 0, in_sospeso: 0, errore: 'sessione BGA scaduta', storico: 'solo le novità' })
+      return { scaduta: true }
+    }
+    if (r.collegato === false) {
+      await esito({ in_corso: false, importate: 0, in_sospeso: 0, errore: 'BGA non collegato', storico: 'solo le novità' })
+      return { nuove: 0 }
+    }
+    const numeri = [...new Set((r.tavoli || []).map((t) => Number(t.t)).filter(Boolean))]
+    let giaDentro = new Set()
+    if (numeri.length) {
+      const { data: presenti, error: e } = await db.from('partite').select('bga_tavolo')
+        .eq('registrata_da', utenteId).in('bga_tavolo', numeri)
+      if (e) throw e
+      giaDentro = new Set((presenti || []).map((x) => Number(x.bga_tavolo)))
+    }
+    if (!r.continua && numeri.every((n) => giaDentro.has(n))) {
+      await esito({ in_corso: false, importate: 0, in_sospeso: 0, sospese_dal: null, errore: null, storico: 'solo le novità' })
+      return { nuove: 0, leggero: true }
+    }
+    primaLettura = r   // c'è da fare: si usa questa lettura, senza ripeterla
+  }
+
   const client = await accediCome(db, utenteId)
   usaClient(client)
   try {
@@ -82,7 +114,9 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
 
     let finito = false
     while (tempo() < LETTURA_FINO) {
-      const r = await leggi(db, utenteId, { fino, da })
+      // Il primo giro delle novità è già stato letto qui sopra.
+      const r = (primaLettura && !storico && da === 1) ? primaLettura : await leggi(db, utenteId, { fino, da })
+      primaLettura = null
       if (r.scaduta) {
         await esito({ in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
         return { scaduta: true }
@@ -148,13 +182,14 @@ export default async function handler(req, res) {
     })
     .sort((a, b) => new Date(a.e?.quando || 0) - new Date(b.e?.quando || 0))
 
-  const riepilogo = { iscritti: daFare.length, fatti: 0, nuove: 0, errori: 0 }
+  const riepilogo = { iscritti: daFare.length, fatti: 0, leggeri: 0, nuove: 0, errori: 0 }
   let erroriDiFila = 0
   for (const { id, e } of daFare) {
     if (Date.now() - partenza > NUOVO_ISCRITTO_FINO) break
     try {
       const r = await sincronizzaUno(db, id, e, partenza)
       riepilogo.fatti += 1
+      if (r.leggero) riepilogo.leggeri += 1
       riepilogo.nuove += r.nuove || 0
       erroriDiFila = 0
     } catch (err) {
