@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli organizzatori
-// v3.12.0 - 202610292345 (la ricerca trova anche nome e cognome)
+// v3.13.0 - 202611011000 (ricerca in cima alla pagina: trova un iscritto e ne mostra ruoli e azioni)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
@@ -38,22 +38,20 @@ export default function Organizzatori({ profilo }) {
   if (!profilo.organizzatore) return null
 
   const q = cerca.trim().toLowerCase()
-  const elenco = q
-    ? persone.filter((p) => [p.nickname, p.nome, p.cognome].filter(Boolean).join(' ').toLowerCase().includes(q))
-    : persone
   const attuali = persone.filter((p) => p.organizzatore)
   const dimostratori = persone.filter((p) => p.dimostratore)
 
-  // Chi si è iscritto di recente: non arriva nessuna notifica, quindi
-  // è qui che ci si accorge di una persona nuova.
+  // Senza ricerca: gli ultimi iscritti (non arriva nessuna notifica, quindi
+  // è qui che ci si accorge di una persona nuova). Con la ricerca: chi
+  // corrisponde per soprannome, nome o cognome.
   const settimanaFa = Date.now() - 7 * 86400000
-  const recenti = [...persone]
-    .filter((p) => p.creato_il)
-    .sort((a, b) => new Date(b.creato_il) - new Date(a.creato_il))
-    .slice(0, 10)
-  const nuoviQuestaSettimana = recenti.filter(
-    (p) => new Date(p.creato_il).getTime() > settimanaFa
-  ).length
+  const eNuovo = (p) => p.creato_il && new Date(p.creato_il).getTime() > settimanaFa
+  const nuoviQuestaSettimana = persone.filter(eNuovo).length
+  const elenco = q
+    ? persone.filter((p) => [p.nickname, p.nome, p.cognome].filter(Boolean).join(' ').toLowerCase().includes(q)).slice(0, 25)
+    : [...persone].filter((p) => p.creato_il)
+        .sort((a, b) => new Date(b.creato_il) - new Date(a.creato_il))
+        .slice(0, 10)
 
   return (
     <div className="scheda">
@@ -66,11 +64,66 @@ export default function Organizzatori({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
+      <input
+        className="campo-cerca"
+        type="search"
+        value={cerca}
+        onChange={(e) => setCerca(e.target.value)}
+        placeholder={`Cerca fra i ${persone.length} iscritti`}
+        aria-label="Cerca fra gli iscritti"
+      />
+
+      {!q && (
+        <>
+          <h3 className="titolo-sezione">
+            Organizzatori <span className="conteggio">{attuali.length}</span>
+          </h3>
+          <ul className="elenco">
+            {attuali.map((p) => (
+              <li key={p.id}>
+                <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
+                  <div className="nome-giocatore">
+                    <strong>{daMostrare(p)}</strong>
+                    {p.id === profilo.id && <span className="anno"> · tu</span>}
+                  </div>
+                </button>
+                {p.id !== profilo.id && (
+                  <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'organizzatore', false)}>
+                    revoca
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <h3 className="titolo-sezione">
+            Dimostratori <span className="conteggio">{dimostratori.length}</span>
+          </h3>
+          {dimostratori.length === 0 ? (
+            <p className="aiuto">Nessun dimostratore ufficiale.</p>
+          ) : (
+            <ul className="elenco">
+              {dimostratori.map((p) => (
+                <li key={p.id}>
+                  <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
+                    <div className="nome-giocatore"><strong>{daMostrare(p)}</strong></div>
+                  </button>
+                  <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'dimostratore', false)}>
+                    revoca
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
       <h3 className="titolo-sezione">
-        Ultimi iscritti <span className="conteggio">{persone.length} in tutto</span>
+        {q ? <>Risultati <span className="conteggio">{elenco.length}{elenco.length === 25 ? '+' : ''}</span></>
+          : <>Ultimi iscritti <span className="conteggio">{persone.length} in tutto</span></>}
       </h3>
 
-      {nuoviQuestaSettimana > 0 && (
+      {!q && nuoviQuestaSettimana > 0 && (
         <div className="avviso ok">
           {nuoviQuestaSettimana === 1
             ? 'Una persona si è iscritta negli ultimi sette giorni.'
@@ -78,105 +131,46 @@ export default function Organizzatori({ profilo }) {
         </div>
       )}
 
-      <ul className="elenco">
-        {recenti.map((p) => {
-          const nuovo = new Date(p.creato_il).getTime() > settimanaFa
-          return (
+      {q && elenco.length === 0 ? (
+        <p className="aiuto">Nessun iscritto corrisponde.</p>
+      ) : (
+        <ul className="elenco">
+          {elenco.map((p) => (
             <li key={p.id}>
-              <button type="button" className="voce-scelta" onClick={() => setAperto(p.id)}>
+              <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
                 <div className="nome-giocatore">
                   <strong>{daMostrare(p)}</strong>
-                  {nuovo && <span className="distintivo verde">Nuovo</span>}
+                  {eNuovo(p) && <span className="distintivo verde">Nuovo</span>}
+                  {p.organizzatore && <span className="distintivo">Organizzatore</span>}
+                  {p.dimostratore && <span className="distintivo">Dimostratore</span>}
                   <span className="anno block">
-                    {new Date(p.creato_il).toLocaleDateString('it-IT', {
-                      day: 'numeric', month: 'long', year: 'numeric',
-                    })}
-                    {p.citta ? ` · ${p.citta}` : ''}
+                    {p.creato_il ? new Date(p.creato_il).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
+                    {p.citta ? `${p.creato_il ? ' · ' : ''}${p.citta}` : ''}
                   </span>
                 </div>
               </button>
-            </li>
-          )
-        })}
-      </ul>
-
-      <h3 className="titolo-sezione">
-        Organizzatori <span className="conteggio">{attuali.length}</span>
-      </h3>
-      <ul className="elenco">
-        {attuali.map((p) => (
-          <li key={p.id}>
-            <div className="nome-giocatore">
-              <strong>{daMostrare(p)}</strong>
-              {p.id === profilo.id && <span className="anno"> · tu</span>}
-            </div>
-            {p.id !== profilo.id && (
-              <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'organizzatore', false)}>
-                revoca
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <h3 className="titolo-sezione">
-        Dimostratori <span className="conteggio">{dimostratori.length}</span>
-      </h3>
-      {dimostratori.length === 0 ? (
-        <p className="aiuto">Nessun dimostratore ufficiale.</p>
-      ) : (
-        <ul className="elenco">
-          {dimostratori.map((p) => (
-            <li key={p.id}>
-              <div className="nome-giocatore"><strong>{daMostrare(p)}</strong></div>
-              <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'dimostratore', false)}>
-                revoca
-              </button>
+              <span className="azioni-iscritto">
+                {!p.dimostratore && (
+                  <button className="bottone-piatto" onClick={() => cambia(p.id, 'dimostratore', true)}>
+                    dimostratore
+                  </button>
+                )}
+                {!p.organizzatore && (
+                  <button className="bottone-piatto" onClick={() => cambia(p.id, 'organizzatore', true)}>
+                    organizzatore
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
       )}
 
-      <h3 className="titolo-sezione">Assegna i ruoli</h3>
-      {persone.length > 8 && (
-        <input
-          className="campo-cerca"
-          value={cerca}
-          onChange={(e) => setCerca(e.target.value)}
-          placeholder="Cerca un iscritto"
-          aria-label="Cerca fra gli iscritti"
-        />
-      )}
-      <ul className="elenco">
-        {elenco.slice(0, 25).map((p) => (
-          <li key={p.id}>
-            <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
-              <div className="nome-giocatore">
-                <strong>{daMostrare(p)}</strong>
-                {p.citta && <span className="anno block">{p.citta}</span>}
-              </div>
-            </button>
-            <span className="azioni-iscritto">
-              {!p.dimostratore && (
-                <button className="bottone-piatto" onClick={() => cambia(p.id, 'dimostratore', true)}>
-                  dimostratore
-                </button>
-              )}
-              {!p.organizzatore && (
-                <button className="bottone-piatto" onClick={() => cambia(p.id, 'organizzatore', true)}>
-                  organizzatore
-                </button>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-
       <p className="aiuto">
         Compaiono solo le persone con un account. Il ruolo di organizzatore dà accesso
         ai contatti di chi si iscrive ai tavoli: assegnalo a chi ha davvero bisogno di
         telefonare o scrivere ai partecipanti. Il tuo non puoi revocartelo da solo.
-        Tocca un nome per vedere la scheda dell'iscritto.
+        Tocca un nome per vedere la scheda dell&rsquo;iscritto.
       </p>
 
       {aperto && <SchedaIscritto id={aperto} onChiudi={() => setAperto(null)} />}
