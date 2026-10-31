@@ -1,10 +1,11 @@
 // Primo Giocatore - Storico
-// v3.11.0 - 202610241200 (filtro Tutte / Dal vivo / Online, come nelle Statistiche)
+// v3.12.0 - 202610311000 (partita cancellata: la cancellazione parte subito anche verso BGG)
 
 import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
+import { inviaABggSeServe } from './invioBgg'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -64,6 +65,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       togliDallArchivio(id)
       setPartite((p) => p.filter((x) => x.id !== id))
       setAperta(null)
+      inviaABggSeServe(profilo)   // toglie la partita anche da BGG, senza far aspettare
     }
   }
 

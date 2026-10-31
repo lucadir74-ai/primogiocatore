@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.21.0 - 202610281200 (scheda gioco: link agli articoli e recensioni sul sito della Tana dei Goblin)
+// v3.22.0 - 202610311000 (partita cancellata: la cancellazione parte subito anche verso BGG)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -7,6 +7,7 @@ import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
+import { inviaABggSeServe } from './invioBgg'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -480,7 +481,11 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (!confirm(`Cancellare ${nome} del ${giorno(p.giocata_il)}? Non si torna indietro.`)) return
     const { error } = await supabase.from('partite').delete().eq('id', p.id)
     if (error) setErrore(error.message)
-    else { togliDallArchivio(p.id); setPartite((righe) => righe.filter((x) => x.id !== p.id)) }
+    else {
+      togliDallArchivio(p.id)
+      setPartite((righe) => righe.filter((x) => x.id !== p.id))
+      inviaABggSeServe(profilo)   // toglie la partita anche da BGG, senza far aspettare
+    }
   }
 
   function cambiaTipo(nuovo) {
