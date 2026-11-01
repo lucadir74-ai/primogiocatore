@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.12.0 - 202611011130 (le espansioni contano come giochi solo se giocate da sole; scheda del gioco toccando la riga)
+// v3.13.0 - 202611011200 (nuova sezione «Tutti», prima e aperta di partenza: tutti i giochi posseduti in ordine alfabetico)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -21,6 +21,7 @@ function daQuanto(giorni) {
 }
 
 const SEZIONI = [
+  { id: 'tutti', etichetta: 'Tutti' },
   { id: 'fermi', etichetta: 'Fermi da più tempo' },
   { id: 'mai', etichetta: 'Mai giocati' },
   { id: 'piu', etichetta: 'I più giocati' },
@@ -32,7 +33,7 @@ export default function Collezione({ profilo }) {
   const [partite, setPartite] = useState([])
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
-  const [sezione, setSezione] = useState('fermi')
+  const [sezione, setSezione] = useState('tutti')
   const [cerca, setCerca] = useState('')
   const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
 
@@ -118,6 +119,7 @@ export default function Collezione({ profilo }) {
 
     return {
       posseduti,
+      tutti: [...posseduti].sort((a, b) => a.nome.localeCompare(b.nome, 'it')),
       espansioniFerme,
       mai: posseduti.filter((g) => g.volte === 0).sort((a, b) => a.nome.localeCompare(b.nome, 'it')),
       fermi: [...giocati].sort((a, b) => new Date(a.ultima) - new Date(b.ultima)),
