@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.8.0 - 202611011400 (giochi da riconoscere: suggerimento per nome anche fra tutti i giochi dell'app, non solo i tuoi)
+// v3.9.0 - 202611011530 (import: un tavolo che hai già con la stessa chiave non si reinserisce, si collega)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -446,8 +446,28 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
 
   // Le partite, a blocchi.
   fatte = 0
-  for (const blocco of aBlocchi(daCreare, 200)) {
+  for (const bloccoIntero of aBlocchi(daCreare, 200)) {
     avanzamento({ fase: 'Importo le partite', fatto: fatte, totale: daCreare.length })
+
+    // Rete di sicurezza: una tua partita con la stessa chiave «bga:…»
+    // c'è già (per esempio da un import interrotto a metà, o senza il
+    // numero del tavolo)? Non si reinserisce: riceve il numero del tavolo
+    // e basta. Così l'import si può sempre ripetere senza errori.
+    const chiavi = bloccoIntero.map((t) => `bga:${t.t}`)
+    const { data: gia, error: eGia } = await supabase.from('partite')
+      .select('id, chiave_esterna, bga_tavolo').eq('registrata_da', profilo.id).in('chiave_esterna', chiavi)
+    if (eGia) throw erroreMigrazione(eGia)
+    const giaPerChiave = new Map((gia || []).map((r) => [r.chiave_esterna, r]))
+    for (const r of gia || []) {
+      if (r.bga_tavolo != null) continue
+      const tavolo = Number(String(r.chiave_esterna).slice(4))
+      const { error } = await supabase.from('partite').update({ bga_tavolo: tavolo }).eq('id', r.id).eq('registrata_da', profilo.id)
+      if (error) throw erroreMigrazione(error)
+      collegati.push({ partitaId: r.id, bga_tavolo: tavolo })
+    }
+    const blocco = bloccoIntero.filter((t) => !giaPerChiave.has(`bga:${t.t}`))
+    if (!blocco.length) { fatte += bloccoIntero.length; continue }
+
     const righe = blocco.map((t) => {
       const { giorno, istante } = locale(t.e)
       const punti = t.p.map((g) => g[2])
@@ -501,7 +521,7 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
         throw e2
       }
     }
-    fatte += blocco.length
+    fatte += bloccoIntero.length
   }
 
   return { collegate: daCollegare.length, nuove: daCreare.length, collegati, create }
