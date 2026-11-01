@@ -1,294 +1,758 @@
-// Primo Giocatore - collegamento con Board Game Arena
-// v1.4.0 - 202610312300 (niente più tetto di 1000 pagine: con 10 partite a pagina lo storico si fermava a 10.000 partite)
+// Primo Giocatore - partite da Board Game Arena, senza BG Stats
+// v3.8.0 - 202611011400 (giochi da riconoscere: suggerimento per nome anche fra tutti i giochi dell'app, non solo i tuoi)
 //
-// Chi vuole collega il proprio account BGA una volta, con nome e
-// password. Il server entra su BGA come farebbe il browser, prende il
-// numero giocatore e i cookie di sessione «ricordami», e li conserva
-// CIFRATI. La password non viene mai scritta da nessuna parte: si usa
-// per l'accesso e si dimentica.
+// BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
+// legge lo storico da /gamestats/gamestats/getGames.html, con il token
+// di sessione della pagina. Un segnalibro, toccato su BGA, fa le stesse
+// chiamate: niente password BGA, niente codici.
 //
-// Azioni (POST, JSON, con la sessione Supabase in Authorization):
-//   { azione: 'collega', utente, password }  entra su BGA e salva la sessione
-//   { azione: 'stato' }                      collegato? da quando? errori?
-//   { azione: 'leggi', fino, da }            partite finite dopo «fino» (secondi),
-//                                            dalla pagina «da»; se il tempo non
-//                                            basta risponde con «continua»
-//   { azione: 'scollega' }                   cancella la sessione salvata
+// Consegna: a lettura finita il segnalibro mostra «Apri in Primo
+// Giocatore», un collegamento che porta le partite nell'indirizzo
+// (dopo il #, che non viaggia verso nessun server). Funziona anche dove
+// le schede non possono parlarsi tra loro, cosa che su BGA succede.
 //
-// La tabella bga_sessioni non ha regole di accesso per gli utenti: la
-// legge e la scrive solo questo server, con la chiave di servizio.
+// Aggiornamenti: il segnalibro ricorda, nella memoria del browser per
+// BGA, il tuo numero giocatore e la data dell'ultima consegna. La volta
+// dopo legge solo le partite nuove: pochi secondi invece di minuti.
+// Se quella memoria si perde rilegge tutto, e i doppioni non entrano
+// comunque (vedi sotto).
 //
-// Chiave di cifratura: BGA_CHIAVE fra le variabili di Vercel; se manca,
-// è derivata dalla chiave di servizio di Supabase (che resta segreta
-// sul server). Cambiarla scollega tutti: basterà ricollegarsi.
+// Doppioni:
+// - ogni tavolo BGA ha un numero: si importa una volta sola per persona
+//   (colonna partite.bga_tavolo, unica per chi registra);
+// - le partite BGA già arrivate da BGG o da BG Stats si riconoscono da
+//   gioco e punteggi nelle date del tavolo (le partite a turni durano
+//   giorni) e ricevono il numero del tavolo invece di essere ricreate;
+// - i giocatori si riconoscono dal numero BGA, che non cambia, poi dal
+//   nome (ospiti collegati compresi, come negli altri import).
 
-import { createClient } from '@supabase/supabase-js'
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
-import { compattaTavolo } from '../src/bgaFormato.js'
+import { supabase, tutteLeRighe } from './supabase.js'
+import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei.js'
+import { impronta } from './impronta.js'
 
-export const config = { maxDuration: 60 }
+const LUOGO_BGA = 'Board Game Arena'
 
-const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
-const BGA = 'https://boardgamearena.com'
-const UA = 'Mozilla/5.0 (Linux; Android 14) PrimoGiocatore/1.0'
-// Poi si risponde «continua». Non di più: una connessione che resta
-// muta per decine di secondi, su alcune reti mobili e Wi-Fi, viene
-// tagliata e il browser dice «Failed to fetch» anche se il server ha
-// finito bene (successo con lo storico lungo di un iscritto, 24/10).
-const TEMPO_LETTURA = 15000
-const PAUSA_PAGINE = 700
+/* ---------------------------------------------------------------
+   Il segnalibro
+   --------------------------------------------------------------- */
 
-/* ---------------- Cifratura dei cookie ---------------- */
-
-function chiave() {
-  const base = process.env.BGA_CHIAVE || `primo-giocatore:bga:${SERVIZIO}`
-  return createHash('sha256').update(base).digest()
-}
-function cifra(oggetto) {
-  const iv = randomBytes(12)
-  const c = createCipheriv('aes-256-gcm', chiave(), iv)
-  const dati = Buffer.concat([c.update(JSON.stringify(oggetto), 'utf8'), c.final()])
-  return [iv, c.getAuthTag(), dati].map((b) => b.toString('base64')).join('.')
-}
-function decifra(testo) {
-  const [iv, tag, dati] = testo.split('.').map((x) => Buffer.from(x, 'base64'))
-  const d = createDecipheriv('aes-256-gcm', chiave(), iv)
-  d.setAuthTag(tag)
-  return JSON.parse(Buffer.concat([d.update(dati), d.final()]).toString('utf8'))
-}
-
-/* ---------------- Un piccolo browser ---------------- */
-
-// Cookie e reindirizzamenti come nel browser: fetch da solo perderebbe
-// i cookie dei passaggi intermedi.
-function browser(cookieIniziali = {}) {
-  const cookie = new Map(Object.entries(cookieIniziali))
-  let origine = BGA
-
-  function prendi(r) {
-    const righe = typeof r.headers.getSetCookie === 'function'
-      ? r.headers.getSetCookie()
-      : (r.headers.get('set-cookie') || '').split(/,(?=[^;]+=)/)
-    for (const riga of righe) {
-      const [coppia] = riga.split(';')
-      const i = coppia.indexOf('=')
-      if (i <= 0) continue
-      const nome = coppia.slice(0, i).trim()
-      const valore = coppia.slice(i + 1).trim()
-      if (!valore || valore === 'deleted') cookie.delete(nome)
-      else cookie.set(nome, valore)
-    }
-  }
-
-  async function chiama(percorso, opzioni = {}) {
-    let indirizzo = percorso.startsWith('http') ? percorso : origine + percorso
-    let metodo = opzioni.method || 'GET'
-    let corpo = opzioni.body
-    for (let salto = 0; salto < 6; salto++) {
-      const r = await fetch(indirizzo, {
-        method: metodo,
-        body: corpo,
-        redirect: 'manual',
-        headers: {
-          'User-Agent': UA,
-          Accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'it-IT,it;q=0.9',
-          Cookie: [...cookie].map(([n, v]) => `${n}=${v}`).join('; '),
-          ...(opzioni.headers || {}),
-        },
-      })
-      prendi(r)
-      const dove = r.headers.get('location')
-      if (r.status >= 300 && r.status < 400 && dove) {
-        indirizzo = new globalThis.URL(dove, indirizzo).toString()
-        if (r.status !== 307 && r.status !== 308) { metodo = 'GET'; corpo = undefined }
-        continue
-      }
-      origine = new globalThis.URL(indirizzo).origin   // es. https://it.boardgamearena.com
-      return r
-    }
-    throw new Error('BGA rimanda da una pagina all’altra senza fermarsi')
-  }
-
-  return { chiama, cookie: () => Object.fromEntries(cookie), origine: () => origine }
+// Il codice da salvare nei preferiti. origine: l'indirizzo dell'app.
+// base: { id, fino } dal profilo, così anche la prima volta dopo averlo
+// copiato il segnalibro sa chi sei e da dove ripartire.
+// Una riga sola, senza commenti // (in un indirizzo non esistono righe).
+export function segnalibroBga(origine, base = {}) {
+  const righe = [
+    '(async()=>{',
+    `const PG=${JSON.stringify(origine)};`,
+    `const BASE=${JSON.stringify({ id: base.id ? String(base.id) : '', fino: Number(base.fino) || 0 })};`,
+    "if(window.__pgBga)return alert('Lettura già in corso su questa pagina');window.__pgBga=1;",
+    "const M={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};",
+    "const box=document.createElement('div');",
+    "box.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#111;color:#fff;font:14px sans-serif;padding:12px;border-radius:10px';",
+    "box.innerHTML='<b>Primo Giocatore</b><div id=pgS style=\"margin:6px 0\">Avvio…</div><a id=pgA target=_blank style=\"display:none;padding:10px 16px;font-size:15px;background:#E5A32B;color:#111;border-radius:8px;text-decoration:none;font-weight:bold;margin-right:6px\">Apri in Primo Giocatore</a><button id=pgR style=\"padding:10px 16px;font-size:15px;display:none\"></button> <button id=pgC style=\"padding:10px 16px;font-size:15px;display:none\">Copia i dati</button> <button id=pgT style=\"padding:10px 16px;font-size:15px;display:none\">Rileggi tutto</button> <button id=pgX style=\"padding:10px 16px;font-size:15px\">Chiudi</button>';",
+    'document.body.appendChild(box);',
+    "const $=q=>box.querySelector(q);const S=t=>{$('#pgS').textContent=t};",
+    "$('#pgX').onclick=()=>{box.remove();window.__pgBga=0};",
+    'const attendi=ms=>new Promise(r=>setTimeout(r,ms));',
+    "let id=new URLSearchParams(location.search).get('player')||M.get('pgBgaId')||BASE.id||'';",
+    "if(!id)id=(prompt('Il tuo numero giocatore BGA: è il numero nell’indirizzo della tua pagina profilo BGA')||'').trim();",
+    "if(!/^[0-9]+$/.test(id)){S('Manca il numero giocatore BGA: apri la tua cronologia dal tuo profilo e riprova.');return}",
+    "M.set('pgBgaId',id);",
+    "const tok=(window.bgaConfig&&window.bgaConfig.requestToken)||'';",
+    "if(!tok){S('Non trovo la sessione BGA in questa pagina: apri la tua Cronologia delle partite e riprova.');return}",
+    'const leggiPagina=async pag=>{const r=await fetch(\'/gamestats/gamestats/getGames.html?player=\'+id+\'&opponent_id=0&finished=1&page=\'+pag+\'&updateStats=0\',{headers:{\'X-Requested-With\':\'XMLHttpRequest\',\'X-Request-Token\':tok},credentials:\'include\'});const testo=await r.text();let j=null;try{j=JSON.parse(testo)}catch(e){}return{j:j,info:\'HTTP \'+r.status+\' \'+(j&&j.error?j.error:testo.slice(0,120))}};',
+    'const avvia=async tutto=>{',
+    "const fino=tutto?0:Math.max(0,Math.max(Number(M.get('pgBgaFino')||0),BASE.fino)-7*86400);",
+    "const tavoli=[];let nome='';let ultimo=0;",
+    "for(const k of ['#pgA','#pgR','#pgC','#pgT'])$(k).style.display='none';",
+    'const leggi=async da=>{',
+    'for(let pag=da;pag<=1000;pag++){',
+    "S((fino?'Cerco le partite nuove':'Leggo tutto lo storico BGA')+': pagina '+pag+', '+tavoli.length+' partite');",
+    "let x=null;for(let prova=0;prova<4;prova++){try{x=await leggiPagina(pag)}catch(e){x={j:null,info:String(e)}}if(x.j&&String(x.j.status)==='1')break;if(prova<3){S('Pagina '+pag+': BGA non risponde, riprovo ('+(prova+1)+'/3)…');await attendi([3000,8000,20000][prova])}}",
+    "if(!x.j||String(x.j.status)!=='1'){S('BGA ha rifiutato la pagina '+pag+' ('+tavoli.length+' partite lette finora). Risposta: '+x.info);$('#pgR').textContent='Riprova da pagina '+pag;$('#pgR').style.display='inline-block';$('#pgR').onclick=()=>leggi(pag);return}",
+    'const lista=(x.j.data&&x.j.data.tables)||[];if(!lista.length)break;',
+    'let vecchie=false;',
+    'for(const t of lista){',
+    'const fine=Number(t.end);if(fine>ultimo)ultimo=fine;',
+    'if(fino&&fine<fino){vecchie=true;continue}',
+    "if(String(t.cancelled)==='1'||String(t.normalend)!=='1')continue;",
+    'let p=[];const gr=t.gameResult&&t.gameResult.rankedTeams;',
+    'if(gr&&gr.length){for(const tm of gr)for(const pl of (tm.players||[]))p.push([Number(pl.id),String(pl.name||\'\'),pl.score==null?null:Number(pl.score),tm.rank==null?null:Number(tm.rank)])}',
+    "else{const a=String(t.players||'').split(','),b=String(t.player_names||'').split(','),c=String(t.scores||'').split(','),d=String(t.ranks||'').split(',');p=a.map((x,k)=>[Number(x),b[k]||'',c[k]===''||c[k]==null?null:Number(c[k]),d[k]?Number(d[k]):null])}",
+    'const io=p.find(g=>String(g[0])===id);if(io&&!nome)nome=io[1];',
+    "tavoli.push({t:String(t.table_id),g:String(t.game_name),s:Number(t.start),e:fine,c:String(t.is_coop)==='1',p:p,b:(t.bot_player_ids||[]).map(Number)})",
+    '}',
+    'if(vecchie)break;await attendi(fino?400:1000)',
+    '}',
+    'consegna()};',
+    'const consegna=()=>{',
+    "$('#pgT').style.display='inline-block';$('#pgT').onclick=()=>avvia(true);",
+    "if(!tavoli.length){S('Nessuna partita nuova su BGA dall’ultimo aggiornamento.');if(ultimo)M.set('pgBgaFino',String(Math.max(ultimo,Number(M.get('pgBgaFino')||0))));return}",
+    "const dati={tipo:'pg-bga-dati',giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};",
+    'const testo=JSON.stringify(dati);',
+    "const ricorda=()=>{M.set('pgBgaFino',String(Math.max(ultimo,Number(M.get('pgBgaFino')||0))))};",
+    "const C=$('#pgC');C.style.display='inline-block';C.onclick=()=>{navigator.clipboard.writeText(testo).then(()=>{ricorda();alert('Copiato: incollalo in Primo Giocatore, sezione Dati e import')},()=>prompt('Copia questo testo',testo))};",
+    "const url=PG+'/?bga=1#bga='+encodeURIComponent(testo);",
+    "if(url.length<1800000){const A=$('#pgA');A.href=url;A.style.display='inline-block';A.onclick=()=>{ricorda();S('Aperto Primo Giocatore: continua lì. Puoi chiudere questo riquadro.')};S((fino?tavoli.length+' partite recenti: quelle già importate verranno saltate':tavoli.length+' partite lette')+'. Tocca «Apri in Primo Giocatore».')}",
+    "else S(tavoli.length+' partite lette: sono troppe per un collegamento, tocca «Copia i dati» e incollale nell’app.')",
+    '};',
+    'await leggi(1)};',
+    'await avvia(false)',
+    '})()',
+  ]
+  return 'javascript:' + righe.join('')
 }
 
-function trovaToken(html) {
-  for (const re of [
-    /requestToken['"]?\s*[:=]\s*['"]([A-Za-z0-9]+)['"]/,
-    /id=['"]request_token['"]\s+value=['"]([A-Za-z0-9]+)['"]/,
-    /name=['"]request_token['"][^>]*value=['"]([A-Za-z0-9]+)['"]/,
-  ]) {
-    const m = html.match(re)
-    if (m) return m[1]
+/* ---------------------------------------------------------------
+   Utilità
+   --------------------------------------------------------------- */
+
+const due = (n) => String(n).padStart(2, '0')
+
+// Giorno e ora locali di un istante BGA (secondi).
+function locale(sec) {
+  const d = new Date(sec * 1000)
+  return {
+    giorno: `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`,
+    istante: `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}T${due(d.getHours())}:${due(d.getMinutes())}:00`,
   }
-  return null
+}
+const numeroGiorno = (g) => Math.floor(Date.parse(`${g}T00:00:00Z`) / 86400000)
+const firma = (punti) => punti.filter((v) => v != null && !Number.isNaN(v)).map(Number).sort((a, b) => a - b).join(',')
+// «Ark Nova», «ark-nova» e «arknova» diventano la stessa cosa.
+const normale = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+
+function erroreMigrazione(e) {
+  const m = (e?.message || '').toLowerCase()
+  if (m.includes('bga_') || m.includes('giochi_bga')) {
+    return new Error('Al database manca lo script SQL per Board Game Arena (bga_import.sql). Va eseguito una volta in Supabase.')
+  }
+  return e
 }
 
-/* ---------------- Azioni ---------------- */
+/* ---------------------------------------------------------------
+   Cosa mettere dentro il segnalibro
+   --------------------------------------------------------------- */
 
-async function collega(db, utenteId, { utente, password }) {
-  if (!utente?.trim() || !password) return { errore: 'Servono nome utente (o email) e password di BGA.' }
-  const b = browser()
-  const r1 = await b.chiama('/account')
-  const token = trovaToken(await r1.text())
-  if (!token) return { errore: 'BGA non ha aperto la pagina di accesso. Riprova fra qualche minuto.' }
-
-  const r2 = await b.chiama('/account/auth/loginUserWithPassword.html', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-Request-Token': token,
-      Referer: `${b.origine()}/account`,
-      Origin: b.origine(),
-    },
-    body: new URLSearchParams({ username: utente.trim(), password, remember_me: 'true', request_token: token }),
-  })
-  let risposta = null
-  try { risposta = JSON.parse(await r2.text()) } catch { /* non è JSON */ }
-  const dati = risposta?.data
-  if (String(risposta?.status) !== '1' || !dati?.success || !/^\d+$/.test(String(dati.user_id || ''))) {
-    const motivo = typeof risposta?.error === 'string' ? risposta.error : ''
-    return { errore: `BGA non ha accettato l’accesso${motivo ? `: ${motivo}` : '. Controlla nome e password.'}` }
-  }
-
-  const bgaId = Number(dati.user_id)
-  const nome = String(dati.username || '')
-
-  // Un account BGA appartiene a una persona sola in Primo Giocatore.
-  const { data: altro } = await db.from('profili').select('id').eq('bga_id', bgaId).neq('id', utenteId).maybeSingle()
-  if (altro) return { errore: 'Questo account BGA è già collegato a un altro iscritto di Primo Giocatore.' }
-
-  const { error: e1 } = await db.from('bga_sessioni').upsert({
-    utente_id: utenteId,
-    bga_id: bgaId,
-    bga_nome: nome,
-    cookie_cifrati: cifra(b.cookie()),
-    collegata_il: new Date().toISOString(),
-    ultimo_errore: null,
-  }, { onConflict: 'utente_id' })
-  if (e1) throw e1
-
-  const { data: p } = await db.from('profili').select('bga_username').eq('id', utenteId).single()
-  const cambi = { bga_id: bgaId }
-  if (!p?.bga_username?.trim() && nome) cambi.bga_username = nome
-  const { error: e2 } = await db.from('profili').update(cambi).eq('id', utenteId)
-  if (e2) throw e2
-
-  return { collegato: true, bgaId, nome }
+// Il tuo numero BGA e la fine dell'ultima partita BGA importata (secondi).
+export async function baseSegnalibro(profilo) {
+  const { data, error } = await supabase.from('partite')
+    .select('giocata_il')
+    .eq('registrata_da', profilo.id)
+    .not('bga_tavolo', 'is', null)
+    .order('giocata_il', { ascending: false })
+    .limit(1)
+  if (error) throw erroreMigrazione(error)
+  const ultima = data?.[0]?.giocata_il
+  return { id: profilo.bga_id || '', fino: ultima ? Math.floor(new Date(ultima).getTime() / 1000) : 0 }
 }
 
-async function stato(db, utenteId) {
-  const { data } = await db.from('bga_sessioni')
-    .select('bga_id, bga_nome, collegata_il, ultima_lettura, ultimo_errore')
-    .eq('utente_id', utenteId).maybeSingle()
-  if (!data) return { collegato: false }
-  const { bga_id, bga_nome, collegata_il, ultima_lettura, ultimo_errore } = data
-  return { collegato: true, bga_id, bga_nome, collegata_il, ultima_lettura, ultimo_errore }
-}
+/* ---------------------------------------------------------------
+   1. Lettura: controlli, giochi da abbinare, suggerimenti
+   --------------------------------------------------------------- */
 
-export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
-  const { data: s } = await db.from('bga_sessioni').select('*').eq('utente_id', utenteId).maybeSingle()
-  if (!s) return { collegato: false }
-
-  let cookie
-  try { cookie = decifra(s.cookie_cifrati) } catch {
-    await db.from('bga_sessioni').update({ ultimo_errore: 'scaduta' }).eq('utente_id', utenteId)
-    return { scaduta: true }
-  }
-  const b = browser(cookie)
-  const id = String(s.bga_id)
-  const scaduta = async () => {
-    await db.from('bga_sessioni').update({ ultimo_errore: 'scaduta' }).eq('utente_id', utenteId)
-    return { scaduta: true }
-  }
-
-  const r = await b.chiama(`/gamestats?player=${id}`)
-  const token = trovaToken(await r.text())
-  if (!token) return scaduta()
-
-  const inizio = Date.now()
-  const tavoli = []
-  let pagina = Number(da) || 1
-  let continua = null
-  // BGA dà 10 partite a pagina: il limite vero è il tempo (TEMPO_LETTURA),
-  // questo tetto serve solo a non girare all'infinito.
-  for (; pagina <= 100000; pagina++) {
-    if (Date.now() - inizio > TEMPO_LETTURA) { continua = pagina; break }
-    const rp = await b.chiama(`/gamestats/gamestats/getGames.html?player=${id}&opponent_id=0&finished=1&page=${pagina}&updateStats=0`, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Request-Token': token, Referer: `${b.origine()}/gamestats?player=${id}` },
-    })
-    let j = null
-    try { j = JSON.parse(await rp.text()) } catch { /* non è JSON */ }
-    if (String(j?.status) !== '1') {
-      // Sessione non più valida (BGA risponde con un errore di sessione).
-      if (pagina === Number(da || 1)) return scaduta()
-      continua = pagina   // un intoppo a metà: si riprende da qui
-      break
-    }
-    const lista = j.data?.tables || []
-    if (!lista.length) break
-    let vecchie = false
-    for (const t of lista) {
-      if (fino && Number(t.end) < fino) { vecchie = true; continue }
-      const c = compattaTavolo(t)
-      if (c) tavoli.push(c)
-    }
-    if (vecchie) break
-    await new Promise((ok) => setTimeout(ok, PAUSA_PAGINE))
-  }
-
-  // BGA a volte rinnova i cookie: si salva la versione aggiornata.
-  await db.from('bga_sessioni').update({
-    cookie_cifrati: cifra(b.cookie()),
-    ultima_lettura: new Date().toISOString(),
-    ultimo_errore: null,
-  }).eq('utente_id', utenteId)
-
-  return { giocatore: id, nome: s.bga_nome || '', tavoli, completo: !fino, continua }
-}
-
-/* ---------------- Ingresso ---------------- */
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ errore: 'Usa POST' })
-  const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
-  const token = (req.headers.authorization || '').replace(/^Bearer /, '')
-  const { data } = token ? await db.auth.getUser(token) : { data: null }
-  const utenteId = data?.user?.id
-  if (!utenteId) return res.status(401).json({ errore: 'Accesso a Primo Giocatore scaduto: rientra.' })
-
-  const corpo = req.body || {}
-  const partenza = Date.now()
-  // Una riga per chiamata nei log di Vercel: senza, le chiamate andate
-  // bene non lasciano traccia. Mai la password né i cookie.
-  const traccia = (esito) => {
-    const extra = corpo.azione === 'leggi' ? ` da=${corpo.da ?? 1} fino=${corpo.fino ?? 0}` : ''
-    console.log(`[bga] ${corpo.azione || '?'} utente=${utenteId.slice(0, 8)}${extra} ${Date.now() - partenza}ms → ${esito}`)
-  }
-  const rispondi = (dati) => {
-    let esito = 'ok'
-    if (dati?.errore) esito = `errore: ${String(dati.errore).slice(0, 120)}`
-    else if (dati?.scaduta) esito = 'sessione scaduta'
-    else if (Array.isArray(dati?.tavoli)) esito = `${dati.tavoli.length} partite${dati.continua ? `, continua da pagina ${dati.continua}` : ', fine'}`
-    traccia(esito)
-    return res.status(200).json(dati)
-  }
+// Le tue partite, per riconoscere quelle già presenti.
+// dal (AAAA-MM-GG, facoltativo): solo le partite da quel giorno in poi.
+// Basta per le novità: i tavoli BGA recenti si confrontano con le
+// partite delle stesse settimane, non con un archivio di anni.
+export async function archivio(profiloId, dal = null) {
   try {
-    if (corpo.azione === 'collega') return rispondi(await collega(db, utenteId, corpo))
-    if (corpo.azione === 'stato') return rispondi(await stato(db, utenteId))
-    if (corpo.azione === 'leggi') return rispondi(await leggi(db, utenteId, corpo))
-    if (corpo.azione === 'scollega') {
-      await db.from('bga_sessioni').delete().eq('utente_id', utenteId)
-      return rispondi({ collegato: false })
-    }
-    return res.status(400).json({ errore: 'Azione sconosciuta' })
-  } catch (e) {
-    // Mai la password nei messaggi: qui non c'è, ma per prudenza niente corpo.
-    const msg = String(e?.message || e)
-    if (/bga_sessioni/.test(msg)) return rispondi({ errore: 'Al database manca lo script SQL per il collegamento BGA (bga_sessioni.sql).' })
-    return rispondi({ errore: `Errore: ${msg.slice(0, 200)}` })
+    return await tutteLeRighe(() => {
+      let q = supabase.from('partite')
+        .select('id, gioco_id, giocata_il, bga_tavolo, giochi ( bgg_id, nome ), partecipazioni ( punteggio_totale )')
+        .eq('registrata_da', profiloId)
+      if (dal) q = q.gte('giocata_il', dal)
+      return q
+    })
+  } catch (e) { throw erroreMigrazione(e) }
+}
+
+// memoria (facoltativa): { righe } dell'archivio già letto. La usa la
+// sincronizzazione automatica, che altrimenti a ogni giro rileggeva
+// tutto l'archivio (con decine di migliaia di partite, decine di MB).
+export async function analizzaBga(profilo, arrivo, memoria = null) {
+  const giocatore = String(arrivo?.giocatore || '')
+  const tavoli = Array.isArray(arrivo?.tavoli) ? arrivo.tavoli : null
+  if (!/^\d+$/.test(giocatore) || !tavoli) throw new Error('I dati non sembrano quelli del segnalibro BGA.')
+
+  // È la tua cronologia? Il numero BGA, una volta salvato, deve coincidere.
+  if (profilo.bga_id && String(profilo.bga_id) !== giocatore) {
+    throw new Error('Questa è la cronologia di un altro giocatore BGA: apri la tua e riprova.')
   }
+  const { data: altro } = await supabase.from('profili').select('id').eq('bga_id', giocatore).neq('id', profilo.id).maybeSingle()
+  if (altro) throw new Error('Questo numero BGA è già collegato a un altro account di Primo Giocatore.')
+
+  // Un tavolo una volta sola, anche se il segnalibro l'ha letto due volte.
+  const unici = [...new Map(tavoli.filter((t) => t?.t && t?.g && Array.isArray(t.p)).map((t) => [String(t.t), t])).values()]
+
+  const righe = memoria?.righe || await archivio(profilo.id)
+  if (memoria) memoria.righe = righe
+  const giaTavoli = new Set(righe.filter((r) => r.bga_tavolo != null).map((r) => String(r.bga_tavolo)))
+  const daGuardare = unici.filter((t) => !giaTavoli.has(String(t.t)))
+
+  // Gli abbinamenti già noti (anche fatti da altri).
+  const nomiBga = [...new Set(daGuardare.map((t) => t.g))]
+  const mappa = new Map()
+  for (let i = 0; i < nomiBga.length; i += 200) {
+    const { data, error } = await supabase.from('giochi_bga').select('bga_nome, bgg_id, nome').in('bga_nome', nomiBga.slice(i, i + 200))
+    if (error) throw erroreMigrazione(error)
+    for (const r of data || []) mappa.set(r.bga_nome, { bgg_id: r.bgg_id, nome: r.nome })
+  }
+
+  // Suggerimenti per i giochi non abbinati.
+  // a) Stessi punteggi, nelle date del tavolo, in una partita che hai già
+  //    (di solito arrivata da BG Stats): quella partita dice il gioco.
+  // b) In mancanza, un gioco del tuo archivio con lo stesso nome.
+  const perFirma = new Map()
+  const perNome = new Map()
+  for (const r of righe) {
+    if (r.bga_tavolo != null || !r.giochi?.bgg_id) continue
+    const f = firma((r.partecipazioni || []).map((x) => x.punteggio_totale))
+    if (f && f.includes(',')) {
+      if (!perFirma.has(f)) perFirma.set(f, [])
+      perFirma.get(f).push(r)
+    }
+    perNome.set(normale(r.giochi.nome), { bgg_id: r.giochi.bgg_id, nome: r.giochi.nome })
+  }
+
+  const conteggio = new Map()
+  for (const t of daGuardare) conteggio.set(t.g, (conteggio.get(t.g) || 0) + 1)
+
+  const giochiDaAbbinare = []
+  for (const nomeBga of nomiBga) {
+    if (mappa.has(nomeBga)) continue
+    const voti = new Map()
+    let tavoliConVoto = 0
+    for (const t of daGuardare.filter((x) => x.g === nomeBga)) {
+      const punti = t.p.map((g) => g[2])
+      const f = firma(punti)
+      // Punteggi troppo semplici (1-0 di Hive) si trovano ovunque: non provano niente.
+      const somma = punti.reduce((s, v) => s + Math.abs(Number(v) || 0), 0)
+      if (!f.includes(',') || somma < 10) continue
+      const da = numeroGiorno(locale(t.s).giorno) - 1
+      const a = numeroGiorno(locale(t.e).giorno) + 1
+      const visti = new Set()
+      for (const r of perFirma.get(f) || []) {
+        const n = numeroGiorno(String(r.giocata_il).slice(0, 10))
+        if (n < da || n > a || visti.has(r.giochi.bgg_id)) continue
+        visti.add(r.giochi.bgg_id)
+        const v = voti.get(r.giochi.bgg_id) || { bgg_id: r.giochi.bgg_id, nome: r.giochi.nome, voti: 0 }
+        v.voti++
+        voti.set(r.giochi.bgg_id, v)
+      }
+      if (visti.size) tavoliConVoto++
+    }
+    const migliore = [...voti.values()].sort((x, y) => y.voti - x.voti)[0]
+    let suggerito = null
+    if (migliore && migliore.voti >= Math.max(1, Math.ceil(tavoliConVoto / 2)) && (conteggio.get(nomeBga) < 3 || migliore.voti >= 2)) {
+      suggerito = { bgg_id: migliore.bgg_id, nome: migliore.nome, perche: 'punteggi' }
+    } else if (perNome.has(normale(nomeBga))) {
+      suggerito = { ...perNome.get(normale(nomeBga)), perche: 'nome' }
+    }
+    giochiDaAbbinare.push({ bga_nome: nomeBga, tavoli: conteggio.get(nomeBga), suggerito })
+  }
+  // c) Ancora niente: lo stesso nome fra tutti i giochi dell'app, non
+  //    solo i tuoi (serve suggerimenti_bga.sql). Il database restituisce
+  //    solo nome e numero BGG, dati pubblici. Se la funzione non c'è o non
+  //    risponde si va avanti senza: è solo un aiuto.
+  const senza = giochiDaAbbinare.filter((g) => !g.suggerito)
+  if (senza.length) {
+    try {
+      const { data, error } = await supabase.rpc('suggerisci_giochi_bga', { p_nomi: senza.map((g) => g.bga_nome) })
+      if (!error) {
+        const trovati = new Map((data || []).map((r) => [r.bga_nome, r]))
+        for (const g of senza) {
+          const r = trovati.get(g.bga_nome)
+          if (r?.bgg_id) g.suggerito = { bgg_id: r.bgg_id, nome: r.nome, perche: 'nome' }
+        }
+      }
+    } catch { /* niente suggerimenti in più */ }
+  }
+  giochiDaAbbinare.sort((a, b) => b.tavoli - a.tavoli)
+
+  return {
+    giocatore,
+    nome: arrivo.nome || '',
+    completo: Boolean(arrivo.completo),
+    tavoli: daGuardare,
+    giaImportati: unici.length - daGuardare.length,
+    mappa,
+    giochiDaAbbinare,
+    righe,
+  }
+}
+
+// Salva un abbinamento nel catalogo condiviso: vale per tutti.
+export async function salvaAbbinamento(bgaNome, gioco) {
+  const { error } = await supabase.from('giochi_bga')
+    .upsert({ bga_nome: bgaNome, bgg_id: gioco.bgg_id, nome: gioco.nome || null }, { onConflict: 'bga_nome' })
+  if (error) throw erroreMigrazione(error)
+}
+
+/* ---------------------------------------------------------------
+   2. Classificazione: nuove, già presenti, incerte
+   --------------------------------------------------------------- */
+
+export async function classificaBga(analisi) {
+  const abbinati = [...analisi.mappa.entries()]
+  const giochi = await assicuraGiochi(abbinati.map(([, g]) => ({ bgg_id: g.bgg_id, nome: g.nome || 'Senza nome' })))
+  const idPerBgg = new Map(giochi.map((g) => [g.bgg_id, g.id]))
+  const giocoPerNome = new Map(abbinati.map(([n, g]) => [n, idPerBgg.get(g.bgg_id)]))
+
+  // Le tue partite senza numero BGA, per gioco: ognuna si usa una volta.
+  const libere = new Map()
+  for (const r of analisi.righe) {
+    if (r.bga_tavolo != null) continue
+    if (!libere.has(r.gioco_id)) libere.set(r.gioco_id, [])
+    libere.get(r.gioco_id).push({
+      id: r.id,
+      giorno: numeroGiorno(String(r.giocata_il).slice(0, 10)),
+      firma: firma((r.partecipazioni || []).map((x) => x.punteggio_totale)),
+      quanti: (r.partecipazioni || []).length,
+      usata: false,
+    })
+  }
+
+  const nuove = []
+  const collegate = []   // { tavolo, partitaId }
+  const incerte = []     // { tavolo, partitaId }
+  let senzaGioco = 0
+
+  // Dalla più vecchia: le partite uguali si consumano in ordine.
+  const ordinati = [...analisi.tavoli].sort((a, b) => a.e - b.e)
+  // Prima passata: le corrispondenze esatte, così una partita senza
+  // punteggi non ruba il posto a quella giusta.
+  const restano = []
+  for (const t of ordinati) {
+    const giocoId = giocoPerNome.get(t.g)
+    if (!giocoId) { senzaGioco++; continue }
+    const tav = { ...t, giocoId }
+    const f = firma(t.p.map((g) => g[2]))
+    const da = numeroGiorno(locale(t.s).giorno) - 1
+    const a = numeroGiorno(locale(t.e).giorno) + 1
+    const c = (libere.get(giocoId) || []).find((r) => !r.usata && r.firma && r.firma === f && r.giorno >= da && r.giorno <= a)
+    if (c) { c.usata = true; collegate.push({ tavolo: tav, partitaId: c.id }) } else restano.push({ tav, da, a })
+  }
+  for (const { tav, da, a } of restano) {
+    const c = (libere.get(tav.giocoId) || []).find((r) => !r.usata && !r.firma && r.quanti === tav.p.length && r.giorno >= da && r.giorno <= a)
+    if (c) { c.usata = true; incerte.push({ tavolo: tav, partitaId: c.id }) } else nuove.push(tav)
+  }
+
+  return { nuove, collegate, incerte, senzaGioco }
+}
+
+/* ---------------------------------------------------------------
+   3. Scrittura
+   --------------------------------------------------------------- */
+
+const aBlocchi = (v, n) => Array.from({ length: Math.ceil(v.length / n) }, (_, i) => v.slice(i * n, i * n + n))
+
+// incerteNuove: true = le incerte entrano come partite nuove;
+// false (consigliato) = vengono collegate a quelle che hai già.
+export async function importaBga({ profilo, analisi, classi, incerteNuove = false, avanzamento = () => {} }) {
+  const io = Number(analisi.giocatore)
+
+  // Il numero BGA nel profilo: le prossime volte il segnalibro lo sa già.
+  if (!profilo.bga_id) {
+    const cambi = { bga_id: io }
+    if (!profilo.bga_username?.trim() && analisi.nome) cambi.bga_username = analisi.nome
+    const { error } = await supabase.from('profili').update(cambi).eq('id', profilo.id)
+    if (error) throw erroreMigrazione(error)
+  }
+
+  // Le partite che hai già ricevono il numero del tavolo.
+  const daCollegare = [...classi.collegate, ...(incerteNuove ? [] : classi.incerte)]
+  let fatte = 0
+  for (const blocco of aBlocchi(daCollegare, 10)) {
+    avanzamento({ fase: 'Collego le partite che avevi già', fatto: fatte, totale: daCollegare.length })
+    const esiti = await Promise.all(blocco.map(({ tavolo, partitaId }) =>
+      supabase.from('partite').update({ bga_tavolo: Number(tavolo.t) }).eq('id', partitaId).eq('registrata_da', profilo.id)))
+    const sbaglio = esiti.find((x) => x.error)
+    if (sbaglio) throw erroreMigrazione(sbaglio.error)
+    fatte += blocco.length
+  }
+
+  const collegati = daCollegare.map(({ tavolo, partitaId }) => ({ partitaId, bga_tavolo: Number(tavolo.t) }))
+  const create = []   // { id, bga_tavolo } delle partite nuove
+
+  const daCreare = [...classi.nuove, ...(incerteNuove ? classi.incerte.map((x) => x.tavolo) : [])]
+  if (!daCreare.length) return { collegate: daCollegare.length, nuove: 0, collegati, create }
+
+  // I giocatori: prima il numero BGA, poi il nome.
+  avanzamento({ fase: 'Giocatori', fatto: 0, totale: 1 })
+  const ospiti = await tutteLeRighe(() => supabase.from('ospiti')
+    .select('id, nome, creato_da, utente_collegato, bga_id'))
+  const perBga = new Map()
+  for (const o of ospiti) {
+    if (o.bga_id == null || o.utente_collegato === profilo.id) continue
+    // A parità di numero vince l'ospite collegato a un account.
+    if (!perBga.has(String(o.bga_id)) || o.utente_collegato) perBga.set(String(o.bga_id), o.id)
+  }
+  const perNome = mappaOspitiPerNome(ospiti, profilo.id)
+  const ospitePerId = new Map(ospiti.map((o) => [o.id, o]))
+
+  const giocatori = new Map()   // numero BGA -> nome
+  for (const t of daCreare) for (const [id, nome] of t.p) if (id !== io && !giocatori.has(String(id))) giocatori.set(String(id), nome)
+
+  const scelto = new Map()      // numero BGA -> ospite
+  const daAggiornare = []
+  const daInserire = []
+  const bot = (id) => daCreare.some((t) => (t.b || []).map(String).includes(id)) || Number(id) <= 0
+
+  // Gli iscritti che hanno il numero BGA nel profilo: un ospite già
+  // collegato al loro account, senza «sono io» da approvare.
+  const daChiedere = [...giocatori].filter(([id]) => !bot(id) && !perBga.has(id))
+  const perAccount = new Map()
+  for (const blocco of aBlocchi(daChiedere, 200)) {
+    const { data, error } = await supabase.rpc('ospiti_per_account_bga', {
+      p_bga: blocco.map(([id]) => Number(id)),
+      p_nomi: blocco.map(([, nome]) => nome || ''),
+    })
+    if (error) {
+      // Senza lo script SQL nuovo si va avanti come prima (per nome).
+      if (/ospiti_per_account_bga/.test(error.message || '')) break
+      throw error
+    }
+    for (const r of data || []) perAccount.set(String(r.bga_id), r.ospite_id)
+  }
+
+  for (const [id, nomeGrezzo] of giocatori) {
+    const nome = (nomeGrezzo || '').trim() || 'Sconosciuto'
+    // I bot non hanno un numero stabile da ricordare.
+    const eBot = bot(id)
+    let ospite = eBot ? null : perBga.get(id) || perAccount.get(id)
+    if (!ospite) {
+      ospite = perNome.get(nome.toLowerCase())
+      const o = ospite && ospitePerId.get(ospite)
+      if (o && !eBot && o.bga_id == null && o.creato_da === profilo.id) daAggiornare.push({ id: o.id, bga_id: Number(id) })
+    }
+    if (ospite) scelto.set(id, ospite)
+    else daInserire.push({ nome, creato_da: profilo.id, ...(eBot ? {} : { bga_id: Number(id) }), _bga: id })
+  }
+
+  for (const blocco of aBlocchi(daAggiornare, 10)) {
+    await Promise.all(blocco.map((x) => supabase.from('ospiti').update({ bga_id: x.bga_id }).eq('id', x.id)))
+  }
+  // Due giocatori nuovi con lo stesso nome restano due ospiti: hanno
+  // numeri BGA diversi, quindi sono persone diverse.
+  for (const blocco of aBlocchi(daInserire, 200)) {
+    const { data, error } = await supabase.from('ospiti')
+      .insert(blocco.map(({ _bga, ...r }) => r)).select('id')
+    if (error) throw erroreMigrazione(error)
+    data.forEach((o, i) => scelto.set(blocco[i]._bga, o.id))
+  }
+
+  const luogoId = await trovaOCreaLuogo(LUOGO_BGA, profilo.id, 'online')
+
+  // Le partite, a blocchi.
+  fatte = 0
+  for (const blocco of aBlocchi(daCreare, 200)) {
+    avanzamento({ fase: 'Importo le partite', fatto: fatte, totale: daCreare.length })
+    const righe = blocco.map((t) => {
+      const { giorno, istante } = locale(t.e)
+      const punti = t.p.map((g) => g[2])
+      return {
+        gioco_id: t.giocoId,
+        luogo_id: luogoId,
+        giocata_il: istante,
+        durata_minuti: null,
+        tipo_punteggio: t.c ? 'coop' : 'punti',
+        // BGA non dice in modo esplicito se una cooperativa è vinta:
+        // tutti primi = vinta, è l'unico segnale nei dati.
+        esito_coop: t.c ? (t.p.length && t.p.every((g) => g[3] === 1) ? 'vinta' : 'persa') : null,
+        note: null,
+        chiave_esterna: `bga:${t.t}`,
+        bga_tavolo: Number(t.t),
+        impronta: impronta({ giocoId: t.giocoId, giocataIl: giorno, punteggi: punti }),
+        registrata_da: profilo.id,
+      }
+    })
+    const { data: inserite, error } = await supabase.from('partite').insert(righe).select('id, bga_tavolo')
+    if (error) throw erroreMigrazione(error)
+    const perTavolo = new Map(inserite.map((p) => [String(p.bga_tavolo), p.id]))
+    create.push(...inserite)
+
+    const partecipazioni = []
+    for (const t of blocco) {
+      const partitaId = perTavolo.get(String(t.t))
+      if (!partitaId) continue
+      let ioMesso = false
+      for (const [id, , punti, posto] of t.p) {
+        const sonoIo = id === io && !ioMesso
+        if (sonoIo) ioMesso = true
+        const ospiteId = sonoIo ? null : scelto.get(String(id))
+        if (!sonoIo && !ospiteId) continue
+        partecipazioni.push({
+          partita_id: partitaId,
+          utente_id: sonoIo ? profilo.id : null,
+          ospite_id: ospiteId || null,
+          punteggio_totale: punti,
+          posizione: t.c ? null : posto,
+          vincitore: !t.c && posto === 1,
+        })
+      }
+    }
+    for (const b of aBlocchi(partecipazioni, 400)) {
+      const { error: e2 } = await supabase.from('partecipazioni').insert(b)
+      if (e2) {
+        // Senza giocatori le partite resterebbero orfane: si tolgono,
+        // così alla prossima importazione rientrano intere.
+        await supabase.from('partite').delete().in('id', inserite.map((p) => p.id))
+        throw e2
+      }
+    }
+    fatte += blocco.length
+  }
+
+  return { collegate: daCollegare.length, nuove: daCreare.length, collegati, create }
+}
+
+/* ---------------------------------------------------------------
+   4. Collegamento con password (api/bga.js)
+   --------------------------------------------------------------- */
+
+export async function chiamaBga(azione, extra = {}) {
+  // Leggere e controllare non cambia niente: se la connessione cade
+  // (schermo spento, app in secondo piano, rete che passa dal Wi-Fi ai
+  // dati) o il server è momentaneamente giù, si riprova da soli.
+  // «collega» e «scollega» no: meglio che decida la persona.
+  const ripetibile = azione === 'leggi' || azione === 'stato'
+  const attese = ripetibile ? [3000, 8000, 20000] : []
+  for (let prova = 0; ; prova++) {
+    const { data: { session } } = await supabase.auth.getSession()
+    let r = null
+    let caduta = false
+    try {
+      r = await fetch('/api/bga', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ azione, ...extra }),
+      })
+    } catch { caduta = true }
+    let dati = null
+    if (r) { try { dati = await r.json() } catch { /* niente */ } }
+    const daRiprovare = caduta || (!dati && r && r.status >= 500)
+    if (daRiprovare && prova < attese.length) {
+      await new Promise((ok) => setTimeout(ok, attese[prova]))
+      continue
+    }
+    if (caduta) {
+      throw new Error('La connessione con Primo Giocatore si è interrotta (anche dopo 3 tentativi). '
+        + 'Tieni l’app aperta in primo piano, con lo schermo acceso, e riprova.')
+    }
+    if (!dati) {
+      throw new Error(r.status === 504
+        ? 'BGA ha risposto troppo lentamente e il server ha smesso di aspettare (HTTP 504). Riprova fra qualche minuto.'
+        : `Il server non ha risposto (HTTP ${r.status}).`)
+    }
+    if (dati.errore) throw new Error(dati.errore)
+    return dati
+  }
+}
+
+// Le partite dal server, pagina dopo pagina (una chiamata non basta
+// per uno storico lungo). tutto: rilegge dall'inizio.
+// dal (secondi, facoltativo): legge da quel momento in poi, per ritrovare
+// le partite rimaste in sospeso dopo la sincronizzazione sul server.
+export async function leggiDaServer(profilo, { tutto = false, dal = null, avanzamento = () => {} } = {}) {
+  const base = await baseSegnalibro(profilo)
+  const fino = tutto || !base.fino ? 0 : (dal ?? base.fino - 7 * 86400)
+  const tavoli = []
+  let da = 1
+  let ultima = null
+  for (let giro = 0; giro < 200; giro++) {
+    avanzamento({ fase: fino ? 'Cerco le partite nuove su BGA' : `Leggo tutto lo storico BGA: ${tavoli.length} partite`, fatto: 0, totale: 1 })
+    const r = await chiamaBga('leggi', { fino, da })
+    if (r.scaduta) return { scaduta: true }
+    if (r.collegato === false) return { scollegato: true }
+    tavoli.push(...r.tavoli)
+    ultima = r
+    if (!r.continua) break
+    da = r.continua
+  }
+  return { tipo: 'pg-bga-dati', giocatore: ultima.giocatore, nome: ultima.nome, tavoli, completo: !fino }
+}
+
+const CHIAVE_ORA = 'primo-giocatore:bga-ultima-sincro'
+const CHIAVE_STORICO = 'primo-giocatore:bga-storico'
+const OGNI_ORE_BGA = 1
+
+// Importa da un blocco di tavoli solo quello che non chiede decisioni:
+// le partite nuove di giochi già riconosciuti e quelle che coincidono
+// esattamente con una che hai già. Restano fuori, e si contano, i
+// tavoli di giochi da abbinare e le partite incerte.
+export async function importaSicure(profilo, arrivo, memoria) {
+  const a = await analizzaBga(profilo, arrivo, memoria)
+  if (!a.tavoli.length) return { nuove: 0, inSospeso: 0 }
+  const c = await classificaBga(a)
+  const inSospeso = c.incerte.length + c.senzaGioco
+  if (!c.nuove.length && !c.collegate.length) return { nuove: 0, inSospeso }
+  const r = await importaBga({ profilo, analisi: a, classi: { ...c, incerte: [] } })
+  // L'archivio in memoria resta in pari con quello che si è appena
+  // scritto: una partita collegata non va ricollegata al giro dopo, e un
+  // tavolo appena importato non va reimportato.
+  if (memoria?.righe) {
+    const perId = new Map(memoria.righe.map((x) => [x.id, x]))
+    for (const x of r.collegati || []) {
+      const riga = perId.get(x.partitaId)
+      if (riga) riga.bga_tavolo = x.bga_tavolo
+    }
+    for (const x of r.create || []) memoria.righe.push({ id: x.id, bga_tavolo: x.bga_tavolo, partecipazioni: [] })
+  }
+  return { nuove: r.nuove, inSospeso }
+}
+
+function leggiStorico(chiave) {
+  try { return JSON.parse(localStorage.getItem(chiave) || 'null') } catch { return null }
+}
+function scriviStorico(chiave, valore) {
+  try { localStorage.setItem(chiave, JSON.stringify(valore)) } catch { /* resta solo per ora */ }
+}
+
+// All'apertura dell'app, al massimo una volta all'ora, per chi ha
+// collegato BGA. Si salva un blocco alla volta, man mano che arriva:
+// se l'app si chiude a metà, il lavoro fatto resta.
+// La prima volta (nessuna partita BGA ancora importata) si legge tutto
+// lo storico; la pagina a cui si è arrivati resta sul telefono, così
+// la volta dopo si riprende da lì invece di ricominciare.
+// Le partite che chiedono una scelta non bloccano più le altre: si
+// contano e si rimandano a Dati e import.
+// L'esito di ogni tentativo automatico, per la scheda iscritto: quando,
+// con quale versione dell'app, quante partite, eventuale errore e a che
+// punto è lo storico. Se la tabella manca (script SQL non eseguito) o la
+// scrittura fallisce, la sincronizzazione va avanti lo stesso.
+const VERSIONE_SINCRO = '3.7.0'
+// Un giro fatto dall'app azzera il segno «dal server» (se la colonna c'è).
+async function senzaServer() {
+  try {
+    const { error } = await supabase.from('bga_esiti').select('dal_server').limit(1)
+    return error ? {} : { dal_server: false }
+  } catch { return {} }
+}
+async function registraEsito(profiloId, campi) {
+  try {
+    await supabase.from('bga_esiti').upsert(
+      { utente_id: profiloId, quando: new Date().toISOString(), versione: VERSIONE_SINCRO, ...campi },
+      { onConflict: 'utente_id' })
+  } catch { /* solo diagnostica: non deve fermare niente */ }
+}
+
+// Un solo import BGA alla volta sullo stesso telefono. Due insieme
+// (l'automatica all'apertura e «Aggiorna ora») creavano ospiti doppi,
+// si vedevano rifiutare blocchi interi di partite già entrate e si
+// sovrascrivevano a vicenda la sessione BGA.
+let sincroInCorso = null   // la sincronizzazione automatica, se sta girando
+let manuali = 0            // operazioni a mano in corso
+
+export const sincroAutomaticaInCorso = () => !!sincroInCorso
+
+// Per le operazioni a mano: aspetta che l'automatica finisca, e intanto
+// le impedisce di ripartire.
+export async function inEsclusiva(fn) {
+  manuali += 1
+  try {
+    if (sincroInCorso) await sincroInCorso.catch(() => {})
+    return await fn()
+  } finally {
+    manuali -= 1
+  }
+}
+
+export async function sincronizzaBgaSeServe(profilo) {
+  if (!profilo?.bga_id || manuali > 0 || sincroInCorso) return null
+  sincroInCorso = sincronizzaBga(profilo)
+  try { return await sincroInCorso } finally { sincroInCorso = null }
+}
+
+async function sincronizzaBga(profilo) {
+  try {
+    const ultima = Number(localStorage.getItem(`${CHIAVE_ORA}:${profilo.id}`) || 0)
+    if (Date.now() - ultima < OGNI_ORE_BGA * 3600000) return null
+    localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
+  } catch { /* senza memoria si prova lo stesso */ }
+
+  // Se il server ha sincronizzato da poco (o lo sta facendo adesso),
+  // l'app non ripete il lavoro: due import insieme si pestano i piedi.
+  try {
+    const { data: e } = await supabase.from('bga_esiti').select('quando, in_corso, dal_server')
+      .eq('utente_id', profilo.id).maybeSingle()
+    const fa = e?.quando ? Date.now() - new Date(e.quando).getTime() : Infinity
+    if (e?.dal_server && ((e.in_corso && fa < 10 * 60000) || (!e.in_corso && fa < OGNI_ORE_BGA * 3600000))) return null
+  } catch { /* colonna non ancora creata: si va avanti come prima */ }
+
+  const chiave = `${CHIAVE_STORICO}:${profilo.id}`
+  let nuove = 0
+  let inSospeso = 0
+  let storico = null
+  let da = 1
+  const aPunto = () => (storico ? `storico fino a pagina ${da}` : 'solo le novità')
+  let fase = 'avvio'   // l'ultimo passaggio iniziato: in caso di errore si sa dove
+  await registraEsito(profilo.id, { in_corso: true, importate: 0, in_sospeso: 0, errore: null, storico: 'avvio', ...(await senzaServer()) })
+
+  try {
+    storico = leggiStorico(chiave)
+    if (storico?.fatto) storico = null
+    fase = 'cerco l’ultima partita BGA'
+    const base = await baseSegnalibro(profilo)
+    if (!storico && !base.fino) storico = { da: 1 }
+    const fino = storico ? 0 : base.fino - 7 * 86400
+    da = storico?.da || 1
+
+    // L'archivio si legge una volta, al primo blocco con partite, e poi
+    // resta in memoria per tutti i giri. Per le sole novità bastano le
+    // partite delle ultime settimane (margine largo: le partite a turni
+    // durano giorni, e gli orari salvati possono sfasare di un giorno).
+    const memoria = { righe: null }
+    const dal = fino ? new Date((fino - 30 * 86400) * 1000).toISOString().slice(0, 10) : null
+
+    let chiuso = false
+    for (let giro = 0; giro < 200; giro++) {
+      fase = 'leggo da BGA'
+      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
+      const r = await chiamaBga('leggi', { fino, da })
+      if (r.scaduta) {
+        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
+        return { scaduta: true }
+      }
+      if (r.collegato === false) {
+        await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'BGA non collegato', storico: aPunto() })
+        return null
+      }
+      if (r.tavoli?.length) {
+        if (!memoria.righe) {
+          fase = 'leggo il tuo archivio'
+          await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
+          memoria.righe = await archivio(profilo.id, dal)
+        }
+        fase = `confronto e salvo ${r.tavoli.length} partite (archivio: ${memoria.righe.length})`
+        await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()} · ${fase}` })
+        const esito = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false }, memoria)
+        nuove += esito.nuove
+        inSospeso += esito.inSospeso
+      }
+      if (!r.continua) {
+        if (storico) { scriviStorico(chiave, { fatto: true }); storico = null; da = 0 }
+        await registraEsito(profilo.id, {
+          in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: da === 0 ? 'storico completo' : 'solo le novità',
+          sospese_dal: inSospeso && fino ? new Date(fino * 1000).toISOString() : null,
+        })
+        chiuso = true
+        break
+      }
+      da = r.continua
+      if (storico) scriviStorico(chiave, { da })
+      await registraEsito(profilo.id, { in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: aPunto() })
+    }
+    // Finiti i giri senza arrivare in fondo: riprende alla prossima apertura.
+    if (!chiuso) await registraEsito(profilo.id, { in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: null, storico: `${aPunto()}, riprende alla prossima apertura` })
+  } catch (e) {
+    await registraEsito(profilo.id, {
+      in_corso: false, importate: nuove, in_sospeso: inSospeso,
+      errore: String(e?.message || e).slice(0, 300), storico: `${aPunto()} · fermo a: ${fase}`,
+    })
+    throw e
+  }
+
+  if (!nuove && !inSospeso) return null
+  return { nuove, inSospeso }
 }
