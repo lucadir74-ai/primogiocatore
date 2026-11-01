@@ -1,5 +1,5 @@
 // Primo Giocatore - la scheda di un gioco
-// v1.1.0 - 202611011300 (giochi aggiunti a mano: anno, giocatori e durata letti dal database se la pagina non li ha)
+// v1.2.0 - 202611011600 (dove sta: posizione nella tua collezione, modificabile, e nella ludoteca della Tana)
 //
 // Si apre toccando un gioco in Giochi (collezione, «Chi ce l'ha?»,
 // catalogo). Subito mostra quello che l'app sa già; il resto (peso,
@@ -36,7 +36,27 @@ const daA = (min, max) => {
   return `${min}\u2013${max}`
 }
 
-export default function DettaglioGioco({ gioco, mio, onChiudi }) {
+export default function DettaglioGioco({ gioco, mio, onChiudi, onPosizione }) {
+  // Dove sta: nella tua collezione (onPosizione = si può cambiare) e nella ludoteca della Tana.
+  const [ludoteca, setLudoteca] = useState(null)
+  const [posizione, setPosizione] = useState(null)   // null = non si sta modificando
+  const [salvoPos, setSalvoPos] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    setLudoteca(null); setPosizione(null)
+    supabase.rpc('ludoteca_dove', { p_gioco: String(gioco.id) })
+      .then(({ data }) => { if (vivo && data?.[0]) setLudoteca(data[0]) }, () => {})
+    return () => { vivo = false }
+  }, [gioco.id])
+  async function salvaPosizione() {
+    setSalvoPos(true)
+    const { error } = await supabase.rpc('imposta_posizione', { p_gioco: String(gioco.id), p_posizione: posizione || '' })
+    setSalvoPos(false)
+    if (error) { window.alert(error.message); return }
+    onPosizione?.((posizione || '').trim())
+    setPosizione(null)
+  }
+
   const [s, setS] = useState(null)               // scheda da BGG
   const [stato, setStato] = useState('carico')   // carico | pronto | senza | errore
   const [errore, setErrore] = useState('')
@@ -167,6 +187,32 @@ export default function DettaglioGioco({ gioco, mio, onChiudi }) {
 
         <div className="finestra-corpo">
           {suDiTe && <p className="dg-tu">{suDiTe}</p>}
+
+          {mio?.posseduto && onPosizione && (posizione === null ? (
+            <p className="dg-tu">
+              {mio.posizione ? <>Lo tieni in: <strong>{mio.posizione}</strong></> : 'Non hai ancora segnato dove lo tieni.'}{' '}
+              <button type="button" className="bottone-piatto" onClick={() => setPosizione(mio.posizione || '')}>
+                {mio.posizione ? 'cambia' : 'segna dove'}
+              </button>
+            </p>
+          ) : (
+            <div className="campo">
+              <label htmlFor="dg-pos">Dove lo tieni (lo vedi solo tu)</label>
+              <input id="dg-pos" value={posizione} autoFocus onChange={(e) => setPosizione(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') salvaPosizione() }}
+                placeholder="Es. Libreria sala, 3° ripiano" />
+              <div className="riga-bottoni">
+                <button type="button" className="bottone" onClick={salvaPosizione} disabled={salvoPos}>Salva</button>
+                <button type="button" className="bottone-piatto" onClick={() => setPosizione(null)}>annulla</button>
+              </div>
+            </div>
+          ))}
+
+          {ludoteca && (
+            <p className="dg-tu">
+              Nella ludoteca di {ludoteca.tana || 'Tana'}: <strong>{ludoteca.posizione || 'posizione non indicata'}</strong>
+            </p>
+          )}
 
           {caselle.length > 0 && (
             <div className="dg-dati">

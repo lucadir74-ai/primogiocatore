@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.14.0 - 202611011300 (le partite arrivano dall'archivio condiviso con Storico e Statistiche, con le partite doppie unite come lì)
+// v3.15.0 - 202611011600 (dove lo tieni: posizione di ogni gioco, visibile solo a te, cercabile)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -53,13 +53,18 @@ export default function Collezione({ profilo }) {
       // La colonna espansione arriva con lo script espansioni.sql: se
       // manca, si legge senza e tutti i giochi contano come giochi base.
       const campi = 'id, nome, anno, immagine_url, min_giocatori, max_giocatori, durata_minuti'
-      const leggiCollezione = (conEsp) => tutteLeRighe(() => supabase
+      // Anche posizione arriva con uno script (ludoteca.sql): se manca, si legge senza.
+      const leggiCollezione = (conEsp, conPos) => tutteLeRighe(() => supabase
         .from('collezioni')
-        .select(`gioco_id, origine, giochi ( ${campi}${conEsp ? ', espansione' : ''} )`)
+        .select(`gioco_id, origine${conPos ? ', posizione' : ''}, giochi ( ${campi}${conEsp ? ', espansione' : ''} )`)
         .eq('utente_id', profilo.id), 1000, 'gioco_id')
-      const collezioneSicura = leggiCollezione(true).catch((e) => {
+      const conPosizione = (conEsp) => leggiCollezione(conEsp, true).catch((e) => {
+        if (!/posizione/.test(e?.message || '')) throw e
+        return leggiCollezione(conEsp, false)
+      })
+      const collezioneSicura = conPosizione(true).catch((e) => {
         if (!/espansione/.test(e?.message || '')) throw e
-        return leggiCollezione(false)
+        return conPosizione(false)
       })
       // L'archivio non si aspetta: se c'era già in memoria la pagina parte
       // subito, e lui la aggiorna quando ha finito di rileggere.
@@ -107,6 +112,7 @@ export default function Collezione({ profilo }) {
         min_giocatori: c.giochi.min_giocatori,
         max_giocatori: c.giochi.max_giocatori,
         durata_minuti: c.giochi.durata_minuti,
+        posizione: c.posizione || '',
         posseduto: true,
         ...(uso.get(String(c.gioco_id)) || { volte: 0, ultima: null }),
       }))
@@ -147,7 +153,9 @@ export default function Collezione({ profilo }) {
   if (caricamento || !partiteArrivate) return <div className="scheda"><p>Conto&hellip;</p></div>
 
   const q = cerca.trim().toLowerCase()
-  const filtra = (righe) => (q ? righe.filter((g) => g.nome.toLowerCase().includes(q)) : righe)
+  // Si cerca anche per posizione: «sala» trova tutto quello che sta in sala.
+  const filtra = (righe) => (q ? righe.filter((g) => g.nome.toLowerCase().includes(q)
+    || (g.posizione || '').toLowerCase().includes(q)) : righe)
   const elenco = filtra(dati[sezione] || [])
 
   const fermiDaUnAnno = dati.fermi.filter((g) => giorniDa(g.ultima) > 365).length
@@ -213,7 +221,7 @@ export default function Collezione({ profilo }) {
 
           {(dati[sezione] || []).length > 8 && (
             <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}
-              placeholder="Cerca un gioco" aria-label="Cerca fra i giochi" />
+              placeholder="Cerca un gioco o dove sta" aria-label="Cerca fra i giochi" />
           )}
 
           {sezione === 'fuori' && (
@@ -237,6 +245,7 @@ export default function Collezione({ profilo }) {
                           {g.volte === 0
                             ? 'mai giocato'
                             : `${g.volte} ${g.volte === 1 ? 'partita' : 'partite'} · ultima ${giorno(g.ultima)}`}
+                          {g.posizione ? ` · sta in: ${g.posizione}` : ''}
                         </span>
                         {g.volte > 0 && sezione === 'fermi' && (
                           <span className={`anno block${giorniDa(g.ultima) > 365 ? ' fazione-nota' : ''}`}>
@@ -267,7 +276,11 @@ export default function Collezione({ profilo }) {
       {aperto && (
         <DettaglioGioco
           gioco={aperto}
-          mio={{ posseduto: aperto.posseduto, volte: aperto.volte, ultima: aperto.ultima }}
+          mio={{ posseduto: aperto.posseduto, volte: aperto.volte, ultima: aperto.ultima, posizione: aperto.posizione }}
+          onPosizione={(nuova) => {
+            setCollezione((c) => c.map((r) => (String(r.gioco_id) === String(aperto.id) ? { ...r, posizione: nuova } : r)))
+            setAperto((a) => ({ ...a, posizione: nuova }))
+          }}
           onChiudi={() => setAperto(null)}
         />
       )}

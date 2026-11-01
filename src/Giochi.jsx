@@ -1,10 +1,11 @@
 // Primo Giocatore - schermata Giochi
-// v4.23.0 - 202611011230 (l'aggiornamento della collezione BGG toglie anche i giochi che su BGG non sono più posseduti)
+// v4.24.0 - 202611011600 (sottoscheda «Ludoteca» della Tana: dove sta ogni gioco)
 
 import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import Collezione from './Collezione.jsx'
+import Ludoteca from './Ludoteca.jsx'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 
@@ -411,12 +412,18 @@ export default function Giochi({ profilo }) {
         <button className={vista === 'chi' ? 'attiva' : ''} onClick={() => setVista('chi')}>
           Chi ce l&rsquo;ha?
         </button>
+        {profilo.tana_id && (
+          <button className={vista === 'ludoteca' ? 'attiva' : ''} onClick={() => setVista('ludoteca')}>
+            Ludoteca
+          </button>
+        )}
         <button className={vista === 'catalogo' ? 'attiva' : ''} onClick={() => setVista('catalogo')}>
           Gestisci
         </button>
       </div>
 
-      {vista === 'chi' ? <ChiCeLha profilo={profilo} /> : vista === 'collezione' ? <Collezione profilo={profilo} /> : <>
+      {vista === 'chi' ? <ChiCeLha profilo={profilo} /> : vista === 'collezione' ? <Collezione profilo={profilo} />
+        : vista === 'ludoteca' ? <Ludoteca profilo={profilo} /> : <>
 
       <p className="sottotitolo">
         Cerca un gioco su BoardGameGeek e aggiungilo, oppure porta dentro tutta la tua collezione.
