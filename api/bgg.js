@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.12.0 - 202611011400 (ricerca: un nome attaccato come «forbiddenisland» si riprova separando le parole)
+// v1.13.0 - 202611012300 (azione=nomi: i titoli alternativi da BGG, per riconoscere le edizioni italiane)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -12,6 +12,7 @@
 //   /api/bgg?azione=collezione&utente=lucadir74
 //   /api/bgg?azione=partite&utente=lucadir74&pagina=1
 //   /api/bgg?azione=partite&utente=lucadir74&dal=2026-09-01   (solo da quella data)
+//   /api/bgg?azione=nomi&ambito=collezione   (o catalogo: completa i titoli alternativi, 40 giochi a giro)
 
 import { XMLParser } from 'fast-xml-parser'
 import { createClient } from '@supabase/supabase-js'
@@ -161,6 +162,25 @@ function nomePrincipale(nome) {
   return ripulisci(primario.value ?? primario['#text'] ?? null)
 }
 
+// I titoli alternativi (le edizioni nelle altre lingue: «Sette Meraviglie»
+// per 7 Wonders). Solo quelli in caratteri latini: giapponese, cinese,
+// russo e simili non servono a leggere scatole italiane.
+const LATINO = /^[\p{Script=Latin}\p{N}\p{P}\p{S}\p{Zs}]+$/u
+function nomiAlternativi(nome) {
+  const visti = new Set()
+  const fuori = []
+  for (const n of elenco(nome)) {
+    if (n == null || typeof n !== 'object' || n.type !== 'alternate') continue
+    const v = ripulisci(String(n.value ?? n['#text'] ?? '')).trim()
+    const chiave = v.toLowerCase()
+    if (!v || !LATINO.test(v) || visti.has(chiave)) continue
+    visti.add(chiave)
+    fuori.push(v)
+    if (fuori.length >= 40) break
+  }
+  return fuori
+}
+
 function semplificaGioco(item) {
   return {
     bgg_id: Number(item.id),
@@ -307,6 +327,7 @@ export default async function handler(req, res) {
   // poteva usare il nostro token BGG, e se BGG lo blocca si fermano
   // ricerca giochi e import per tutti.
   const token = (req.headers.authorization || '').replace(/^Bearer /, '')
+  let utenteId = null
   if (!token || !SUPABASE || !SERVIZIO) {
     return res.status(401).json({ errore: 'Entra nell\u2019app per usare la ricerca su BGG.' })
   }
@@ -316,6 +337,7 @@ export default async function handler(req, res) {
     if (error || !data?.user) {
       return res.status(401).json({ errore: 'Sessione scaduta: esci e rientra nell\u2019app.' })
     }
+    utenteId = data.user.id
   } catch {
     return res.status(503).json({ errore: 'Controllo dell\u2019accesso non riuscito. Riprova fra poco.' })
   }
@@ -347,6 +369,36 @@ export default async function handler(req, res) {
         }
       }
       return res.status(200).json({ risultati, cercato })
+    }
+
+    // Completa i titoli alternativi dei giochi che non li hanno ancora:
+    // 40 a giro (due chiamate a BGG), da richiamare finché restanti è 0.
+    // ambito=collezione: solo i giochi di chi chiama; catalogo: tutti.
+    // Scrive il server con la chiave di servizio: dal browser non si può.
+    if (azione === 'nomi') {
+      const ambito = req.query.ambito === 'catalogo' ? 'catalogo' : 'collezione'
+      const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+      const { data: mancanti, error } = await db.rpc('giochi_senza_nomi', {
+        p_utente: ambito === 'collezione' ? utenteId : null, p_limite: 40,
+      })
+      if (error) {
+        return res.status(500).json({ errore: /giochi_senza_nomi/.test(error.message)
+          ? 'Manca lo script giochi_nomi.sql nel database.' : error.message })
+      }
+      const ids = [...new Set((mancanti || []).map((r) => String(r.bgg_id)))].filter((x) => /^\d+$/.test(x))
+      const restantiPrima = Number(mancanti?.[0]?.restanti || 0)
+      if (!ids.length) return res.status(200).json({ fatti: 0, restanti: 0 })
+      const righe = []
+      for (let i = 0; i < ids.length; i += 20) {
+        const gruppo = ids.slice(i, i + 20)
+        const xml = await chiamaBGG(`/thing?id=${gruppo.join(',')}&type=boardgame,boardgameexpansion`)
+        const trovati = new Map(elenco(parser.parse(xml)?.items?.item).map((it) => [String(it.id), nomiAlternativi(it.name)]))
+        // Anche chi BGG non restituisce riceve un elenco (vuoto): così non si richiede all'infinito.
+        for (const b of gruppo) righe.push({ bgg_id: b, nomi: trovati.get(b) || [] })
+      }
+      const { error: e2 } = await db.rpc('giochi_imposta_nomi', { p_righe: righe })
+      if (e2) return res.status(500).json({ errore: e2.message })
+      return res.status(200).json({ fatti: righe.length, restanti: Math.max(0, restantiPrima - righe.length) })
     }
 
     if (azione === 'dettagli') {
