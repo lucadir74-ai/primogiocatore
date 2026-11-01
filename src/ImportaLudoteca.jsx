@@ -1,5 +1,5 @@
 // Primo Giocatore - import da CSV delle posizioni dei giochi
-// v1.2.0 - 202611012300 (riconosce i titoli delle edizioni italiane: titoli alternativi da BGG)
+// v1.2.1 - 202611012230 (barra di avanzamento mentre prende i titoli da BGG)
 //
 // modo «tana»: la ludoteca della Tana (posizione, copie, note).
 // modo «casa»: la propria collezione; si abbina solo ai propri giochi e
@@ -102,6 +102,7 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
   const [copiato, setCopiato] = useState(false)
   const [nomiInCorso, setNomiInCorso] = useState(false)
   const [avvisoNomi, setAvvisoNomi] = useState('')
+  const [progresso, setProgresso] = useState(null)   // { fatti, totale } dei titoli da BGG
   const fermaNomi = useRef(false)
 
   // Prende da BGG i titoli alternativi dei giochi che non li hanno ancora
@@ -110,17 +111,24 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
     const ambito = casa ? 'collezione' : 'catalogo'
     fermaNomi.current = false
     setNomiInCorso(true)
+    let fatti = 0, totale = 0
     try {
       for (let giro = 0; giro < 500 && !fermaNomi.current; giro++) {
         const r = await fetchBgg(`/api/bgg?azione=nomi&ambito=${ambito}`)
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d.errore || 'BGG non ha risposto.')
-        if (!d.restanti || !d.fatti) return
+        if (!d.fatti) return
+        // Il totale si fissa al primo giro: già fatti più quelli che restano.
+        fatti += d.fatti
+        if (!totale) totale = fatti + (d.restanti || 0)
+        setProgresso({ fatti, totale })
+        if (!d.restanti) return
         const minuti = Math.max(1, Math.ceil((d.restanti / 40) * 11 / 60))
         setLavoro(`Prendo da BGG i titoli delle edizioni italiane: ne mancano ${d.restanti} (circa ${minuti} min). Si fa una volta sola.`)
       }
     } finally {
       setNomiInCorso(false)
+      setProgresso(null)
     }
   }
 
@@ -346,6 +354,21 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
         <button className="bottone" onClick={() => analizza()} disabled={!testo.trim() || Boolean(lavoro)}>
           {lavoro || 'Leggi il CSV'}
         </button>
+        {progresso && (
+          <div style={{ margin: '0.6rem 0' }}>
+            <div role="progressbar" aria-valuemin={0} aria-valuemax={progresso.totale} aria-valuenow={progresso.fatti}
+              aria-label="Titoli presi da BGG"
+              style={{ height: '0.75rem', borderRadius: '999px', border: '1px solid var(--bordo)', overflow: 'hidden' }}>
+              <div style={{
+                width: `${Math.round((progresso.fatti / Math.max(1, progresso.totale)) * 100)}%`,
+                height: '100%', background: 'var(--primario)', transition: 'width 0.4s',
+              }} />
+            </div>
+            <p className="aiuto" style={{ margin: '0.3rem 0 0', textAlign: 'center' }}>
+              {progresso.fatti} di {progresso.totale} giochi ({Math.round((progresso.fatti / Math.max(1, progresso.totale)) * 100)}%)
+            </p>
+          </div>
+        )}
         {nomiInCorso && (
           <button className="bottone-piatto" onClick={() => { fermaNomi.current = true }}>
             salta per ora (si riprende al prossimo import)
