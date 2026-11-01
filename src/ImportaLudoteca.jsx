@@ -1,5 +1,5 @@
 // Primo Giocatore - import da CSV delle posizioni dei giochi
-// v1.1.0 - 202611012200 (modo «casa»: le posizioni della propria collezione)
+// v1.2.0 - 202611012300 (riconosce i titoli delle edizioni italiane: titoli alternativi da BGG)
 //
 // modo «tana»: la ludoteca della Tana (posizione, copie, note).
 // modo «casa»: la propria collezione; si abbina solo ai propri giochi e
@@ -10,10 +10,13 @@
 // dorsi e restituisce un CSV titolo;posizione;copie;note. Qui lo si
 // incolla o si carica il file: l'app abbina ogni titolo al catalogo,
 // chi gestisce controlla quelli dubbi e salva tutto in una volta.
-// Servono gli script ludoteca_import.sql (tana) e collezione_import.sql (casa).
+// Servono gli script ludoteca_import.sql (tana), collezione_import.sql (casa)
+// e giochi_nomi.sql (titoli alternativi). La prima volta l'import prende da
+// BGG i titoli alternativi dei giochi che non li hanno: ci vuole qualche
+// minuto, poi solo per i giochi nuovi.
 
-import { useState } from 'react'
-import { supabase } from './supabase'
+import { useRef, useState } from 'react'
+import { supabase, fetchBgg } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 
 export const MESSAGGIO_AI = `Ti mando le foto dei ripiani di una ludoteca di giochi da tavolo; per ogni foto ti scrivo la posizione (es. B3). Leggi i titoli sui dorsi delle scatole e rispondi solo con un CSV con separatore punto e virgola e intestazione titolo;posizione;copie;note. Se lo stesso gioco compare più volte nella stessa posizione, scrivi una sola riga con il numero di copie. Scrivi il titolo come appare sulla scatola. Se un titolo non lo leggi con sicurezza, scrivi «da verificare» nelle note. Non inventare titoli che non riesci a leggere.`
@@ -97,6 +100,29 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
   const [lavoro, setLavoro] = useState('')
   const [errore, setErrore] = useState('')
   const [copiato, setCopiato] = useState(false)
+  const [nomiInCorso, setNomiInCorso] = useState(false)
+  const [avvisoNomi, setAvvisoNomi] = useState('')
+  const fermaNomi = useRef(false)
+
+  // Prende da BGG i titoli alternativi dei giochi che non li hanno ancora
+  // (40 per giro, una pausa di BGG fra un giro e l'altro). Si può saltare.
+  async function completaNomi() {
+    const ambito = casa ? 'collezione' : 'catalogo'
+    fermaNomi.current = false
+    setNomiInCorso(true)
+    try {
+      for (let giro = 0; giro < 500 && !fermaNomi.current; giro++) {
+        const r = await fetchBgg(`/api/bgg?azione=nomi&ambito=${ambito}`)
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d.errore || 'BGG non ha risposto.')
+        if (!d.restanti || !d.fatti) return
+        const minuti = Math.max(1, Math.ceil((d.restanti / 40) * 11 / 60))
+        setLavoro(`Prendo da BGG i titoli delle edizioni italiane: ne mancano ${d.restanti} (circa ${minuti} min). Si fa una volta sola.`)
+      }
+    } finally {
+      setNomiInCorso(false)
+    }
+  }
 
   async function copiaMessaggio() {
     try { await navigator.clipboard.writeText(MESSAGGIO_AI); setCopiato(true) } catch { setCopiato(false) }
@@ -139,6 +165,11 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
     if (!lette.length) { setErrore('Non trovo titoli: controlla che la prima colonna sia il titolo.'); return }
     if (lette.length > 600) { setErrore('Troppe righe in una volta: dividi il CSV in parti da 600 al massimo.'); return }
 
+    setAvvisoNomi('')
+    setLavoro('Controllo i titoli delle edizioni italiane…')
+    try { await completaNomi() } catch (e) {
+      setAvvisoNomi(`Titoli italiani non aggiornati (${e.message}): l’abbinamento usa quelli che ci sono.`)
+    }
     setLavoro('Cerco i giochi nel catalogo…')
     try {
       for (let da = 0; da < lette.length; da += 100) {
@@ -167,7 +198,7 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
 
   const cambia = (k, campi) => setRighe((rr) => rr.map((r) => (r.k === k ? { ...r, ...campi } : r)))
   function scegli(k, g) {
-    cambia(k, { scelta: { gioco_id: String(g.gioco_id ?? g.id), nome: g.nome, anno: g.anno }, incerto: false })
+    cambia(k, { scelta: { gioco_id: String(g.gioco_id ?? g.id), nome: g.nome, anno: g.anno, trovato: g.trovato }, incerto: false })
     setAperta(null)
   }
 
@@ -223,7 +254,8 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
           <strong>{r.letto}</strong>
           <span className="anno block">
             {r.scelta
-              ? <>→ {r.scelta.nome}{r.scelta.anno ? ` (${r.scelta.anno})` : ''}{r.incerto ? ' · l’AI non era sicura del titolo' : ''}</>
+              ? <>→ {r.scelta.nome}{r.scelta.anno ? ` (${r.scelta.anno})` : ''}
+                {r.scelta.trovato && r.scelta.trovato !== r.scelta.nome ? ` · in italiano «${r.scelta.trovato}»` : ''}{r.incerto ? ' · l’AI non era sicura del titolo' : ''}</>
               : r.candidati.length ? 'Quale di questi?' : casa ? 'Non è nella tua collezione (o il titolo è letto male)' : 'Non trovato nel catalogo'}
             {!casa && gia ? ` · già in ludoteca: ${gia.posizione || 'senza posizione'}, ${gia.copie} ${gia.copie === 1 ? 'copia' : 'copie'} (verrà aggiornato)` : ''}
             {casa && gia?.posizione && gia.posizione !== r.posizione.trim() ? ` · ora sta in: ${gia.posizione}` : ''}
@@ -266,6 +298,7 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
                         : <span className="copertina copertina-vuota" aria-hidden="true" />}
                       <span className="voce-testo">
                         <strong>{c.nome}</strong>{c.anno ? <span className="anno"> {c.anno}</span> : null}
+                        {c.trovato && c.trovato !== c.nome && <span className="anno block">anche «{c.trovato}»</span>}
                         {c.espansione && <span className="anno block">espansione</span>}
                       </span>
                     </button>
@@ -313,12 +346,18 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
         <button className="bottone" onClick={() => analizza()} disabled={!testo.trim() || Boolean(lavoro)}>
           {lavoro || 'Leggi il CSV'}
         </button>
+        {nomiInCorso && (
+          <button className="bottone-piatto" onClick={() => { fermaNomi.current = true }}>
+            salta per ora (si riprende al prossimo import)
+          </button>
+        )}
       </div>
     )
   }
 
   return (
     <div>
+      {avvisoNomi && <div className="avviso">{avvisoNomi}</div>}
       <p className="aiuto">
         {righe.length} righe lette: {pronte.length} pronte, {daControllare.length} da controllare
         {casa && fuoriCollezione.length ? `, ${fuoriCollezione.length} non nella tua collezione` : ''}
