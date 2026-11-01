@@ -1,11 +1,16 @@
-// Primo Giocatore - ludoteca della Tana: import da CSV
-// v1.0.0 - 202611012100
+// Primo Giocatore - import da CSV delle posizioni dei giochi
+// v1.1.0 - 202611012200 (modo «casa»: le posizioni della propria collezione)
+//
+// modo «tana»: la ludoteca della Tana (posizione, copie, note).
+// modo «casa»: la propria collezione; si abbina solo ai propri giochi e
+// si aggiorna solo la posizione. Quelli che non sono in collezione non
+// si aggiungono: restano elencati, da sistemare su BGG.
 //
 // Si fotografano i ripiani, un'AI (Claude, ChatGPT…) legge i titoli sui
 // dorsi e restituisce un CSV titolo;posizione;copie;note. Qui lo si
 // incolla o si carica il file: l'app abbina ogni titolo al catalogo,
 // chi gestisce controlla quelli dubbi e salva tutto in una volta.
-// Serve lo script ludoteca_import.sql.
+// Servono gli script ludoteca_import.sql (tana) e collezione_import.sql (casa).
 
 import { useState } from 'react'
 import { supabase } from './supabase'
@@ -52,7 +57,38 @@ const ripulisci = (t) => String(t || '').replace(/^\uFEFF/, '').replace(/^\s*```
 const DA_VERIFICARE = /da\s*verificare/i
 const numeroCopie = (v) => Math.min(99, Math.max(1, parseInt(v, 10) || 1))
 
-export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
+// Ricerca fra i propri giochi (modo casa): niente BGG, la collezione resta com'è.
+function CercaMiei({ giochi, testoIniziale, onScegli }) {
+  const [testo, setTesto] = useState(testoIniziale)
+  const norma = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+  const q = norma(testo)
+  const trovati = q.length < 2 ? [] : giochi.filter((g) => norma(g.nome).includes(q)).slice(0, 8)
+  return (
+    <div>
+      <input className="campo-cerca" value={testo} onChange={(e) => setTesto(e.target.value)}
+        placeholder="Cerca fra i tuoi giochi" aria-label="Cerca fra i tuoi giochi" />
+      {trovati.length > 0 ? (
+        <ul className="elenco">
+          {trovati.map((g) => (
+            <li key={g.gioco_id}>
+              <button type="button" className="voce-scelta" onClick={() => onScegli(g)}>
+                {g.immagine_url
+                  ? <img src={g.immagine_url} alt="" className="copertina" />
+                  : <span className="copertina copertina-vuota" aria-hidden="true" />}
+                <span className="voce-testo">
+                  <strong>{g.nome}</strong>{g.anno ? <span className="anno"> {g.anno}</span> : null}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : q.length >= 2 ? <p className="aiuto">Nessuno dei tuoi giochi con questo nome.</p> : null}
+    </div>
+  )
+}
+
+export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGiochi = [], onFatto }) {
+  const casa = modo === 'casa'
   const [fase, setFase] = useState('carica')       // carica | controlla
   const [testo, setTesto] = useState('')
   const [posDefault, setPosDefault] = useState('')
@@ -107,7 +143,10 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
     try {
       for (let da = 0; da < lette.length; da += 100) {
         const pezzo = lette.slice(da, da + 100)
-        const { data, error } = await supabase.rpc('ludoteca_abbina', { p_tana: tana.id, p_titoli: pezzo.map((r) => r.letto) })
+        const titoli = pezzo.map((r) => r.letto)
+        const { data, error } = casa
+          ? await supabase.rpc('collezione_abbina', { p_titoli: titoli })
+          : await supabase.rpc('ludoteca_abbina', { p_tana: tana.id, p_titoli: titoli })
         if (error) throw error
         for (const c of data || []) pezzo[c.indice - 1]?.candidati.push(c)
       }
@@ -119,7 +158,8 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
       setRighe(lette)
       setFase('controlla')
     } catch (e) {
-      setErrore(/ludoteca_abbina/.test(e?.message || '') ? 'Manca lo script ludoteca_import.sql nel database.' : e.message)
+      setErrore(/(ludoteca|collezione)_abbina/.test(e?.message || '')
+        ? `Manca lo script ${casa ? 'collezione_import.sql' : 'ludoteca_import.sql'} nel database.` : e.message)
     } finally {
       setLavoro('')
     }
@@ -132,7 +172,10 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
   }
 
   const attive = righe.filter((r) => !r.salta)
-  const daControllare = attive.filter((r) => !r.scelta || r.incerto)
+  // In casa un titolo senza nessun gioco simile non è nella collezione:
+  // non blocca, resta in un elenco a parte e non si salva.
+  const fuoriCollezione = casa ? attive.filter((r) => !r.scelta && !r.candidati.length) : []
+  const daControllare = attive.filter((r) => (!r.scelta || r.incerto) && !fuoriCollezione.includes(r))
   const pronte = attive.filter((r) => r.scelta && !r.incerto)
   const saltate = righe.filter((r) => r.salta)
 
@@ -153,12 +196,18 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
     const dati = [...perGioco.values()].map((x) => ({ ...x, note: x.note.join(' · ') }))
     setLavoro('Salvo…')
     try {
-      const { data, error } = await supabase.rpc('ludoteca_salva_blocco', { p_tana: tana.id, p_righe: dati })
+      const { data, error } = casa
+        ? await supabase.rpc('collezione_salva_posizioni', { p_righe: dati.map((x) => ({ gioco_id: x.gioco_id, posizione: x.posizione })) })
+        : await supabase.rpc('ludoteca_salva_blocco', { p_tana: tana.id, p_righe: dati })
       if (error) throw error
+      const fuori = fuoriCollezione.map((r) => r.letto)
       setRighe([]); setTesto(''); setFase('carica')
-      onFatto(`${data} ${data === 1 ? 'gioco salvato' : 'giochi salvati'} nella ludoteca.`)
+      onFatto(casa
+        ? `${data} ${data === 1 ? 'posizione salvata' : 'posizioni salvate'}.${fuori.length ? ` Non nella tua collezione: ${fuori.join(', ')}.` : ''}`
+        : `${data} ${data === 1 ? 'gioco salvato' : 'giochi salvati'} nella ludoteca.`)
     } catch (e) {
-      setErrore(/ludoteca_salva_blocco/.test(e?.message || '') ? 'Manca lo script ludoteca_import.sql nel database.' : e.message)
+      setErrore(/(ludoteca_salva_blocco|collezione_salva_posizioni)/.test(e?.message || '')
+        ? `Manca lo script ${casa ? 'collezione_import.sql' : 'ludoteca_import.sql'} nel database.` : e.message)
     } finally {
       setLavoro('')
     }
@@ -175,16 +224,21 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
           <span className="anno block">
             {r.scelta
               ? <>→ {r.scelta.nome}{r.scelta.anno ? ` (${r.scelta.anno})` : ''}{r.incerto ? ' · l’AI non era sicura del titolo' : ''}</>
-              : r.candidati.length ? 'Quale di questi?' : 'Non trovato nel catalogo'}
-            {gia ? ` · già in ludoteca: ${gia.posizione || 'senza posizione'}, ${gia.copie} ${gia.copie === 1 ? 'copia' : 'copie'} (verrà aggiornato)` : ''}
+              : r.candidati.length ? 'Quale di questi?' : casa ? 'Non è nella tua collezione (o il titolo è letto male)' : 'Non trovato nel catalogo'}
+            {!casa && gia ? ` · già in ludoteca: ${gia.posizione || 'senza posizione'}, ${gia.copie} ${gia.copie === 1 ? 'copia' : 'copie'} (verrà aggiornato)` : ''}
+            {casa && gia?.posizione && gia.posizione !== r.posizione.trim() ? ` · ora sta in: ${gia.posizione}` : ''}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', margin: '0.4rem 0' }}>
           <input aria-label={`Posizione di ${r.letto}`} value={r.posizione} placeholder="Posizione"
             onChange={(e) => cambia(r.k, { posizione: e.target.value })} style={{ width: '7rem' }} />
-          <input aria-label={`Copie di ${r.letto}`} type="number" inputMode="numeric" min="1" max="99" value={r.copie}
-            onChange={(e) => cambia(r.k, { copie: numeroCopie(e.target.value) })} style={{ width: '4rem', textAlign: 'center' }} />
-          <span className="anno">{r.copie === 1 ? 'copia' : 'copie'}</span>
+          {!casa && (
+            <>
+              <input aria-label={`Copie di ${r.letto}`} type="number" inputMode="numeric" min="1" max="99" value={r.copie}
+                onChange={(e) => cambia(r.k, { copie: numeroCopie(e.target.value) })} style={{ width: '4rem', textAlign: 'center' }} />
+              <span className="anno">{r.copie === 1 ? 'copia' : 'copie'}</span>
+            </>
+          )}
         </div>
         <span className="azioni-iscritto">
           {r.scelta && r.incerto && (
@@ -196,7 +250,7 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
             </button>
           )}
           {!r.scelta && !r.candidati.length && aperta !== r.k && (
-            <button className="bottone-piatto" onClick={() => setAperta(r.k)}>cerca</button>
+            <button className="bottone-piatto" onClick={() => setAperta(r.k)}>{casa ? 'cerca fra i miei' : 'cerca'}</button>
           )}
           <button className="bottone-piatto pericolo" onClick={() => cambia(r.k, { salta: true })}>salta</button>
         </span>
@@ -220,7 +274,9 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
               </ul>
             )}
             {aperta === r.k ? (
-              <CercaGiocoBgg testoIniziale={r.letto} onScegli={(g) => scegli(r.k, g)} />
+              casa
+                ? <CercaMiei giochi={mieiGiochi} testoIniziale={r.letto} onScegli={(g) => scegli(r.k, g)} />
+                : <CercaGiocoBgg testoIniziale={r.letto} onScegli={(g) => scegli(r.k, g)} />
             ) : (
               <button className="bottone-piatto" onClick={() => setAperta(r.k)}>nessuno di questi: cerca</button>
             )}
@@ -242,7 +298,7 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
           {copiato ? 'Messaggio copiato ✓' : 'Copia il messaggio per l’AI'}
         </button>
         <div className="campo" style={{ marginTop: '0.8rem' }}>
-          <label htmlFor="lud-csv">CSV (titolo;posizione;copie;note)</label>
+          <label htmlFor="lud-csv">{casa ? 'CSV (titolo;posizione; copie e note non servono)' : 'CSV (titolo;posizione;copie;note)'}</label>
           <textarea id="lud-csv" rows={6} value={testo} onChange={(e) => setTesto(e.target.value)}
             placeholder={'titolo;posizione;copie;note\nCarcassonne;B3;2;\nTicket to Ride: Europe;B3;1;scatola rovinata'}
             style={{ width: '100%', fontFamily: 'monospace' }} />
@@ -265,7 +321,11 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
     <div>
       <p className="aiuto">
         {righe.length} righe lette: {pronte.length} pronte, {daControllare.length} da controllare
-        {saltate.length ? `, ${saltate.length} saltate` : ''}. Un gioco già in ludoteca prende la nuova posizione e le nuove copie.
+        {casa && fuoriCollezione.length ? `, ${fuoriCollezione.length} non nella tua collezione` : ''}
+        {saltate.length ? `, ${saltate.length} saltate` : ''}.{' '}
+        {casa
+          ? 'Si aggiorna solo la posizione; una posizione vuota lascia quella che c’era.'
+          : 'Un gioco già in ludoteca prende la nuova posizione e le nuove copie.'}
       </p>
 
       {daControllare.length > 0 && (
@@ -282,6 +342,14 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
         </>
       )}
 
+      {fuoriCollezione.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Non nella tua collezione <span className="conteggio">{fuoriCollezione.length}</span></h3>
+          <p className="aiuto">Non si salvano. Se è un titolo letto male, cercalo fra i tuoi giochi; se manca davvero, aggiungilo su BGG.</p>
+          <ul className="elenco">{fuoriCollezione.map(riga)}</ul>
+        </>
+      )}
+
       {saltate.length > 0 && (
         <p className="aiuto">
           Saltati: {saltate.map((r) => r.letto).join(', ')}.{' '}
@@ -292,7 +360,8 @@ export default function ImportaLudoteca({ tana, esistenti, onFatto }) {
       {errore && <div className="avviso errore">{errore}</div>}
       <div className="riga-bottoni">
         <button className="bottone" onClick={salva} disabled={daControllare.length > 0 || !pronte.length || Boolean(lavoro)}>
-          {lavoro || (daControllare.length ? `Mancano ${daControllare.length} da controllare` : `Salva ${pronte.length} nella ludoteca`)}
+          {lavoro || (daControllare.length ? `Mancano ${daControllare.length} da controllare`
+            : casa ? `Salva ${pronte.length} ${pronte.length === 1 ? 'posizione' : 'posizioni'}` : `Salva ${pronte.length} nella ludoteca`)}
         </button>
         <button className="bottone-piatto" onClick={() => { setFase('carica'); setRighe([]) }}>ricomincia</button>
       </div>

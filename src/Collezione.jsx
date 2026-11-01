@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.15.0 - 202611011600 (dove lo tieni: posizione di ogni gioco, visibile solo a te, cercabile)
+// v3.16.0 - 202611012200 (posizioni importate da CSV fatto con l'AI dalle foto degli scaffali)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -9,6 +9,8 @@ import { supabase, tutteLeRighe } from './supabase'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import { archivioInMemoria, leggiArchivio, seguiArchivio } from './archivio'
 import { unisciCondivise } from './condivise'
+import ImportaLudoteca from './ImportaLudoteca.jsx'
+import Sezione from './Sezione.jsx'
 
 const giorno = (d) =>
   new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -40,6 +42,7 @@ export default function Collezione({ profilo }) {
   const [partiteArrivate, setPartiteArrivate] = useState(Boolean(inMemoria))
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
+  const [messaggio, setMessaggio] = useState('')
   const [sezione, setSezione] = useState('tutti')
   const [cerca, setCerca] = useState('')
   const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
@@ -150,6 +153,12 @@ export default function Collezione({ profilo }) {
     }
   }, [collezione, partite, profilo.id])
 
+  // Per l'import delle posizioni: tutti i giochi in collezione, espansioni comprese.
+  const esistenti = new Map(collezione.filter((c) => c.giochi).map((c) => [String(c.gioco_id), { posizione: c.posizione || '' }]))
+  const mieiGiochi = collezione.filter((c) => c.giochi).map((c) => ({
+    gioco_id: String(c.gioco_id), nome: c.giochi.nome, anno: c.giochi.anno, immagine_url: c.giochi.immagine_url,
+  }))
+
   if (caricamento || !partiteArrivate) return <div className="scheda"><p>Conto&hellip;</p></div>
 
   const q = cerca.trim().toLowerCase()
@@ -166,6 +175,7 @@ export default function Collezione({ profilo }) {
       <p className="sottotitolo">Quello che possiedi, messo a confronto con quello che giochi.</p>
 
       {errore && <div className="avviso errore">{errore}</div>}
+      {messaggio && <div className="avviso ok">{messaggio}</div>}
 
       {dati.posseduti.length === 0 ? (
         <p className="aiuto">
@@ -270,6 +280,11 @@ export default function Collezione({ profilo }) {
               i giochi comprati per il gruppo e quelli che aspettano l'occasione giusta.
             </p>
           )}
+
+          <Sezione id="collezione-import-posizioni" titolo="Importa posizioni da CSV" nota="foto degli scaffali + AI">
+            <ImportaLudoteca modo="casa" esistenti={esistenti} mieiGiochi={mieiGiochi}
+              onFatto={(m) => { setErrore(''); setMessaggio(m); carica() }} />
+          </Sezione>
         </>
       )}
 
