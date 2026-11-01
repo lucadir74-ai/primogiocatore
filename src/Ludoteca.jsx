@@ -1,10 +1,10 @@
 // Primo Giocatore - la ludoteca della Tana
-// v1.0.1 - 202611011700 (titolo con il nome intero: «Ludoteca della Tana dei Goblin Roma»)
+// v1.1.0 - 202611012000 (numero di copie per ogni gioco)
 //
 // I giochi della Tana e dove stanno (scaffale, ripiano…). Tutti cercano
 // e vedono la posizione; organizzatori e dimostratori aggiungono giochi,
 // li spostano e li tolgono. Si riempie a mano, un gioco alla volta.
-// Serve lo script ludoteca.sql.
+// Servono gli script ludoteca.sql e ludoteca_copie.sql.
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
@@ -12,6 +12,8 @@ import DettaglioGioco from './DettaglioGioco.jsx'
 
 // «Roma» → «Tana dei Goblin Roma»; un nome che dice già «Tana» resta com'è.
 export const nomeTana = (n) => (!n ? 'la tua Tana' : /tana/i.test(n) ? n : `Tana dei Goblin ${n}`)
+
+const copieDi = (r) => Math.max(1, Number(r?.copie) || 1)
 
 const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
@@ -23,7 +25,7 @@ export default function Ludoteca({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [cerca, setCerca] = useState('')
   const [ordine, setOrdine] = useState('nome')        // nome | posizione
-  const [modifica, setModifica] = useState(null)      // { gioco_id, nome, posizione, note, nuovo }
+  const [modifica, setModifica] = useState(null)      // { gioco_id, nome, posizione, note, copie, nuovo }
   const [aggiungi, setAggiungi] = useState('')        // testo per cercare nel catalogo
   const [trovati, setTrovati] = useState([])
   const [aperto, setAperto] = useState(null)
@@ -68,9 +70,13 @@ export default function Ludoteca({ profilo }) {
     setErrore(''); setMessaggio('')
     const { error } = await supabase.rpc('ludoteca_salva', {
       p_tana: tana.id, p_gioco: modifica.gioco_id, p_posizione: modifica.posizione || '', p_note: modifica.note || '',
+      p_copie: copieDi(modifica),
     })
-    if (error) { setErrore(error.message); return }
-    setMessaggio(modifica.nuovo ? `${modifica.nome} aggiunto alla ludoteca.` : `${modifica.nome}: posizione salvata.`)
+    if (error) {
+      setErrore(/p_copie/.test(error.message || '') ? 'Manca lo script ludoteca_copie.sql nel database.' : error.message)
+      return
+    }
+    setMessaggio(modifica.nuovo ? `${modifica.nome} aggiunto alla ludoteca.` : `${modifica.nome}: salvato.`)
     setModifica(null); setAggiungi(''); setTrovati([])
     carica()
   }
@@ -89,6 +95,7 @@ export default function Ludoteca({ profilo }) {
   }
   if (caricamento) return <div className="scheda"><p>Apro la ludoteca&hellip;</p></div>
 
+  const totaleCopie = righe.reduce((s, r) => s + copieDi(r), 0)
   const q = piatto(cerca)
   const filtrate = !q ? righe : righe.filter((r) => piatto(r.nome).includes(q) || piatto(r.posizione).includes(q))
   const ordinate = ordine === 'nome' ? filtrate : [...filtrate].sort((a, b) =>
@@ -98,7 +105,8 @@ export default function Ludoteca({ profilo }) {
     <div className="scheda">
       <h2>Ludoteca della {nomeTana(tana.nome)}</h2>
       <p className="sottotitolo">
-        {righe.length === 0 ? 'Ancora nessun gioco.' : `${righe.length} giochi.`} Cerca un gioco per sapere dove sta.
+        {righe.length === 0 ? 'Ancora nessun gioco.'
+          : `${righe.length} giochi${totaleCopie > righe.length ? `, ${totaleCopie} copie` : ''}.`} Cerca un gioco per sapere dove sta.
       </p>
 
       {errore && <div className="avviso errore">{errore}</div>}
@@ -135,13 +143,14 @@ export default function Ludoteca({ profilo }) {
                     <strong>{r.nome}</strong>
                     <span className="anno block">
                       {r.posizione ? `Sta in: ${r.posizione}` : 'posizione non indicata'}
+                      {copieDi(r) > 1 ? ` · ${copieDi(r)} copie` : ''}
                       {r.note ? ` · ${r.note}` : ''}
                     </span>
                   </span>
                 </span>
               </button>
               {tana.posso && (
-                <button className="bottone-piatto" onClick={() => setModifica({ ...r, nuovo: false })}>sposta</button>
+                <button className="bottone-piatto" onClick={() => setModifica({ ...r, copie: copieDi(r), nuovo: false })}>modifica</button>
               )}
             </li>
           )
@@ -168,7 +177,7 @@ export default function Ludoteca({ profilo }) {
                   {g.gia_dentro
                     ? <span className="anno">già in ludoteca</span>
                     : <button className="bottone-piatto"
-                        onClick={() => setModifica({ gioco_id: g.gioco_id, nome: g.nome, posizione: '', note: '', nuovo: true })}>
+                        onClick={() => setModifica({ gioco_id: g.gioco_id, nome: g.nome, posizione: '', note: '', copie: 1, nuovo: true })}>
                         aggiungi
                       </button>}
                 </li>
@@ -195,10 +204,24 @@ export default function Ludoteca({ profilo }) {
                 <datalist id="lud-posizioni">{posizioni.map((p) => <option key={p} value={p} />)}</datalist>
               </div>
               <div className="campo">
+                <label htmlFor="lud-copie">Copie</label>
+                <div className="riga-bottoni" style={{ alignItems: 'center' }}>
+                  <button type="button" className="bottone-piatto" aria-label="Una copia in meno"
+                    disabled={copieDi(modifica) <= 1}
+                    onClick={() => setModifica({ ...modifica, copie: copieDi(modifica) - 1 })}>−</button>
+                  <input id="lud-copie" type="number" inputMode="numeric" min="1" max="99" style={{ width: '4.5rem', textAlign: 'center' }}
+                    value={modifica.copie ?? 1}
+                    onChange={(e) => setModifica({ ...modifica, copie: e.target.value === '' ? '' : Math.min(99, Math.max(1, parseInt(e.target.value, 10) || 1)) })} />
+                  <button type="button" className="bottone-piatto" aria-label="Una copia in più"
+                    disabled={copieDi(modifica) >= 99}
+                    onClick={() => setModifica({ ...modifica, copie: copieDi(modifica) + 1 })}>+</button>
+                </div>
+              </div>
+              <div className="campo">
                 <label htmlFor="lud-note">Nota (facoltativa)</label>
                 <input id="lud-note" value={modifica.note || ''}
                   onChange={(e) => setModifica({ ...modifica, note: e.target.value })}
-                  placeholder="Es. manca un dado, scatola rovinata" />
+                  placeholder="Es. manca un dado, una copia sta in C1" />
               </div>
               <div className="riga-bottoni">
                 <button className="bottone" onClick={salva}>{modifica.nuovo ? 'Aggiungi' : 'Salva'}</button>

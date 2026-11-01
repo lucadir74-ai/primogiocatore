@@ -1,5 +1,5 @@
 // Primo Giocatore - la scheda di un gioco
-// v1.2.1 - 202611011700 (ludoteca con il nome intero della Tana)
+// v1.2.2 - 202611012000 (ludoteca: numero di copie)
 //
 // Si apre toccando un gioco in Giochi (collezione, «Chi ce l'ha?»,
 // catalogo). Subito mostra quello che l'app sa già; il resto (peso,
@@ -212,6 +212,7 @@ export default function DettaglioGioco({ gioco, mio, onChiudi, onPosizione }) {
           {ludoteca && (
             <p className="dg-tu">
               Nella ludoteca della {nomeTana(ludoteca.tana)}: <strong>{ludoteca.posizione || 'posizione non indicata'}</strong>
+              {Number(ludoteca.copie) > 1 ? ` (${ludoteca.copie} copie)` : ''}
             </p>
           )}
 
