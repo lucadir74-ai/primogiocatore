@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.7.0 - 202610311300 (la sincronizzazione gira anche sul server, ogni ora a telefono spento: l'app non la ripete se il server l'ha appena fatta)
+// v3.8.0 - 202611011400 (giochi da riconoscere: suggerimento per nome anche fra tutti i giochi dell'app, non solo i tuoi)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -250,6 +250,23 @@ export async function analizzaBga(profilo, arrivo, memoria = null) {
       suggerito = { ...perNome.get(normale(nomeBga)), perche: 'nome' }
     }
     giochiDaAbbinare.push({ bga_nome: nomeBga, tavoli: conteggio.get(nomeBga), suggerito })
+  }
+  // c) Ancora niente: lo stesso nome fra tutti i giochi dell'app, non
+  //    solo i tuoi (serve suggerimenti_bga.sql). Il database restituisce
+  //    solo nome e numero BGG, dati pubblici. Se la funzione non c'è o non
+  //    risponde si va avanti senza: è solo un aiuto.
+  const senza = giochiDaAbbinare.filter((g) => !g.suggerito)
+  if (senza.length) {
+    try {
+      const { data, error } = await supabase.rpc('suggerisci_giochi_bga', { p_nomi: senza.map((g) => g.bga_nome) })
+      if (!error) {
+        const trovati = new Map((data || []).map((r) => [r.bga_nome, r]))
+        for (const g of senza) {
+          const r = trovati.get(g.bga_nome)
+          if (r?.bgg_id) g.suggerito = { bgg_id: r.bgg_id, nome: r.nome, perche: 'nome' }
+        }
+      }
+    } catch { /* niente suggerimenti in più */ }
   }
   giochiDaAbbinare.sort((a, b) => b.tavoli - a.tavoli)
 
