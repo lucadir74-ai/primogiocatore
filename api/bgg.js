@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.10.0 - 202611011030 (nuova azione «scheda»: le caratteristiche complete di un gioco per la sua finestra)
+// v1.11.0 - 202611011230 (collezione sempre fresca da BGG: un gioco tolto su BGG non resta per dodici ore)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -314,11 +314,13 @@ export default async function handler(req, res) {
       // Giochi base ed espansioni si chiedono separati: mescolati, BGG
       // etichetta le espansioni come giochi base.
       const radice = `/collection?username=${encodeURIComponent(utente)}&own=1&brief=1`
-      const datiBase = parser.parse(await chiamaBGG(`${radice}&excludesubtype=boardgameexpansion`))
+      // Sempre fresca: con la memoria di dodici ore un gioco appena tolto
+      // su BGG risultava ancora posseduto.
+      const datiBase = parser.parse(await chiamaBGG(`${radice}&excludesubtype=boardgameexpansion`, { fresco: true }))
       if (datiBase?.errors) {
         return res.status(404).json({ errore: 'Utente BGG non trovato.' })
       }
-      const datiEsp = parser.parse(await chiamaBGG(`${radice}&subtype=boardgameexpansion`))
+      const datiEsp = parser.parse(await chiamaBGG(`${radice}&subtype=boardgameexpansion`, { fresco: true }))
       const leggi = (dati, espansione) => elenco(dati?.items?.item)
         .map((i) => ({
           bgg_id: Number(i.objectid),
