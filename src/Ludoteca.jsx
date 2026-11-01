@@ -1,14 +1,16 @@
 // Primo Giocatore - la ludoteca della Tana
-// v1.1.0 - 202611012000 (numero di copie per ogni gioco)
+// v1.2.0 - 202611012100 (import da CSV fatto con l'AI dalle foto dei ripiani)
 //
 // I giochi della Tana e dove stanno (scaffale, ripiano…). Tutti cercano
 // e vedono la posizione; organizzatori e dimostratori aggiungono giochi,
 // li spostano e li tolgono. Si riempie a mano, un gioco alla volta.
-// Servono gli script ludoteca.sql e ludoteca_copie.sql.
+// Servono gli script ludoteca.sql, ludoteca_copie.sql e ludoteca_import.sql.
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import DettaglioGioco from './DettaglioGioco.jsx'
+import ImportaLudoteca from './ImportaLudoteca.jsx'
+import Sezione from './Sezione.jsx'
 
 // «Roma» → «Tana dei Goblin Roma»; un nome che dice già «Tana» resta com'è.
 export const nomeTana = (n) => (!n ? 'la tua Tana' : /tana/i.test(n) ? n : `Tana dei Goblin ${n}`)
@@ -52,6 +54,9 @@ export default function Ludoteca({ profilo }) {
   }
 
   // Le posizioni già usate: si scelgono da qui, così «B3» resta «B3».
+  // Per l'import: i giochi già in ludoteca, con posizione e copie.
+  const esistenti = useMemo(() => new Map(righe.map((r) => [String(r.gioco_id), { posizione: r.posizione, copie: copieDi(r) }])), [righe])
+
   const posizioni = useMemo(() => [...new Set(righe.map((r) => r.posizione).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'it', { numeric: true })), [righe])
 
@@ -184,6 +189,10 @@ export default function Ludoteca({ profilo }) {
               ))}
             </ul>
           )}
+          <Sezione id="ludoteca-import" titolo="Importa da CSV" nota="foto dei ripiani + AI">
+            <ImportaLudoteca tana={tana} esistenti={esistenti}
+              onFatto={(m) => { setErrore(''); setMessaggio(m); carica() }} />
+          </Sezione>
           <p className="aiuto">La ludoteca la modificano organizzatori e dimostratori; tutti gli altri la consultano.</p>
         </>
       )}
