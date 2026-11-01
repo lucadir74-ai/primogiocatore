@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.9.0 - 202610260130 (collezione: anche le espansioni, chieste a parte e segnate come tali)
+// v1.10.0 - 202611011030 (nuova azione «scheda»: le caratteristiche complete di un gioco per la sua finestra)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -8,6 +8,7 @@
 // Come si usa:
 //   /api/bgg?azione=cerca&q=scythe
 //   /api/bgg?azione=dettagli&id=169786,224517
+//   /api/bgg?azione=scheda&gioco=<id del gioco nell'app>
 //   /api/bgg?azione=collezione&utente=lucadir74
 //   /api/bgg?azione=partite&utente=lucadir74&pagina=1
 //   /api/bgg?azione=partite&utente=lucadir74&dal=2026-09-01   (solo da quella data)
@@ -176,8 +177,69 @@ function semplificaGioco(item) {
   }
 }
 
+// Il sondaggio di BGG sul numero di giocatori: per ogni numero gli utenti
+// votano «Best», «Recommended» o «Not Recommended». Ideale è il numero in
+// cui «Best» prende più voti degli altri due; consigliato quello in cui i
+// voti a favore superano quelli contrari. I numeri come «5+» si saltano.
+function sondaggioGiocatori(item) {
+  const sondaggio = elenco(item.poll).find((p) => p?.name === 'suggested_numplayers')
+  const voti = Number(sondaggio?.totalvotes) || 0
+  if (!voti) return { ideale: [], consigliato: [], voti: 0 }
+  const ideale = []
+  const consigliato = []
+  for (const r of elenco(sondaggio.results)) {
+    const n = Number(r?.numplayers)
+    if (!Number.isInteger(n)) continue
+    const v = { Best: 0, Recommended: 0, 'Not Recommended': 0 }
+    for (const x of elenco(r.result)) if (x?.value in v) v[x.value] = Number(x.numvotes) || 0
+    if (v.Best + v.Recommended + v['Not Recommended'] === 0) continue
+    if (v.Best + v.Recommended > v['Not Recommended']) consigliato.push(n)
+    if (v.Best > v.Recommended && v.Best > v['Not Recommended']) ideale.push(n)
+  }
+  return { ideale, consigliato, voti }
+}
+
+// Tutto quello che serve alla scheda di un gioco (chiamata con stats=1).
+function schedaCompleta(item) {
+  const numero = (x) => {
+    const n = Number(x && typeof x === 'object' ? x.value : x)
+    return Number.isFinite(n) ? n : null
+  }
+  const collegati = (tipo) => elenco(item.link)
+    .filter((l) => l?.type === tipo)
+    .map((l) => ripulisci(String(l.value ?? '')))
+    .filter((v) => v && !/^\(uncredited\)$/i.test(v))
+  const voti = item.statistics?.ratings || {}
+  const classifica = elenco(voti.ranks?.rank).find((r) => r?.name === 'boardgame')
+  const posizione = Number(classifica?.value)
+  return {
+    bgg_id: Number(item.id),
+    tipo: item.type ?? 'boardgame',
+    nome: nomePrincipale(item.name),
+    anno: numero(item.yearpublished),
+    immagine: item.image ?? item.thumbnail ?? null,
+    miniatura: item.thumbnail ?? item.image ?? null,
+    min_giocatori: numero(item.minplayers),
+    max_giocatori: numero(item.maxplayers),
+    durata: numero(item.playingtime),
+    durata_min: numero(item.minplaytime),
+    durata_max: numero(item.maxplaytime),
+    eta: numero(item.minage),
+    peso: numero(voti.averageweight),
+    voti_peso: numero(voti.numweights),
+    voto: numero(voti.average),
+    votanti: numero(voti.usersrated),
+    posizione: Number.isInteger(posizione) && posizione > 0 ? posizione : null,
+    giocatori_bgg: sondaggioGiocatori(item),
+    autori: collegati('boardgamedesigner'),
+    meccaniche: collegati('boardgamemechanic'),
+    categorie: collegati('boardgamecategory'),
+    descrizione: typeof item.description === 'string' ? ripulisci(item.description) : null,
+  }
+}
+
 export default async function handler(req, res) {
-  const { azione, q, id, utente, pagina, dal } = req.query
+  const { azione, q, id, utente, pagina, dal, gioco } = req.query
 
   // Solo per chi è entrato nell'app: senza questo controllo chiunque
   // poteva usare il nostro token BGG, e se BGG lo blocca si fermano
@@ -227,6 +289,24 @@ export default async function handler(req, res) {
       const dati = parser.parse(xml)
       const giochi = elenco(dati?.items?.item).map(semplificaGioco).filter((g) => g.nome)
       return res.status(200).json({ giochi })
+    }
+
+    // La scheda di un gioco dell'app. Si passa l'id dell'app, non quello
+    // BGG: chi apre la scheda da «Chi ce l'ha?» non sempre può leggere la
+    // riga del gioco. Qui si cerca solo il numero BGG; i giochi scritti a
+    // mano non hanno altro da mostrare oltre a ciò che l'app ha già.
+    if (azione === 'scheda') {
+      if (!gioco || !/^[0-9a-z-]{1,64}$/i.test(String(gioco))) {
+        return res.status(400).json({ errore: 'Gioco non valido.' })
+      }
+      const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+      const { data: riga, error } = await db.from('giochi').select('bgg_id').eq('id', gioco).maybeSingle()
+      if (error) throw error
+      if (!riga) return res.status(404).json({ errore: 'Gioco non trovato.' })
+      if (!riga.bgg_id) return res.status(200).json({ scheda: null })
+      const xml = await chiamaBGG(`/thing?id=${Number(riga.bgg_id)}&type=boardgame,boardgameexpansion&stats=1`)
+      const item = elenco(parser.parse(xml)?.items?.item)[0]
+      return res.status(200).json({ scheda: item ? schedaCompleta(item) : null })
     }
 
     if (azione === 'collezione') {
