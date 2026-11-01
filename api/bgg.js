@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.11.0 - 202611011230 (collezione sempre fresca da BGG: un gioco tolto su BGG non resta per dodici ore)
+// v1.12.0 - 202611011400 (ricerca: un nome attaccato come «forbiddenisland» si riprova separando le parole)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -177,6 +177,68 @@ function semplificaGioco(item) {
   }
 }
 
+// Separa le parole di un nome attaccato: «forbiddenisland» → «forbidden
+// island», «throughtheages» → «through the ages». Le parole conosciute
+// sono quelle dei nomi dei giochi già nell'app, più le parole brevi più
+// comuni nei titoli. Si sceglie la divisione che lascia meno lettere
+// fuori da parole conosciute e, a parità, con meno parole.
+const PAROLE_BREVI = ['a', 'an', 'the', 'of', 'and', 'in', 'on', 'to', 'for', 'at', 'by', 'or', 'my', 'no',
+  'de', 'la', 'le', 'les', 'du', 'des', 'der', 'die', 'das', 'und', 'von', 'el', 'los', 'las', 'il', 'di', 'da', 'del']
+let paroleNote = null
+let paroleQuando = 0
+
+async function parole() {
+  if (paroleNote && Date.now() - paroleQuando < DURATA_CACHE) return paroleNote
+  const insieme = new Set(PAROLE_BREVI)
+  const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+  for (let da = 0; da < 50000; da += 1000) {
+    const { data, error } = await db.from('giochi').select('nome').order('id').range(da, da + 999)
+    if (error) break
+    for (const r of data || []) {
+      for (const w of String(r.nome || '').toLowerCase().normalize('NFD').split(/[^a-z0-9]+/)) {
+        if (w.length >= 3) insieme.add(w)
+      }
+    }
+    if (!data || data.length < 1000) break
+  }
+  paroleNote = insieme
+  paroleQuando = Date.now()
+  return insieme
+}
+
+async function spezzaParole(testo) {
+  const t = testo.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+  if (!t) return null
+  const note = await parole()
+  // migliore[i] = { fuori, pezzi, da } per le prime i lettere.
+  const migliore = [{ fuori: 0, pezzi: 0, da: -1 }]
+  for (let i = 1; i <= t.length; i++) {
+    let m = null
+    for (let j = Math.max(0, i - 25); j < i; j++) {
+      const prima = migliore[j]
+      if (!prima) continue
+      const pezzo = t.slice(j, i)
+      // Una cifra resta attaccata alle cifre vicine: «7wonders» → «7 wonders».
+      const conosciuto = note.has(pezzo) || /^\d+$/.test(pezzo)
+      const c = { fuori: prima.fuori + (conosciuto ? 0 : pezzo.length), pezzi: prima.pezzi + 1, da: j }
+      if (!m || c.fuori < m.fuori || (c.fuori === m.fuori && c.pezzi < m.pezzi)) m = c
+    }
+    migliore[i] = m
+  }
+  // Troppe lettere senza parola conosciuta: meglio non indovinare.
+  if (migliore[t.length].fuori > t.length / 3) return null
+  const pezzi = []
+  for (let i = t.length; i > 0; i = migliore[i].da) pezzi.unshift(t.slice(migliore[i].da, i))
+  // Le lettere sconosciute consecutive tornano un pezzo solo.
+  const uniti = []
+  for (const p of pezzi) {
+    const ultimo = uniti[uniti.length - 1]
+    if (ultimo && !note.has(ultimo) && !note.has(p) && !/^\d+$/.test(p)) uniti[uniti.length - 1] = ultimo + p
+    else uniti.push(p)
+  }
+  return uniti.join(' ')
+}
+
 // Il sondaggio di BGG sul numero di giocatori: per ogni numero gli utenti
 // votano «Best», «Recommended» o «Not Recommended». Ideale è il numero in
 // cui «Best» prende più voti degli altri due; consigliato quello in cui i
@@ -263,18 +325,28 @@ export default async function handler(req, res) {
       if (!q || q.trim().length < 2) {
         return res.status(400).json({ errore: 'Scrivi almeno due lettere.' })
       }
-      const xml = await chiamaBGG(
-        `/search?query=${encodeURIComponent(q.trim())}&type=boardgame`
-      )
-      const dati = parser.parse(xml)
-      const risultati = elenco(dati?.items?.item)
-        .map((i) => ({
-          bgg_id: Number(i.id),
-          nome: nomePrincipale(i.name),
-          anno: i.yearpublished?.value ?? i.yearpublished ?? null,
-        }))
-        .filter((g) => g.nome)
-      return res.status(200).json({ risultati })
+      const cerca = async (testo) => {
+        const xml = await chiamaBGG(`/search?query=${encodeURIComponent(testo)}&type=boardgame`)
+        return elenco(parser.parse(xml)?.items?.item)
+          .map((i) => ({
+            bgg_id: Number(i.id),
+            nome: nomePrincipale(i.name),
+            anno: i.yearpublished?.value ?? i.yearpublished ?? null,
+          }))
+          .filter((g) => g.nome)
+      }
+      let cercato = q.trim()
+      let risultati = await cerca(cercato)
+      // I nomi di BGA sono attaccati («forbiddenisland») e BGG non li
+      // trova: se richiesto, si riprova con le parole separate.
+      if (req.query.spezza && risultati.length === 0 && !/\s/.test(cercato) && cercato.length >= 6) {
+        const spezzato = await spezzaParole(cercato)
+        if (spezzato && spezzato !== cercato.toLowerCase()) {
+          cercato = spezzato
+          risultati = await cerca(spezzato)
+        }
+      }
+      return res.status(200).json({ risultati, cercato })
     }
 
     if (azione === 'dettagli') {
