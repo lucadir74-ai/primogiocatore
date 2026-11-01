@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.22.0 - 202611011130 (sottoschede in ordine La mia collezione, Chi ce l'ha?, Gestisci (era Catalogo); toccando un gioco si apre la sua scheda)
+// v4.23.0 - 202611011230 (l'aggiornamento della collezione BGG toglie anche i giochi che su BGG non sono più posseduti)
 
 import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
@@ -158,10 +158,36 @@ export default function Giochi({ profilo }) {
         if (error) throw error
       }
 
+      // Quello che hai tolto dalla collezione su BGG si toglie anche qui.
+      // Solo le righe arrivate da BGG: i giochi segnati «è mio» a mano dalla
+      // partita restano. Per prudenza non si toglie niente se BGG ha
+      // restituito una collezione vuota o se qualche gioco non è stato
+      // salvato: meglio un gioco in più che una collezione cancellata.
+      let tolti = 0
+      const completo = possedute.length > 0 && salvati.length === unici.length && salvati.every(Boolean)
+      if (completo) {
+        const oraSuBgg = new Set(possedute.map((x) => x.gioco_id))
+        const mie = await tutteLeRighe(() => supabase.from('collezioni')
+          .select('gioco_id, origine').eq('utente_id', profilo.id), 1000, 'gioco_id')
+        const daTogliere = mie
+          .filter((x) => x.origine === 'bgg' && !oraSuBgg.has(x.gioco_id))
+          .map((x) => x.gioco_id)
+        for (let i = 0; i < daTogliere.length; i += 100) {
+          const { error } = await supabase.from('collezioni').delete()
+            .eq('utente_id', profilo.id).in('gioco_id', daTogliere.slice(i, i + 100))
+          if (error) throw error
+        }
+        tolti = daTogliere.length
+      }
+
       const nEsp = salvati.filter((g) => g?.espansione).length
-      setMessaggio(nEsp
-        ? `Collezione importata: ${possedute.length - nEsp} giochi e ${nEsp} espansioni.`
-        : `Collezione importata: ${possedute.length} giochi.`)
+      const quanti = nEsp
+        ? `${possedute.length - nEsp} giochi e ${nEsp} espansioni`
+        : `${possedute.length} giochi`
+      setMessaggio(`Collezione aggiornata: ${quanti}.`
+        + (tolti === 1 ? ' Tolto 1 gioco che su BGG non è più nella tua collezione.' : '')
+        + (tolti > 1 ? ` Tolti ${tolti} giochi che su BGG non sono più nella tua collezione.` : '')
+        + (completo ? '' : ' Non ho tolto niente: BGG ha risposto in modo incompleto, riprova più tardi.'))
       caricaCatalogo()
       caricaMiei()
     } catch (e) {
@@ -439,7 +465,7 @@ export default function Giochi({ profilo }) {
       )}
 
       <button className="bottone bottone-secondario" onClick={importaCollezione} disabled={importando}>
-        {importando ? 'Importo\u2026' : 'Importa la mia collezione BGG'}
+        {importando ? 'Aggiorno\u2026' : 'Importa o aggiorna la mia collezione BGG'}
       </button>
 
       {manuale === null ? (
