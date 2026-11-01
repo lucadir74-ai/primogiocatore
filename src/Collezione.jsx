@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.13.0 - 202611011200 (nuova sezione «Tutti», prima e aperta di partenza: tutti i giochi posseduti in ordine alfabetico)
+// v3.14.0 - 202611011300 (le partite arrivano dall'archivio condiviso con Storico e Statistiche, con le partite doppie unite come lì)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import DettaglioGioco from './DettaglioGioco.jsx'
+import { archivioInMemoria, leggiArchivio, seguiArchivio } from './archivio'
+import { unisciCondivise } from './condivise'
 
 const giorno = (d) =>
   new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -29,8 +31,13 @@ const SEZIONI = [
 ]
 
 export default function Collezione({ profilo }) {
+  // Le partite sono quelle dell'archivio unico dell'app (lo stesso di
+  // Storico e Statistiche): se è già in memoria si vede subito, e la
+  // pagina si aggiorna da sola quando arriva la versione nuova.
+  const inMemoria = archivioInMemoria(profilo.id)
   const [collezione, setCollezione] = useState([])
-  const [partite, setPartite] = useState([])
+  const [partite, setPartite] = useState(inMemoria || [])
+  const [partiteArrivate, setPartiteArrivate] = useState(Boolean(inMemoria))
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
   const [sezione, setSezione] = useState('tutti')
@@ -38,6 +45,7 @@ export default function Collezione({ profilo }) {
   const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
 
   useEffect(() => { carica() }, [])
+  useEffect(() => seguiArchivio((righe) => { setPartite(righe); setPartiteArrivate(true) }), [profilo.id])
 
   async function carica() {
     setCaricamento(true)
@@ -53,14 +61,12 @@ export default function Collezione({ profilo }) {
         if (!/espansione/.test(e?.message || '')) throw e
         return leggiCollezione(false)
       })
-      const [c, p] = await Promise.all([
-        collezioneSicura,
-        tutteLeRighe(() => supabase
-          .from('partite')
-          .select('gioco_id, giocata_il, giochi ( id, nome, anno, immagine_url, min_giocatori, max_giocatori, durata_minuti ), partecipazioni ( utente_id )')),
-      ])
-      setCollezione(c)
-      setPartite(p)
+      // L'archivio non si aspetta: se c'era già in memoria la pagina parte
+      // subito, e lui la aggiorna quando ha finito di rileggere.
+      leggiArchivio(profilo.id)
+        .then((righe) => { setPartite(righe); setPartiteArrivate(true) })
+        .catch((e) => { setErrore(e.message); setPartiteArrivate(true) })
+      setCollezione(await collezioneSicura)
     } catch (e) {
       setErrore(e.message)
     } finally {
@@ -69,23 +75,30 @@ export default function Collezione({ profilo }) {
   }
 
   const dati = useMemo(() => {
+    // La stessa serata registrata da due persone conta una volta sola,
+    // con la stessa regola di Storico e Statistiche.
+    const uniche = unisciCondivise(partite, [profilo.id])
+
     // Quando ho giocato ciascun gioco, e quante volte.
     const uso = new Map()
-    for (const p of partite) {
-      if (!p.gioco_id) continue
-      const v = uso.get(p.gioco_id) || { volte: 0, ultima: null }
+    for (const p of uniche) {
+      // Chiave sempre come testo: dall'archivio e dalla collezione l'id
+      // può arrivare in forme diverse.
+      const id = p.giochi?.id == null ? null : String(p.giochi.id)
+      if (!id) continue
+      const v = uso.get(id) || { volte: 0, ultima: null }
       v.volte++
       if (!v.ultima || p.giocata_il > v.ultima) v.ultima = p.giocata_il
-      uso.set(p.gioco_id, v)
+      uso.set(id, v)
     }
 
     // Un'espansione si gioca insieme al gioco base: conta come gioco solo
     // se ha partite sue (es. un'espansione di Hitster giocata da sola).
     // Le altre restano fuori dai numeri, così «mai giocati» non si gonfia.
     const tutte = collezione.filter((c) => c.giochi)
-    const espansioniFerme = tutte.filter((c) => c.giochi.espansione && !uso.has(c.gioco_id)).length
+    const espansioniFerme = tutte.filter((c) => c.giochi.espansione && !uso.has(String(c.gioco_id))).length
     const posseduti = tutte
-      .filter((c) => !c.giochi.espansione || uso.has(c.gioco_id))
+      .filter((c) => !c.giochi.espansione || uso.has(String(c.gioco_id)))
       .map((c) => ({
         id: c.gioco_id,
         nome: c.giochi.nome,
@@ -95,24 +108,26 @@ export default function Collezione({ profilo }) {
         max_giocatori: c.giochi.max_giocatori,
         durata_minuti: c.giochi.durata_minuti,
         posseduto: true,
-        ...(uso.get(c.gioco_id) || { volte: 0, ultima: null }),
+        ...(uso.get(String(c.gioco_id)) || { volte: 0, ultima: null }),
       }))
 
-    const idPosseduti = new Set(posseduti.map((g) => g.id))
+    const idPosseduti = new Set(posseduti.map((g) => String(g.id)))
 
     // Giocati ma non in collezione: quelli di altri, o provati in fiera.
     const fuori = new Map()
-    for (const p of partite) {
-      if (!p.giochi || idPosseduti.has(p.gioco_id)) continue
-      const v = fuori.get(p.gioco_id) || {
-        id: p.gioco_id, nome: p.giochi.nome, anno: p.giochi.anno, immagine: p.giochi.immagine_url,
-        min_giocatori: p.giochi.min_giocatori, max_giocatori: p.giochi.max_giocatori,
-        durata_minuti: p.giochi.durata_minuti, posseduto: false,
-        volte: 0, ultima: null,
+    // L'archivio porta solo id, nome e copertina del gioco: il resto lo
+    // legge la scheda quando la apri.
+    for (const p of uniche) {
+      if (p.giochi?.id == null) continue
+      const id = String(p.giochi.id)
+      if (idPosseduti.has(id)) continue
+      const v = fuori.get(id) || {
+        id: p.giochi.id, nome: p.giochi.nome, immagine: p.giochi.immagine_url,
+        posseduto: false, volte: 0, ultima: null,
       }
       v.volte++
       if (!v.ultima || p.giocata_il > v.ultima) v.ultima = p.giocata_il
-      fuori.set(p.gioco_id, v)
+      fuori.set(id, v)
     }
 
     const giocati = posseduti.filter((g) => g.volte > 0)
@@ -127,9 +142,9 @@ export default function Collezione({ profilo }) {
       fuori: [...fuori.values()].sort((a, b) => b.volte - a.volte),
       partiteSuPosseduti: giocati.reduce((t, g) => t + g.volte, 0),
     }
-  }, [collezione, partite])
+  }, [collezione, partite, profilo.id])
 
-  if (caricamento) return <div className="scheda"><p>Conto&hellip;</p></div>
+  if (caricamento || !partiteArrivate) return <div className="scheda"><p>Conto&hellip;</p></div>
 
   const q = cerca.trim().toLowerCase()
   const filtra = (righe) => (q ? righe.filter((g) => g.nome.toLowerCase().includes(q)) : righe)

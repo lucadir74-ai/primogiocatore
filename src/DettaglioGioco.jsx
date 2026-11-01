@@ -1,5 +1,5 @@
 // Primo Giocatore - la scheda di un gioco
-// v1.0.0 - 202611011030 (prima versione: caratteristiche da BGG in una finestra, aperta toccando un gioco)
+// v1.1.0 - 202611011300 (giochi aggiunti a mano: anno, giocatori e durata letti dal database se la pagina non li ha)
 //
 // Si apre toccando un gioco in Giochi (collezione, «Chi ce l'ha?»,
 // catalogo). Subito mostra quello che l'app sa già; il resto (peso,
@@ -7,7 +7,7 @@
 // BoardGameGeek tramite /api/bgg?azione=scheda.
 
 import { useEffect, useState } from 'react'
-import { fetchBgg } from './supabase'
+import { supabase, fetchBgg } from './supabase'
 
 const PESI = ['', 'leggero', 'medio-leggero', 'medio', 'medio-pesante', 'pesante']
 
@@ -41,17 +41,28 @@ export default function DettaglioGioco({ gioco, mio, onChiudi }) {
   const [stato, setStato] = useState('carico')   // carico | pronto | senza | errore
   const [errore, setErrore] = useState('')
   const [spiega, setSpiega] = useState(null)     // la casella di cui si legge la spiegazione
+  const [dalDb, setDalDb] = useState(null)       // per i giochi aggiunti a mano
 
   useEffect(() => {
     let vivo = true
-    setStato('carico'); setS(null); setErrore(''); setSpiega(null)
+    setStato('carico'); setS(null); setErrore(''); setSpiega(null); setDalDb(null)
     ;(async () => {
       try {
         const r = await fetchBgg(`/api/bgg?azione=scheda&gioco=${encodeURIComponent(gioco.id)}`)
         const dati = await r.json()
         if (!vivo) return
         if (!r.ok) throw new Error(dati.errore || 'BoardGameGeek non ha risposto.')
-        if (!dati.scheda) { setStato('senza'); return }
+        if (!dati.scheda) {
+          setStato('senza')
+          // Gioco aggiunto a mano: quel che sappiamo è nel database. Lo
+          // vedi perché è tuo o ci hai giocato; se non arriva, pazienza.
+          if (gioco.min_giocatori == null && gioco.durata_minuti == null) {
+            const { data: riga } = await supabase.from('giochi')
+              .select('anno, min_giocatori, max_giocatori, durata_minuti').eq('id', gioco.id).maybeSingle()
+            if (vivo && riga) setDalDb(riga)
+          }
+          return
+        }
         setS(dati.scheda)
         setStato('pronto')
       } catch (e) {
@@ -68,15 +79,16 @@ export default function DettaglioGioco({ gioco, mio, onChiudi }) {
   }, [onChiudi])
 
   const nome = s?.nome || gioco.nome
-  const anno = s?.anno || gioco.anno
+  const anno = s?.anno || gioco.anno || dalDb?.anno
+  const base = { ...dalDb, ...Object.fromEntries(Object.entries(gioco).filter(([, v]) => v != null)) }
   // La miniatura basta per la copertina piccola: l'immagine piena di BGG pesa molto.
   const immagine = gioco.immagine || s?.miniatura || s?.immagine
   const espansione = s ? s.tipo === 'boardgameexpansion' : Boolean(gioco.espansione)
 
-  const giocatori = daA(s?.min_giocatori ?? gioco.min_giocatori, s?.max_giocatori ?? gioco.max_giocatori)
+  const giocatori = daA(s?.min_giocatori ?? base.min_giocatori, s?.max_giocatori ?? base.max_giocatori)
   const durata = s
     ? daA(s.durata_min || s.durata, s.durata_max || s.durata)
-    : (gioco.durata_minuti ? String(gioco.durata_minuti) : null)
+    : (base.durata_minuti ? String(base.durata_minuti) : null)
   const sondaggio = s?.giocatori_bgg
   const peso = s?.peso > 0 ? s.peso : null
 
