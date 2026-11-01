@@ -1,5 +1,5 @@
 // Primo Giocatore - «Chi ce l'ha?»
-// v1.1.0 - 202610301800 (suggerimenti mentre scrivi, anche con il nome scritto male; «Forse cercavi» se non trova niente)
+// v1.2.0 - 202611011030 (toccando il gioco trovato si apre la sua scheda con le caratteristiche da BGG)
 //
 // Si cerca un gioco per nome: l'app mostra chi ce l'ha in collezione,
 // diviso per Tana (prima la propria). A chi ce l'ha si può chiedere un
@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import DettaglioGioco from './DettaglioGioco.jsx'
 
 export default function ChiCeLha({ profilo }) {
   const [cerca, setCerca] = useState('')
@@ -20,6 +21,7 @@ export default function ChiCeLha({ profilo }) {
   const [invio, setInvio] = useState(false)
   const [suggeriti, setSuggeriti] = useState([])   // giochi posseduti con un nome simile
   const [mostraSuggeriti, setMostraSuggeriti] = useState(false)
+  const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
   const ultimaRichiesta = useRef(0)
 
   // Mentre scrivi: dopo una breve pausa chiede i giochi con un nome
@@ -139,13 +141,16 @@ export default function ChiCeLha({ profilo }) {
 
       {giochi.map((g) => (
         <div key={g.id} className="chi-gioco">
-          <div className="gioco">
-            {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
-            <div>
-              <strong>{g.nome}</strong>
-              {g.anno ? <span className="anno"> {g.anno}</span> : null}
-            </div>
-          </div>
+          <button type="button" className="riga-gioco" onClick={() => setAperto(g)}>
+            <span className="gioco">
+              {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
+              <span>
+                <strong>{g.nome}</strong>
+                {g.anno ? <span className="anno"> {g.anno}</span> : null}
+              </span>
+            </span>
+            <span className="freccia-scheda" aria-hidden="true">›</span>
+          </button>
 
           {g.tane.map((t) => {
             const altri = t.persone.filter((p) => !p.io)
@@ -184,6 +189,14 @@ export default function ChiCeLha({ profilo }) {
       <p className="aiuto">
         Compaiono le collezioni di tutti, salvo chi l&rsquo;ha tolta dal profilo.
       </p>
+
+      {aperto && (
+        <DettaglioGioco
+          gioco={aperto}
+          mio={{ posseduto: aperto.tane.some((t) => t.persone.some((p) => p.io)) }}
+          onChiudi={() => setAperto(null)}
+        />
+      )}
     </>
   )
 }

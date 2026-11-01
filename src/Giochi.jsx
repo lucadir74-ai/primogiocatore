@@ -1,10 +1,11 @@
 // Primo Giocatore - schermata Giochi
-// v4.21.0 - 202610301200 (nuova sottoscheda «Chi ce l'ha?»: cerca un gioco nelle collezioni di tutti e chiedi un tavolo)
+// v4.22.0 - 202611011130 (sottoschede in ordine La mia collezione, Chi ce l'ha?, Gestisci (era Catalogo); toccando un gioco si apre la sua scheda)
 
 import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import Collezione from './Collezione.jsx'
+import DettaglioGioco from './DettaglioGioco.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 
 const TIPI_PUNTEGGIO = [
@@ -24,7 +25,8 @@ export default function Giochi({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [importando, setImportando] = useState(false)
   const [manuale, setManuale] = useState(null) // null = chiuso
-  const [vista, setVista] = useState('catalogo')
+  const [vista, setVista] = useState('collezione')   // si apre sulla prima sottoscheda
+  const [aperto, setAperto] = useState(null)          // il gioco di cui si guarda la scheda
   const [posseduti, setPosseduti] = useState(new Set()) // collezione BGG
   const [giocati, setGiocati] = useState(new Map())     // gioco_id → partite giocate
   const [filtro, setFiltro] = useState('tutti')         // tutti | collezione | giocati
@@ -60,7 +62,7 @@ export default function Giochi({ profilo }) {
   async function caricaCatalogo() {
     try {
       // Solo i propri giochi: il catalogo comune contiene le collezioni altrui.
-      const campi = 'id, bgg_id, nome, anno, min_giocatori, max_giocatori, immagine_url, tipo_punteggio, usa_fazioni, creato_da'
+      const campi = 'id, bgg_id, nome, anno, min_giocatori, max_giocatori, durata_minuti, immagine_url, tipo_punteggio, usa_fazioni, creato_da'
       let righe
       try {
         righe = await giochiMiei(profilo.id, `${campi}, espansione`)
@@ -313,42 +315,49 @@ export default function Giochi({ profilo }) {
       <>
       <ul className="elenco elenco-catalogo">
         {visibili.slice(0, 300).map((g) => (
-        <li key={g.id}>
-          <div className="gioco">
-            {g.immagine_url && <img src={g.immagine_url} alt="" className="copertina" />}
-            <div>
-              <strong>{g.nome}</strong>
-              {g.anno ? <span className="anno"> {g.anno}</span> : null}
-              <span className="anno block">
-                {g.espansione ? 'espansione · ' : ''}{posseduti.has(g.id) ? 'in collezione · ' : ''}{partite(giocati.get(g.id))}
-              </span>
-              {posso(g) ? (
-                <>
-                  <select
-                    className="scelta-punteggio"
-                    value={g.tipo_punteggio || 'punti'}
-                    onChange={(e) => cambiaPunteggio(g.id, e.target.value)}
-                  >
-                    {TIPI_PUNTEGGIO.map((t) => (
-                      <option key={t.id} value={t.id}>{t.etichetta}</option>
-                    ))}
-                  </select>
-                  <label className="spunta-fazioni">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(g.usa_fazioni)}
-                      onChange={(e) => cambiaFazioni(g.id, e.target.checked)}
-                    />
-                    ha fazioni
-                  </label>
-                </>
-              ) : (
+        <li key={g.id} className="riga-catalogo">
+          <button type="button" className="riga-gioco" onClick={() => setAperto(g)}>
+            <span className="gioco">
+              {g.immagine_url
+                ? <img src={g.immagine_url} alt="" className="copertina" />
+                : <span className="copertina copertina-vuota" aria-hidden="true" />}
+              <span>
+                <strong>{g.nome}</strong>
+                {g.anno ? <span className="anno"> {g.anno}</span> : null}
                 <span className="anno block">
-                  {TIPI_PUNTEGGIO.find((t) => t.id === (g.tipo_punteggio || 'punti'))?.etichetta}
-                  {g.usa_fazioni ? ' · con fazioni' : ''}
+                  {g.espansione ? 'espansione · ' : ''}{posseduti.has(g.id) ? 'in collezione · ' : ''}{partite(giocati.get(g.id))}
                 </span>
-              )}
-            </div>
+              </span>
+            </span>
+            <span className="freccia-scheda" aria-hidden="true">›</span>
+          </button>
+          <div className="impostazioni-gioco">
+            {posso(g) ? (
+              <>
+                <select
+                  className="scelta-punteggio"
+                  value={g.tipo_punteggio || 'punti'}
+                  onChange={(e) => cambiaPunteggio(g.id, e.target.value)}
+                >
+                  {TIPI_PUNTEGGIO.map((t) => (
+                    <option key={t.id} value={t.id}>{t.etichetta}</option>
+                  ))}
+                </select>
+                <label className="spunta-fazioni">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(g.usa_fazioni)}
+                    onChange={(e) => cambiaFazioni(g.id, e.target.checked)}
+                  />
+                  ha fazioni
+                </label>
+              </>
+            ) : (
+              <span className="anno block">
+                {TIPI_PUNTEGGIO.find((t) => t.id === (g.tipo_punteggio || 'punti'))?.etichetta}
+                {g.usa_fazioni ? ' · con fazioni' : ''}
+              </span>
+            )}
           </div>
         </li>
         ))}
@@ -370,14 +379,14 @@ export default function Giochi({ profilo }) {
       <h2>Giochi</h2>
 
       <div className="sottoschede">
-        <button className={vista === 'catalogo' ? 'attiva' : ''} onClick={() => setVista('catalogo')}>
-          Catalogo
-        </button>
         <button className={vista === 'collezione' ? 'attiva' : ''} onClick={() => setVista('collezione')}>
           La mia collezione
         </button>
         <button className={vista === 'chi' ? 'attiva' : ''} onClick={() => setVista('chi')}>
           Chi ce l&rsquo;ha?
+        </button>
+        <button className={vista === 'catalogo' ? 'attiva' : ''} onClick={() => setVista('catalogo')}>
+          Gestisci
         </button>
       </div>
 
@@ -557,6 +566,14 @@ export default function Giochi({ profilo }) {
       )}
 
       </>}
+
+      {aperto && (
+        <DettaglioGioco
+          gioco={{ ...aperto, immagine: aperto.immagine_url }}
+          mio={{ posseduto: posseduti.has(aperto.id), volte: giocati.get(aperto.id) || 0 }}
+          onChiudi={() => setAperto(null)}
+        />
+      )}
     </div>
   )
 }

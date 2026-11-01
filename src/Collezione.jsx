@@ -1,11 +1,12 @@
 // Primo Giocatore - la collezione
-// v3.10.0 - 202610250130 (letture a blocchi con ordine univoco: oltre le mille righe niente più partite perse o doppie)
+// v3.12.0 - 202611011130 (le espansioni contano come giochi solo se giocate da sole; scheda del gioco toccando la riga)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import DettaglioGioco from './DettaglioGioco.jsx'
 
 const giorno = (d) =>
   new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -33,20 +34,29 @@ export default function Collezione({ profilo }) {
   const [errore, setErrore] = useState('')
   const [sezione, setSezione] = useState('fermi')
   const [cerca, setCerca] = useState('')
+  const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
 
   useEffect(() => { carica() }, [])
 
   async function carica() {
     setCaricamento(true)
     try {
+      // La colonna espansione arriva con lo script espansioni.sql: se
+      // manca, si legge senza e tutti i giochi contano come giochi base.
+      const campi = 'id, nome, anno, immagine_url, min_giocatori, max_giocatori, durata_minuti'
+      const leggiCollezione = (conEsp) => tutteLeRighe(() => supabase
+        .from('collezioni')
+        .select(`gioco_id, origine, giochi ( ${campi}${conEsp ? ', espansione' : ''} )`)
+        .eq('utente_id', profilo.id), 1000, 'gioco_id')
+      const collezioneSicura = leggiCollezione(true).catch((e) => {
+        if (!/espansione/.test(e?.message || '')) throw e
+        return leggiCollezione(false)
+      })
       const [c, p] = await Promise.all([
-        tutteLeRighe(() => supabase
-          .from('collezioni')
-          .select('gioco_id, origine, giochi ( id, nome, anno, immagine_url )')
-          .eq('utente_id', profilo.id), 1000, 'gioco_id'),
+        collezioneSicura,
         tutteLeRighe(() => supabase
           .from('partite')
-          .select('gioco_id, giocata_il, giochi ( id, nome, immagine_url ), partecipazioni ( utente_id )')),
+          .select('gioco_id, giocata_il, giochi ( id, nome, anno, immagine_url, min_giocatori, max_giocatori, durata_minuti ), partecipazioni ( utente_id )')),
       ])
       setCollezione(c)
       setPartite(p)
@@ -68,13 +78,22 @@ export default function Collezione({ profilo }) {
       uso.set(p.gioco_id, v)
     }
 
-    const posseduti = collezione
-      .filter((c) => c.giochi)
+    // Un'espansione si gioca insieme al gioco base: conta come gioco solo
+    // se ha partite sue (es. un'espansione di Hitster giocata da sola).
+    // Le altre restano fuori dai numeri, così «mai giocati» non si gonfia.
+    const tutte = collezione.filter((c) => c.giochi)
+    const espansioniFerme = tutte.filter((c) => c.giochi.espansione && !uso.has(c.gioco_id)).length
+    const posseduti = tutte
+      .filter((c) => !c.giochi.espansione || uso.has(c.gioco_id))
       .map((c) => ({
         id: c.gioco_id,
         nome: c.giochi.nome,
         anno: c.giochi.anno,
         immagine: c.giochi.immagine_url,
+        min_giocatori: c.giochi.min_giocatori,
+        max_giocatori: c.giochi.max_giocatori,
+        durata_minuti: c.giochi.durata_minuti,
+        posseduto: true,
         ...(uso.get(c.gioco_id) || { volte: 0, ultima: null }),
       }))
 
@@ -85,7 +104,9 @@ export default function Collezione({ profilo }) {
     for (const p of partite) {
       if (!p.giochi || idPosseduti.has(p.gioco_id)) continue
       const v = fuori.get(p.gioco_id) || {
-        id: p.gioco_id, nome: p.giochi.nome, immagine: p.giochi.immagine_url,
+        id: p.gioco_id, nome: p.giochi.nome, anno: p.giochi.anno, immagine: p.giochi.immagine_url,
+        min_giocatori: p.giochi.min_giocatori, max_giocatori: p.giochi.max_giocatori,
+        durata_minuti: p.giochi.durata_minuti, posseduto: false,
         volte: 0, ultima: null,
       }
       v.volte++
@@ -97,6 +118,7 @@ export default function Collezione({ profilo }) {
 
     return {
       posseduti,
+      espansioniFerme,
       mai: posseduti.filter((g) => g.volte === 0).sort((a, b) => a.nome.localeCompare(b.nome, 'it')),
       fermi: [...giocati].sort((a, b) => new Date(a.ultima) - new Date(b.ultima)),
       piu: [...giocati].sort((a, b) => b.volte - a.volte),
@@ -122,7 +144,7 @@ export default function Collezione({ profilo }) {
 
       {dati.posseduti.length === 0 ? (
         <p className="aiuto">
-          Nessun gioco in collezione. Importala dalla scheda Giochi, oppure segna
+          Nessun gioco in collezione. Importala da Gestisci, qui sopra, oppure segna
           «è mio» sui giochi quando registri una partita.
         </p>
       ) : (
@@ -154,6 +176,13 @@ export default function Collezione({ profilo }) {
               {(dati.partiteSuPosseduti / Math.max(1, dati.posseduti.length)).toFixed(1)} partite
               a scatola.
             </p>
+            {dati.espansioniFerme > 0 && (
+              <p>
+                {dati.espansioniFerme === 1
+                  ? 'In più hai 1 espansione che non conta qui: le espansioni contano come giochi solo se le hai giocate da sole.'
+                  : `In più hai ${dati.espansioniFerme} espansioni che non contano qui: le espansioni contano come giochi solo se le hai giocate da sole.`}
+              </p>
+            )}
           </div>
 
           <div className="sottoschede">
@@ -182,23 +211,28 @@ export default function Collezione({ profilo }) {
             <ul className="elenco elenco-scorrevole">
               {elenco.slice(0, 200).map((g) => (
                 <li key={g.id}>
-                  <div className="gioco">
-                    {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
-                    <div className="nome-giocatore">
-                      <strong>{g.nome}</strong>
-                      <span className="anno block">
-                        {g.volte === 0
-                          ? 'mai giocato'
-                          : `${g.volte} ${g.volte === 1 ? 'partita' : 'partite'} · ultima ${giorno(g.ultima)}`}
-                      </span>
-                      {g.volte > 0 && sezione === 'fermi' && (
-                        <span className={`anno block${giorniDa(g.ultima) > 365 ? ' fazione-nota' : ''}`}>
-                          {daQuanto(giorniDa(g.ultima))}
+                  <button type="button" className="riga-gioco" onClick={() => setAperto(g)}>
+                    <span className="gioco">
+                      {g.immagine && <img src={g.immagine} alt="" className="copertina" />}
+                      <span className="nome-giocatore">
+                        <strong>{g.nome}</strong>
+                        <span className="anno block">
+                          {g.volte === 0
+                            ? 'mai giocato'
+                            : `${g.volte} ${g.volte === 1 ? 'partita' : 'partite'} · ultima ${giorno(g.ultima)}`}
                         </span>
-                      )}
-                    </div>
-                  </div>
-                  {g.volte > 0 && <span className="punti-finali">{g.volte}</span>}
+                        {g.volte > 0 && sezione === 'fermi' && (
+                          <span className={`anno block${giorniDa(g.ultima) > 365 ? ' fazione-nota' : ''}`}>
+                            {daQuanto(giorniDa(g.ultima))}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="riga-gioco-destra">
+                      {g.volte > 0 && <span className="punti-finali">{g.volte}</span>}
+                      <span className="freccia-scheda" aria-hidden="true">›</span>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -211,6 +245,14 @@ export default function Collezione({ profilo }) {
             </p>
           )}
         </>
+      )}
+
+      {aperto && (
+        <DettaglioGioco
+          gioco={aperto}
+          mio={{ posseduto: aperto.posseduto, volte: aperto.volte, ultima: aperto.ultima }}
+          onChiudi={() => setAperto(null)}
+        />
       )}
     </div>
   )

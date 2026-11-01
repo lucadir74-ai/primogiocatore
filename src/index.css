@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.20.0 - 202610301800 (suggerimenti dei giochi in «Chi ce l'ha?»)
+/* Primo Giocatore - foglio di stile v1.21.0 - 202611011030 (righe dei giochi toccabili e finestra con la scheda del gioco)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -2462,3 +2462,123 @@ button.numerone:active { transform: scale(0.98); }
 .suggerimenti-gioco button:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
 .suggerimenti-gioco img, .suggerimenti-gioco .segnaposto { width: 2.4rem; height: 2.4rem; object-fit: cover; border-radius: 6px; flex: none; }
 .suggerimenti-gioco .segnaposto { background: color-mix(in srgb, var(--bordo) 50%, transparent); }
+
+/* ---------- Righe dei giochi toccabili ---------- */
+.riga-gioco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.15rem 0.2rem;
+  margin: -0.15rem -0.2rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.riga-gioco:active { background: color-mix(in srgb, var(--bordo) 40%, transparent); }
+.riga-gioco:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; }
+.riga-gioco > .gioco { flex: 1; }
+.riga-gioco-destra { display: flex; align-items: center; gap: 0.6rem; flex: none; }
+.freccia-scheda { flex: none; color: var(--inchiostro-tenue); font-size: 1.4rem; line-height: 1; }
+.chi-gioco > .riga-gioco { margin-bottom: 0; }
+
+.elenco li.riga-catalogo { flex-direction: column; align-items: stretch; gap: 0.1rem; }
+.impostazioni-gioco { padding-left: 3.85rem; }
+.copertina-vuota { display: block; background: color-mix(in srgb, var(--bordo) 50%, transparent); }
+
+/* ---------- Scheda del gioco ---------- */
+.dg-testa { display: flex; align-items: flex-start; gap: 0.85rem; min-width: 0; }
+.dg-testa h3 { line-height: 1.2; }
+.dg-testa .anno { margin: 0.15rem 0 0; }
+.dg-copertina {
+  width: 4.75rem;
+  height: 4.75rem;
+  flex: none;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--bordo);
+  background: var(--carta);
+}
+.dg-copertina-vuota { display: block; }
+.dg-autori { margin: 0.2rem 0 0; font-size: 0.9rem; color: var(--inchiostro-tenue); }
+.dg .finestra-corpo { margin-top: 0.9rem; }
+.dg-tu { font-size: 0.92rem; color: var(--inchiostro) !important; }
+
+.dg-dati {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+.dg-casella {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.6rem 0.65rem 0.65rem;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--carta);
+  color: var(--inchiostro);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dg-casella.attiva { border-color: var(--bordo-forte); }
+.dg-casella:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; }
+.dg-valore {
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dg-etichetta, .dg-nota { font-size: 0.8rem; color: var(--inchiostro-tenue); line-height: 1.25; }
+.dg-barra {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 0.3rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--bordo) 70%, transparent);
+  overflow: hidden;
+}
+.dg-barra > span { display: block; height: 100%; background: var(--primario); }
+.dg-spiega {
+  margin: 0.55rem 0 0 !important;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--primario);
+  background: var(--carta);
+  border-radius: 0 10px 10px 0;
+  font-size: 0.9rem;
+}
+.dg-suggerimento { margin: 0.5rem 0 0 !important; font-size: 0.82rem; }
+.dg .finestra-corpo > p[role="status"] { margin-top: 0.8rem; }
+
+.dg-voci { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.35rem 0 0 !important; }
+.dg-voce {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  color: var(--inchiostro);
+}
+.dg-descrizione { margin-top: 1rem; }
+.dg-descrizione summary { cursor: pointer; font-weight: 600; }
+.dg-descrizione p { margin-top: 0.5rem !important; white-space: pre-line; font-size: 0.9rem; }
+.dg-link { margin-top: 1rem !important; }
+.dg-link a { color: var(--blu); font-weight: 500; }
+
+@media (max-width: 360px) {
+  .dg-dati { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
