@@ -1,5 +1,5 @@
 // Primo Giocatore - la scheda di un gioco
-// v1.2.0 - 202611011600 (dove sta: posizione nella tua collezione, modificabile, e nella ludoteca della Tana)
+// v1.2.1 - 202611011700 (ludoteca con il nome intero della Tana)
 //
 // Si apre toccando un gioco in Giochi (collezione, «Chi ce l'ha?»,
 // catalogo). Subito mostra quello che l'app sa già; il resto (peso,
@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, fetchBgg } from './supabase'
+import { nomeTana } from './Ludoteca.jsx'
 
 const PESI = ['', 'leggero', 'medio-leggero', 'medio', 'medio-pesante', 'pesante']
 
@@ -210,7 +211,7 @@ export default function DettaglioGioco({ gioco, mio, onChiudi, onPosizione }) {
 
           {ludoteca && (
             <p className="dg-tu">
-              Nella ludoteca di {ludoteca.tana || 'Tana'}: <strong>{ludoteca.posizione || 'posizione non indicata'}</strong>
+              Nella ludoteca della {nomeTana(ludoteca.tana)}: <strong>{ludoteca.posizione || 'posizione non indicata'}</strong>
             </p>
           )}
 

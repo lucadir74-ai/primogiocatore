@@ -1,5 +1,5 @@
 // Primo Giocatore - la ludoteca della Tana
-// v1.0.0 - 202611011600
+// v1.0.1 - 202611011700 (titolo con il nome intero: «Ludoteca della Tana dei Goblin Roma»)
 //
 // I giochi della Tana e dove stanno (scaffale, ripiano…). Tutti cercano
 // e vedono la posizione; organizzatori e dimostratori aggiungono giochi,
@@ -9,6 +9,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import DettaglioGioco from './DettaglioGioco.jsx'
+
+// «Roma» → «Tana dei Goblin Roma»; un nome che dice già «Tana» resta com'è.
+export const nomeTana = (n) => (!n ? 'la tua Tana' : /tana/i.test(n) ? n : `Tana dei Goblin ${n}`)
 
 const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
@@ -38,7 +41,7 @@ export default function Ludoteca({ profilo }) {
       ])
       if (error) throw error
       setRighe(el || [])
-      setTana({ id: String(profilo.tana_id), nome: t?.nome || el?.[0]?.tana || 'la tua Tana', posso: Boolean(posso) })
+      setTana({ id: String(profilo.tana_id), nome: t?.nome || el?.[0]?.tana || '', posso: Boolean(posso) })
     } catch (e) {
       setErrore(/ludoteca_elenco/.test(e?.message || '') ? 'Manca lo script ludoteca.sql nel database.' : e.message)
     } finally {
@@ -93,7 +96,7 @@ export default function Ludoteca({ profilo }) {
 
   return (
     <div className="scheda">
-      <h2>Ludoteca di {tana.nome}</h2>
+      <h2>Ludoteca della {nomeTana(tana.nome)}</h2>
       <p className="sottotitolo">
         {righe.length === 0 ? 'Ancora nessun gioco.' : `${righe.length} giochi.`} Cerca un gioco per sapere dove sta.
       </p>
