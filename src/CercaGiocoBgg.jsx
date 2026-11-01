@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del gioco di un tavolo
-// v1.4.0 - 202610252200 (le chiamate a BGG portano la sessione)
+// v1.5.0 - 202611011400 (testoIniziale: si parte da un nome già scritto, es. quello BGA, e si cerca subito su BGG)
 //
 // Il gioco di un tavolo non viene dalla collezione di chi lo pubblica:
 // il gioco lo porta il dimostratore. Mentre scrivi cerca fra tutti i
@@ -48,8 +48,11 @@ function Voce({ gioco, onClick, disabled, nota }) {
 }
 
 // onLibero: se c'è, in cima compare la scelta "Tavolo libero".
-export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus = false }) {
-  const [testo, setTesto] = useState('')
+// testoIniziale: un nome da cui partire (per BGA il suo nome attaccato,
+// «forbiddenisland»). Si cerca subito anche su BGG: il server, se il nome
+// attaccato non trova niente, riprova separando le parole.
+export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus = false, testoIniziale = '' }) {
+  const [testo, setTesto] = useState(testoIniziale)
   const [locali, setLocali] = useState([])
   const [suBgg, setSuBgg] = useState(null)          // null = ricerca BGG non fatta
   const [cercando, setCercando] = useState(false)
@@ -69,16 +72,22 @@ export default function CercaGiocoBgg({ profilo, onScegli, onLibero, autoFocus =
     return () => clearTimeout(attesa)
   }, [testo])
 
-  async function cercaSuBgg() {
-    const q = testo.trim()
+  // Con un nome di partenza la ricerca su BGG parte da sola, una volta.
+  useEffect(() => {
+    if (testoIniziale.trim().length >= 2) cercaSuBgg(testoIniziale)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function cercaSuBgg(daCercare) {
+    const q = (typeof daCercare === 'string' ? daCercare : testo).trim()
     if (q.length < 2) return
     setErrore(''); setCercando(true)
     try {
-      const r = await fetchBgg(`/api/bgg?azione=cerca&q=${encodeURIComponent(q)}`)
+      const r = await fetchBgg(`/api/bgg?azione=cerca&spezza=1&q=${encodeURIComponent(q)}`)
       const dati = await r.json()
       if (!r.ok) throw new Error(dati.errore || 'Ricerca su BoardGameGeek non riuscita.')
       const giaQui = new Set(locali.map((g) => g.bgg_id))
-      setSuBgg(ordina((dati.risultati || []).filter((x) => !giaQui.has(x.bgg_id)), q).slice(0, 15))
+      setSuBgg(ordina((dati.risultati || []).filter((x) => !giaQui.has(x.bgg_id)), dati.cercato || q).slice(0, 15))
     } catch (e) {
       setErrore(e.message)
     } finally {

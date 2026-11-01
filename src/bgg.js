@@ -1,0 +1,462 @@
+// Primo Giocatore - intermediario verso BoardGameGeek
+// v1.12.0 - 202611011400 (ricerca: un nome attaccato come «forbiddenisland» si riprova separando le parole)
+//
+// Il browser chiama questo indirizzo, questo chiama BGG.
+// Serve perché BGG risponde in XML, limita la frequenza delle richieste
+// e per la collezione risponde 202 ("sto preparando, richiama fra poco").
+//
+// Come si usa:
+//   /api/bgg?azione=cerca&q=scythe
+//   /api/bgg?azione=dettagli&id=169786,224517
+//   /api/bgg?azione=scheda&gioco=<id del gioco nell'app>
+//   /api/bgg?azione=collezione&utente=lucadir74
+//   /api/bgg?azione=partite&utente=lucadir74&pagina=1
+//   /api/bgg?azione=partite&utente=lucadir74&dal=2026-09-01   (solo da quella data)
+
+import { XMLParser } from 'fast-xml-parser'
+import { createClient } from '@supabase/supabase-js'
+
+// Con molte richieste in coda la pausa di 5 secondi fra una e l'altra
+// richiede tempo: il massimo consentito su Vercel Hobby.
+export const config = { maxDuration: 60 }
+
+const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+const BGG = 'https://boardgamegeek.com/xmlapi2'
+
+// Da autunno 2025 BGG richiede l'autorizzazione su quasi tutte le chiamate.
+// Il token si ottiene registrando l'applicazione su
+// https://boardgamegeek.com/applications
+// Va messo fra le variabili d'ambiente di Vercel come BGG_TOKEN
+// (senza prefisso VITE_: deve restare sul server, non finire nel browser).
+const TOKEN = process.env.BGG_TOKEN
+
+// BGG chiede circa 5 secondi fra una richiesta e l'altra.
+const PAUSA_MINIMA = 5000
+let ultimaChiamata = 0
+
+// Memoria della singola istanza: evita di ripetere la stessa domanda a BGG.
+const cache = new Map()
+const DURATA_CACHE = 1000 * 60 * 60 * 12 // 12 ore
+
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  parseAttributeValue: true,
+})
+
+function attesa(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+// fresco: salta la memoria. Serve per le partite, che devono arrivare
+// appena registrate e non dopo dodici ore.
+async function chiamaBGG(percorso, { fresco = false } = {}) {
+  const daCache = fresco ? null : cache.get(percorso)
+  if (daCache && Date.now() - daCache.quando < DURATA_CACHE) {
+    return daCache.xml
+  }
+
+  let risposta
+  // La collezione può rispondere 202: significa "richiama fra poco".
+  // 429: troppe richieste, si aspetta e si riprova.
+  for (let tentativo = 0; tentativo < 4; tentativo++) {
+    // Rispetta la pausa richiesta da BGG. Ogni richiesta prenota il suo
+    // turno prima di aspettare: con più richieste insieme sulla stessa
+    // copia del server, prima partivano tutte nello stesso istante.
+    const turno = Math.max(Date.now(), ultimaChiamata + PAUSA_MINIMA)
+    ultimaChiamata = turno
+    if (turno > Date.now()) await attesa(turno - Date.now())
+    const intestazioni = { 'User-Agent': 'PrimoGiocatore/1.0 (app per gruppi di gioco)' }
+    // "Bearer" seguito da uno spazio, nessun due punti.
+    if (TOKEN) intestazioni.Authorization = `Bearer ${TOKEN}`
+
+    risposta = await fetch(`${BGG}${percorso}`, { headers: intestazioni })
+    if (risposta.status === 202) {
+      await attesa(3000)
+      continue
+    }
+    if (risposta.status === 429) {
+      ultimaChiamata = Date.now() + PAUSA_MINIMA   // rallenta anche le altre in coda
+      continue
+    }
+    break
+  }
+
+  if (risposta.status === 429) {
+    const e = new Error('BoardGameGeek è sovraccarico di richieste. Riprova fra un minuto.')
+    e.codice = 429
+    throw e
+  }
+
+  if (risposta.status === 202) {
+    const e = new Error('BGG sta ancora preparando i dati. Riprova fra qualche secondo.')
+    e.codice = 202
+    throw e
+  }
+  if (risposta.status === 401) {
+    const e = new Error(
+      TOKEN
+        ? 'BGG ha rifiutato il token. Controlla che sia scritto per intero e senza spazi.'
+        : 'Manca il token di BoardGameGeek. Registra l\u2019applicazione su boardgamegeek.com/applications e aggiungi BGG_TOKEN fra le variabili di Vercel.'
+    )
+    e.codice = 401
+    throw e
+  }
+  if (!risposta.ok) {
+    const e = new Error(`BoardGameGeek ha risposto ${risposta.status}.`)
+    e.codice = risposta.status
+    throw e
+  }
+
+  const xml = await risposta.text()
+  cache.set(percorso, { xml, quando: Date.now() })
+  return xml
+}
+
+const elenco = (x) => (x == null ? [] : Array.isArray(x) ? x : [x])
+
+// BGG conserva i titoli già scritti alla maniera dell'HTML: l'apostrofo di
+// "Darwin's Journey" arriva come &#039;. Dentro l'XML quella & è a sua volta
+// protetta, quindi dopo la lettura resta il codice in chiaro, che finirebbe
+// nel database così com'è. Qui i codici tornano caratteri veri.
+const NOMINATI = {
+  amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ',
+  rsquo: '\u2019', lsquo: '\u2018', ldquo: '\u201c', rdquo: '\u201d',
+  ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', deg: '\u00b0',
+  eacute: '\u00e9', egrave: '\u00e8', uuml: '\u00fc', ouml: '\u00f6', auml: '\u00e4',
+}
+
+function ripulisci(testo) {
+  if (typeof testo !== 'string' || !testo.includes('&')) return testo
+  let prima = testo
+  // Due passate: i titoli di BGG possono avere la & a sua volta protetta.
+  for (let giro = 0; giro < 2; giro++) {
+    const dopo = prima.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (intero, corpo) => {
+      if (corpo[0] === '#') {
+        const n = corpo[1] === 'x' || corpo[1] === 'X'
+          ? parseInt(corpo.slice(2), 16)
+          : parseInt(corpo.slice(1), 10)
+        return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : intero
+      }
+      const c = NOMINATI[corpo.toLowerCase()]
+      return c === undefined ? intero : c
+    })
+    if (dopo === prima) break
+    prima = dopo
+  }
+  return prima.trim()
+}
+
+// Il nome principale. BGG lo restituisce in tre forme diverse a seconda
+// della chiamata: testo puro, oggetto con "value", oppure oggetto con
+// attributi e il testo dentro "#text" (è il caso della collezione).
+function nomePrincipale(nome) {
+  const nomi = elenco(nome)
+  const primario = nomi.find((n) => n?.type === 'primary') || nomi[0]
+  if (primario == null) return null
+  if (typeof primario === 'string') return ripulisci(primario)
+  if (typeof primario === 'number') return String(primario)
+  return ripulisci(primario.value ?? primario['#text'] ?? null)
+}
+
+function semplificaGioco(item) {
+  return {
+    bgg_id: Number(item.id),
+    nome: nomePrincipale(item.name),
+    anno: item.yearpublished?.value ?? null,
+    min_giocatori: item.minplayers?.value ?? null,
+    max_giocatori: item.maxplayers?.value ?? null,
+    durata_minuti: item.playingtime?.value ?? null,
+    // La miniatura per gli elenchi, l'immagine piena per la pagina
+    // del tavolo: la prima sgranerebbe a tutta larghezza.
+    immagine_url: item.thumbnail ?? item.image ?? null,
+    immagine_grande: item.image ?? item.thumbnail ?? null,
+    tipo: item.type ?? 'boardgame',
+  }
+}
+
+// Separa le parole di un nome attaccato: «forbiddenisland» → «forbidden
+// island», «throughtheages» → «through the ages». Le parole conosciute
+// sono quelle dei nomi dei giochi già nell'app, più le parole brevi più
+// comuni nei titoli. Si sceglie la divisione che lascia meno lettere
+// fuori da parole conosciute e, a parità, con meno parole.
+const PAROLE_BREVI = ['a', 'an', 'the', 'of', 'and', 'in', 'on', 'to', 'for', 'at', 'by', 'or', 'my', 'no',
+  'de', 'la', 'le', 'les', 'du', 'des', 'der', 'die', 'das', 'und', 'von', 'el', 'los', 'las', 'il', 'di', 'da', 'del']
+let paroleNote = null
+let paroleQuando = 0
+
+async function parole() {
+  if (paroleNote && Date.now() - paroleQuando < DURATA_CACHE) return paroleNote
+  const insieme = new Set(PAROLE_BREVI)
+  const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+  for (let da = 0; da < 50000; da += 1000) {
+    const { data, error } = await db.from('giochi').select('nome').order('id').range(da, da + 999)
+    if (error) break
+    for (const r of data || []) {
+      for (const w of String(r.nome || '').toLowerCase().normalize('NFD').split(/[^a-z0-9]+/)) {
+        if (w.length >= 3) insieme.add(w)
+      }
+    }
+    if (!data || data.length < 1000) break
+  }
+  paroleNote = insieme
+  paroleQuando = Date.now()
+  return insieme
+}
+
+async function spezzaParole(testo) {
+  const t = testo.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+  if (!t) return null
+  const note = await parole()
+  // migliore[i] = { fuori, pezzi, da } per le prime i lettere.
+  const migliore = [{ fuori: 0, pezzi: 0, da: -1 }]
+  for (let i = 1; i <= t.length; i++) {
+    let m = null
+    for (let j = Math.max(0, i - 25); j < i; j++) {
+      const prima = migliore[j]
+      if (!prima) continue
+      const pezzo = t.slice(j, i)
+      // Una cifra resta attaccata alle cifre vicine: «7wonders» → «7 wonders».
+      const conosciuto = note.has(pezzo) || /^\d+$/.test(pezzo)
+      const c = { fuori: prima.fuori + (conosciuto ? 0 : pezzo.length), pezzi: prima.pezzi + 1, da: j }
+      if (!m || c.fuori < m.fuori || (c.fuori === m.fuori && c.pezzi < m.pezzi)) m = c
+    }
+    migliore[i] = m
+  }
+  // Troppe lettere senza parola conosciuta: meglio non indovinare.
+  if (migliore[t.length].fuori > t.length / 3) return null
+  const pezzi = []
+  for (let i = t.length; i > 0; i = migliore[i].da) pezzi.unshift(t.slice(migliore[i].da, i))
+  // Le lettere sconosciute consecutive tornano un pezzo solo.
+  const uniti = []
+  for (const p of pezzi) {
+    const ultimo = uniti[uniti.length - 1]
+    if (ultimo && !note.has(ultimo) && !note.has(p) && !/^\d+$/.test(p)) uniti[uniti.length - 1] = ultimo + p
+    else uniti.push(p)
+  }
+  return uniti.join(' ')
+}
+
+// Il sondaggio di BGG sul numero di giocatori: per ogni numero gli utenti
+// votano «Best», «Recommended» o «Not Recommended». Ideale è il numero in
+// cui «Best» prende più voti degli altri due; consigliato quello in cui i
+// voti a favore superano quelli contrari. I numeri come «5+» si saltano.
+function sondaggioGiocatori(item) {
+  const sondaggio = elenco(item.poll).find((p) => p?.name === 'suggested_numplayers')
+  const voti = Number(sondaggio?.totalvotes) || 0
+  if (!voti) return { ideale: [], consigliato: [], voti: 0 }
+  const ideale = []
+  const consigliato = []
+  for (const r of elenco(sondaggio.results)) {
+    const n = Number(r?.numplayers)
+    if (!Number.isInteger(n)) continue
+    const v = { Best: 0, Recommended: 0, 'Not Recommended': 0 }
+    for (const x of elenco(r.result)) if (x?.value in v) v[x.value] = Number(x.numvotes) || 0
+    if (v.Best + v.Recommended + v['Not Recommended'] === 0) continue
+    if (v.Best + v.Recommended > v['Not Recommended']) consigliato.push(n)
+    if (v.Best > v.Recommended && v.Best > v['Not Recommended']) ideale.push(n)
+  }
+  return { ideale, consigliato, voti }
+}
+
+// Tutto quello che serve alla scheda di un gioco (chiamata con stats=1).
+function schedaCompleta(item) {
+  const numero = (x) => {
+    const n = Number(x && typeof x === 'object' ? x.value : x)
+    return Number.isFinite(n) ? n : null
+  }
+  const collegati = (tipo) => elenco(item.link)
+    .filter((l) => l?.type === tipo)
+    .map((l) => ripulisci(String(l.value ?? '')))
+    .filter((v) => v && !/^\(uncredited\)$/i.test(v))
+  const voti = item.statistics?.ratings || {}
+  const classifica = elenco(voti.ranks?.rank).find((r) => r?.name === 'boardgame')
+  const posizione = Number(classifica?.value)
+  return {
+    bgg_id: Number(item.id),
+    tipo: item.type ?? 'boardgame',
+    nome: nomePrincipale(item.name),
+    anno: numero(item.yearpublished),
+    immagine: item.image ?? item.thumbnail ?? null,
+    miniatura: item.thumbnail ?? item.image ?? null,
+    min_giocatori: numero(item.minplayers),
+    max_giocatori: numero(item.maxplayers),
+    durata: numero(item.playingtime),
+    durata_min: numero(item.minplaytime),
+    durata_max: numero(item.maxplaytime),
+    eta: numero(item.minage),
+    peso: numero(voti.averageweight),
+    voti_peso: numero(voti.numweights),
+    voto: numero(voti.average),
+    votanti: numero(voti.usersrated),
+    posizione: Number.isInteger(posizione) && posizione > 0 ? posizione : null,
+    giocatori_bgg: sondaggioGiocatori(item),
+    autori: collegati('boardgamedesigner'),
+    meccaniche: collegati('boardgamemechanic'),
+    categorie: collegati('boardgamecategory'),
+    descrizione: typeof item.description === 'string' ? ripulisci(item.description) : null,
+  }
+}
+
+export default async function handler(req, res) {
+  const { azione, q, id, utente, pagina, dal, gioco } = req.query
+
+  // Solo per chi è entrato nell'app: senza questo controllo chiunque
+  // poteva usare il nostro token BGG, e se BGG lo blocca si fermano
+  // ricerca giochi e import per tutti.
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '')
+  if (!token || !SUPABASE || !SERVIZIO) {
+    return res.status(401).json({ errore: 'Entra nell\u2019app per usare la ricerca su BGG.' })
+  }
+  try {
+    const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+    const { data, error } = await db.auth.getUser(token)
+    if (error || !data?.user) {
+      return res.status(401).json({ errore: 'Sessione scaduta: esci e rientra nell\u2019app.' })
+    }
+  } catch {
+    return res.status(503).json({ errore: 'Controllo dell\u2019accesso non riuscito. Riprova fra poco.' })
+  }
+
+  try {
+    if (azione === 'cerca') {
+      if (!q || q.trim().length < 2) {
+        return res.status(400).json({ errore: 'Scrivi almeno due lettere.' })
+      }
+      const cerca = async (testo) => {
+        const xml = await chiamaBGG(`/search?query=${encodeURIComponent(testo)}&type=boardgame`)
+        return elenco(parser.parse(xml)?.items?.item)
+          .map((i) => ({
+            bgg_id: Number(i.id),
+            nome: nomePrincipale(i.name),
+            anno: i.yearpublished?.value ?? i.yearpublished ?? null,
+          }))
+          .filter((g) => g.nome)
+      }
+      let cercato = q.trim()
+      let risultati = await cerca(cercato)
+      // I nomi di BGA sono attaccati («forbiddenisland») e BGG non li
+      // trova: se richiesto, si riprova con le parole separate.
+      if (req.query.spezza && risultati.length === 0 && !/\s/.test(cercato) && cercato.length >= 6) {
+        const spezzato = await spezzaParole(cercato)
+        if (spezzato && spezzato !== cercato.toLowerCase()) {
+          cercato = spezzato
+          risultati = await cerca(spezzato)
+        }
+      }
+      return res.status(200).json({ risultati, cercato })
+    }
+
+    if (azione === 'dettagli') {
+      if (!id) return res.status(400).json({ errore: 'Manca l\u2019id del gioco.' })
+      // Solo numeri separati da virgole: niente parametri aggiunti di nascosto.
+      if (!/^\d+(,\d+)*$/.test(String(id))) return res.status(400).json({ errore: 'Id del gioco non valido.' })
+      // BGG accetta al massimo 20 id per volta.
+      const ids = String(id).split(',').slice(0, 20).join(',')
+      // Anche le espansioni: chi gioca un'espansione da sola (es. Hitster:
+      // Movies & TV Soundtracks) altrimenti non avrebbe mai la copertina.
+      const xml = await chiamaBGG(`/thing?id=${ids}&type=boardgame,boardgameexpansion`)
+      const dati = parser.parse(xml)
+      const giochi = elenco(dati?.items?.item).map(semplificaGioco).filter((g) => g.nome)
+      return res.status(200).json({ giochi })
+    }
+
+    // La scheda di un gioco dell'app. Si passa l'id dell'app, non quello
+    // BGG: chi apre la scheda da «Chi ce l'ha?» non sempre può leggere la
+    // riga del gioco. Qui si cerca solo il numero BGG; i giochi scritti a
+    // mano non hanno altro da mostrare oltre a ciò che l'app ha già.
+    if (azione === 'scheda') {
+      if (!gioco || !/^[0-9a-z-]{1,64}$/i.test(String(gioco))) {
+        return res.status(400).json({ errore: 'Gioco non valido.' })
+      }
+      const db = createClient(SUPABASE, SERVIZIO, { auth: { persistSession: false } })
+      const { data: riga, error } = await db.from('giochi').select('bgg_id').eq('id', gioco).maybeSingle()
+      if (error) throw error
+      if (!riga) return res.status(404).json({ errore: 'Gioco non trovato.' })
+      if (!riga.bgg_id) return res.status(200).json({ scheda: null })
+      const xml = await chiamaBGG(`/thing?id=${Number(riga.bgg_id)}&type=boardgame,boardgameexpansion&stats=1`)
+      const item = elenco(parser.parse(xml)?.items?.item)[0]
+      return res.status(200).json({ scheda: item ? schedaCompleta(item) : null })
+    }
+
+    if (azione === 'collezione') {
+      if (!utente) return res.status(400).json({ errore: 'Manca il nome utente BGG.' })
+      // Giochi base ed espansioni si chiedono separati: mescolati, BGG
+      // etichetta le espansioni come giochi base.
+      const radice = `/collection?username=${encodeURIComponent(utente)}&own=1&brief=1`
+      // Sempre fresca: con la memoria di dodici ore un gioco appena tolto
+      // su BGG risultava ancora posseduto.
+      const datiBase = parser.parse(await chiamaBGG(`${radice}&excludesubtype=boardgameexpansion`, { fresco: true }))
+      if (datiBase?.errors) {
+        return res.status(404).json({ errore: 'Utente BGG non trovato.' })
+      }
+      const datiEsp = parser.parse(await chiamaBGG(`${radice}&subtype=boardgameexpansion`, { fresco: true }))
+      const leggi = (dati, espansione) => elenco(dati?.items?.item)
+        .map((i) => ({
+          bgg_id: Number(i.objectid),
+          nome: nomePrincipale(i.name),
+          anno: i.yearpublished ?? null,
+          espansione,
+        }))
+        // Senza nome la riga è inutile e il database la rifiuterebbe.
+        .filter((g) => g.nome && Number.isFinite(g.bgg_id))
+      const base = leggi(datiBase, false)
+      const idBase = new Set(base.map((g) => g.bgg_id))
+      const espansioni = leggi(datiEsp, true).filter((g) => !idBase.has(g.bgg_id))
+      const giochi = [...base, ...espansioni]
+      return res.status(200).json({
+        giochi,
+        totale: giochi.length,
+        unici: new Set(giochi.map((g) => g.bgg_id)).size,
+        espansioni: new Set(espansioni.map((g) => g.bgg_id)).size,
+      })
+    }
+
+    if (azione === 'partite') {
+      if (!utente) return res.status(400).json({ errore: 'Manca il nome utente BGG.' })
+      // BGG restituisce cento partite per pagina.
+      const n = Math.max(1, Number(pagina) || 1)
+      const daData = /^\d{4}-\d{2}-\d{2}$/.test(dal || '') ? `&mindate=${dal}` : ''
+      const xml = await chiamaBGG(
+        `/plays?username=${encodeURIComponent(utente)}&page=${n}${daData}`,
+        { fresco: true }
+      )
+      const dati = parser.parse(xml)
+      if (dati?.errors) return res.status(404).json({ errore: 'Utente BGG non trovato.' })
+
+      const partite = elenco(dati?.plays?.play).map((p) => ({
+        bgg_play_id: Number(p.id),
+        data: p.date ?? null,
+        durata_minuti: Number(p.length) || null,
+        luogo: ripulisci(p.location) || null,
+        note: ripulisci(typeof p.comments === 'string' ? p.comments : (p.comments?.['#text'] ?? null)),
+        incompleta: p.incomplete === 1 || p.incomplete === '1',
+        senza_punteggi: p.nowinstats === 1 || p.nowinstats === '1',
+        gioco: p.item
+          ? { bgg_id: Number(p.item.objectid), nome: ripulisci(p.item.name) ?? null }
+          : null,
+        giocatori: elenco(p.players?.player).map((g) => ({
+          nome: ripulisci(g.name ?? g.username ?? 'Sconosciuto'),
+          username: g.username || null,
+          punteggio: g.score === '' || g.score == null ? null : Number(g.score),
+          posizione: Number(g.startposition) || null,
+          vincitore: g.win === 1 || g.win === '1',
+          colore: g.color || null,
+        })),
+      }))
+
+      return res.status(200).json({
+        partite,
+        pagina: n,
+        totale: Number(dati?.plays?.total) || partite.length,
+      })
+    }
+
+    return res.status(400).json({ errore: 'Azione sconosciuta.' })
+  } catch (e) {
+    const codice = [202, 401, 429].includes(e.codice) ? e.codice : 502
+    return res.status(codice).json({ errore: e.message })
+  }
+}

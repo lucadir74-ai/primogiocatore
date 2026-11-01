@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.3.0 - 202610311500 (partite in sospeso dalla sincronizzazione sul server: avviso e tasto per ritrovarle)
+// v3.4.0 - 202611011400 (giochi da riconoscere: «scegli» apre la ricerca già col nome BGA e cerca subito su BGG)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -336,7 +336,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
           </h3>
           <p className="aiuto">
             BGA chiama i giochi a modo suo. Abbina ognuno al gioco di BGG: si fa una volta e vale per
-            tutti gli iscritti. I suggerimenti vengono dalle partite che hai già.
+            tutti gli iscritti. I suggerimenti vengono dalle partite che hai già e dai giochi già presenti nell&rsquo;app.
           </p>
           {daAbbinare.some((g) => g.suggerito) && (
             <button className="bottone" onClick={confermaSuggeriti}>
@@ -365,7 +365,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
                 </span>
                 {cambio === g.bga_nome && (
                   <div style={{ marginTop: '0.6rem' }}>
-                    <CercaGiocoBgg profilo={profilo} autoFocus onScegli={(gioco) => abbina(g, gioco)} />
+                    <CercaGiocoBgg profilo={profilo} testoIniziale={g.bga_nome} onScegli={(gioco) => abbina(g, gioco)} />
                   </div>
                 )}
               </li>
