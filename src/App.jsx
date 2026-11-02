@@ -1,4 +1,4 @@
-// Primo Giocatore v4.24.2 - 202611030600 (menu del profilo con la barra scorrevole comune: anche rotella e trascinamento da PC)
+// Primo Giocatore v4.25.0 - 202611030700 (Home nella barra in fondo; «Esci» solo nel Profilo)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -77,6 +77,7 @@ const ICONE = {
   profilo: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4 3.6-6 8-6s8 2 8 6',
   giocatori: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7z M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6 M16 4.5a3.2 3.2 0 010 6.3 M18 14.3c2.2.6 3.5 2.6 3.5 5.7',
   tavoli: 'M3 10h18 M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3 M6 10v9 M18 10v9',
+  home: 'M3 11l9-7 9 7 M5 9.5V20h5v-6h4v6h5V9.5',
 }
 
 function Icona({ nome }) {
@@ -1016,7 +1017,9 @@ export default function App() {
               <IconaProfilo />
             </button>
           )}
-          {sessione && !tavoloPubblico && (
+          {/* «Esci» sta nel Profilo: in testata si toccava per sbaglio. Fuori dall'app
+              (pagina di un tavolo aperta con l'account) resta qui. */}
+          {sessione && tavoloPubblico && (
             <button type="button" className="tasto-condividi" aria-label="Esci dall'account" title="Esci dall'account"
               onClick={() => { if (window.confirm('Vuoi uscire dall\u2019account?')) supabase.auth.signOut() }}>
               <IconaEsci />
@@ -1074,6 +1077,7 @@ export default function App() {
         <>
           <nav className="barra-basso">
             {[
+              ['home', 'Home'],
               ['partita', 'Partita'],
               ['tavoli', 'Tavoli'],
               ['storico', 'Storico'],

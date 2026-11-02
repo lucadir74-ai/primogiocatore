@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione
-// v3.16.0 - 202611012200 (posizioni importate da CSV fatto con l'AI dalle foto degli scaffali)
+// v3.17.0 - 202611030700 (lista intera nella pagina, con «Mostra tutti» dopo i primi 20)
 //
 // Incrocia quello che possiedi con quello che giochi: quali scatole
 // sono ferme, quali non hai mai aperto, quanto ti costa ogni partita.
@@ -33,6 +33,10 @@ const SEZIONI = [
   { id: 'fuori', etichetta: 'Giocati e non tuoi' },
 ]
 
+// Quanti giochi si mostrano prima di «Mostra tutti». La lista non scorre
+// più dentro la pagina (due scorrimenti uno dentro l'altro erano scomodi).
+const PRIMI = 20
+
 export default function Collezione({ profilo }) {
   // Le partite sono quelle dell'archivio unico dell'app (lo stesso di
   // Storico e Statistiche): se è già in memoria si vede subito, e la
@@ -46,6 +50,8 @@ export default function Collezione({ profilo }) {
   const [messaggio, setMessaggio] = useState('')
   const [sezione, setSezione] = useState('tutti')
   const [cerca, setCerca] = useState('')
+  const [tutti, setTutti] = useState(false)   // la lista intera invece dei primi PRIMI
+  useEffect(() => { setTutti(false) }, [sezione])
   const [aperto, setAperto] = useState(null)   // il gioco di cui si guarda la scheda
 
   useEffect(() => { carica() }, [])
@@ -244,8 +250,8 @@ export default function Collezione({ profilo }) {
           {elenco.length === 0 ? (
             <p className="aiuto">Niente da mostrare qui.</p>
           ) : (
-            <ul className="elenco elenco-scorrevole">
-              {elenco.slice(0, 200).map((g) => (
+            <ul className="elenco">
+              {(tutti || cerca.trim() ? elenco.slice(0, 1000) : elenco.slice(0, PRIMI)).map((g) => (
                 <li key={g.id}>
                   <button type="button" className="riga-gioco" onClick={() => setAperto(g)}>
                     <span className="gioco">
@@ -273,6 +279,12 @@ export default function Collezione({ profilo }) {
                 </li>
               ))}
             </ul>
+          )}
+
+          {!tutti && !cerca.trim() && elenco.length > PRIMI && (
+            <button type="button" className="bottone bottone-secondario" onClick={() => setTutti(true)}>
+              Mostra tutti ({elenco.length})
+            </button>
           )}
 
           {sezione === 'mai' && dati.mai.length > 0 && (

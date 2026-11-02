@@ -2626,3 +2626,77 @@ button.numerone:active { transform: scale(0.98); }
   .barra-basso { padding-left: 0.15rem; padding-right: 0.15rem; gap: 0; }
   .barra-basso button { font-size: 0.6rem; letter-spacing: -0.02em; padding-left: 0; padding-right: 0; }
 }
+
+/* Scheda di un tavolo: due tasti in vista, la gestione a parte. */
+.tavolo-azioni { gap: 0.5rem; align-items: center; }
+.tasto-piccolo {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--bordo);
+  background: none;
+  color: var(--inchiostro);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tasto-piccolo.primario { background: var(--primario); border-color: transparent; color: var(--su-primario); }
+.tasto-piccolo.attivo { background: var(--superficie); border-color: var(--bordo-forte); }
+.tasto-piccolo:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+.pallino {
+  min-width: 1.2rem; height: 1.2rem; padding: 0 0.3rem;
+  border-radius: 999px; background: var(--rosso); color: #fff;
+  font-size: 0.72rem; line-height: 1.2rem; text-align: center;
+}
+.tavolo-gestione {
+  margin-top: 0.55rem;
+  padding: 0.3rem;
+  border-radius: 10px;
+  background: var(--superficie);
+  display: flex;
+  flex-direction: column;
+}
+.voce-gestione {
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--inchiostro);
+  cursor: pointer;
+}
+.voce-gestione:hover, .voce-gestione:focus-visible { background: var(--carta); }
+.gestione-pericolo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.3rem;
+  margin-top: 0.25rem;
+  padding: 0.7rem 0.7rem 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
+  font-size: 0.88rem;
+}
+
+/* Home, tavoli in programma: il nome va a capo (massimo due righe). */
+.home-riga-testo > strong {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.home-azione.fatto { color: var(--inchiostro-tenue); font-weight: 500; }
+
+/* Sette voci nella barra in fondo (con la Home): sui telefoni più
+   stretti le scritte si stringono un po' per stare intere. */
+@media (max-width: 380px) {
+  .barra-basso button { font-size: 0.56rem; letter-spacing: -0.03em; }
+  .barra-basso button svg { width: 20px; height: 20px; }
+}
+@media (min-width: 381px) and (max-width: 460px) {
+  .barra-basso { padding-left: 0.15rem; padding-right: 0.15rem; gap: 0; }
+  .barra-basso button { font-size: 0.6rem; letter-spacing: -0.02em; padding-left: 0; padding-right: 0; }
+}

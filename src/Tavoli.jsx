@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.21.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
+// v2.21.1 - 202611030700 (scheda del tavolo: Apri e Condividi in vista, il resto in «Gestisci»; Annulla chiede conferma)
 
 import { nomeLuogo } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
@@ -64,6 +64,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const [luogoNoto, setLuogoNoto] = useState(null)
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
+  const [gestione, setGestione] = useState(null)   // il tavolo di cui sono aperte le azioni di gestione
   // Dalla Home si arriva già sul tavolo toccato.
   const [aperto, setAperto] = useState(apriSubito ? { id: apriSubito } : null)   // tavolo visto come lo vede chi arriva dal link
   const [sessione, setSessione] = useState(null)
@@ -1116,26 +1117,45 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           </div>
         </div>
         <div className="tavolo-azioni">
-          <button className="bottone-piatto" onClick={() => setAperto(t)}>
+          <button className="tasto-piccolo primario" onClick={() => setAperto(t)}>
             {t.stato === 'aperto' && new Date(t.inizio) >= adesso ? 'Apri e iscriviti' : 'Apri'}
           </button>
-          <button className="bottone-piatto" onClick={() => condividi(t)}>Condividi</button>
-          <button className="bottone-piatto" onClick={() => setLocandina(t)}>Locandina</button>
-          {mio && <button className="bottone-piatto" onClick={() => apriIscritti(t)}>Iscritti ({conf})</button>}
-          {mio && <button className="bottone-piatto" onClick={() => apriModifica(t)}>Modifica</button>}
-          {mio && t.gioco_id && !t.partita_id && new Date(t.inizio) < new Date() && (
-            <button className="bottone-piatto" onClick={() => registraPartita(t)}>Registra partita</button>
-          )}
+          <button className="tasto-piccolo" onClick={() => condividi(t)}>Condividi</button>
+          {!mio && <button className="tasto-piccolo" onClick={() => setLocandina(t)}>Locandina</button>}
           {t.partita_id && (
-            <button className="bottone-piatto" onClick={() => onRegistraPartita?.(t.partita_id)}>
-              Vedi partita
+            <button className="tasto-piccolo" onClick={() => onRegistraPartita?.(t.partita_id)}>Vedi partita</button>
+          )}
+          {mio && (
+            <button className={`tasto-piccolo${gestione === t.id ? ' attivo' : ''}`} aria-expanded={gestione === t.id}
+              onClick={() => setGestione(gestione === t.id ? null : t.id)}>
+              Gestisci {gestione === t.id ? '▴' : '▾'}
+              {daAccettare > 0 && <span className="pallino" aria-label={`${daAccettare} da accettare`}>{daAccettare}</span>}
             </button>
           )}
-          {mio && t.stato === 'aperto' && (
-            <button className="bottone-piatto" onClick={() => cambiaStato(t, 'annullato')}>Annulla</button>
-          )}
-          {proprietario && <button className="bottone-piatto pericolo" onClick={() => elimina(t)}>Elimina</button>}
         </div>
+        {/* Le azioni di chi gestisce: a parte, e quelle che non si annullano in fondo. */}
+        {mio && gestione === t.id && (
+          <div className="tavolo-gestione">
+            <button className="voce-gestione" onClick={() => apriIscritti(t)}>
+              Iscritti ({conf}){daAccettare > 0 ? ` · ${daAccettare} da accettare` : ''}
+            </button>
+            <button className="voce-gestione" onClick={() => apriModifica(t)}>Modifica</button>
+            <button className="voce-gestione" onClick={() => setLocandina(t)}>Locandina</button>
+            {t.gioco_id && !t.partita_id && new Date(t.inizio) < new Date() && (
+              <button className="voce-gestione" onClick={() => registraPartita(t)}>Registra partita</button>
+            )}
+            {((t.stato === 'aperto') || proprietario) && (
+              <div className="gestione-pericolo">
+                {t.stato === 'aperto' && (
+                  <button className="bottone-piatto pericolo" onClick={() => {
+                    if (confirm('Annullare questo tavolo? Resta visibile come annullato, con i suoi iscritti.')) cambiaStato(t, 'annullato')
+                  }}>Annulla il tavolo</button>
+                )}
+                {proprietario && <button className="bottone-piatto pericolo" onClick={() => elimina(t)}>Elimina</button>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }

@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.2.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
+// v1.3.0 - 202611030700 (tavoli in programma: nome su due righe, posti liberi chiari, tasto secondo chi sei)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -58,7 +58,8 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       .from('tavoli')
       .select(`id, titolo, inizio, posti_max, stato, pubblicato,
         giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-        luoghi ( nome, creato_da, nome_per_altri ), iscrizioni_tavolo ( stato )`)
+        host_id, dimostratore_id, su_approvazione,
+        luoghi ( nome, creato_da, nome_per_altri ), iscrizioni_tavolo ( stato, utente_id, ruolo )`)
       .eq('stato', 'aperto')
       .gte('inizio', new Date().toISOString())
       .order('inizio', { ascending: true })
@@ -113,6 +114,16 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
   const confermati = (t) => (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
   const postiLiberi = (t) => (t.posti_max ? Math.max(0, t.posti_max - confermati(t)) : null)
   const nomeTavolo = (t) => t.titolo || t.giochi?.nome || 'Tavolo libero'
+  // Il tasto a destra dice cosa puoi fare tu con quel tavolo.
+  function azione(t) {
+    const mia = (t.iscrizioni_tavolo || []).find((i) => i.utente_id === profilo.id && i.stato !== 'annullato')
+    if (t.host_id === profilo.id || t.dimostratore_id === profilo.id || mia?.ruolo === 'dimostratore') return { testo: 'Gestisci', tono: '' }
+    if (mia?.stato === 'confermato') return { testo: 'Iscritto ✓', tono: ' fatto' }
+    if (mia?.stato === 'attesa') return { testo: 'In attesa', tono: ' fatto' }
+    if (t.su_approvazione) return { testo: 'Chiedi', tono: '' }
+    if (postiLiberi(t) === 0) return { testo: "Lista d'attesa", tono: '' }
+    return { testo: 'Iscriviti', tono: '' }
+  }
 
   return (
     <div className="scheda home">
@@ -180,12 +191,12 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
                   {copertinaTavolo(t) && <img className="home-mini" src={copertinaTavolo(t)} alt="" />}
                   <span className="home-riga-testo">
                     <strong>{nomeTavolo(t)}</strong>
-                    <span>
-                      {ora(t.inizio)}{t.luoghi?.nome ? ` · ${nomeLuogo(t.luoghi, profilo.id)}` : ''}
-                      {liberi != null ? ` · ${liberi === 0 ? 'completo' : liberi === 1 ? '1 posto' : `${liberi} posti`}` : ''}
-                    </span>
+                    <span>{ora(t.inizio)}{t.luoghi?.nome ? ` · ${nomeLuogo(t.luoghi, profilo.id)}` : ''}</span>
+                    {liberi != null && (
+                      <span>{liberi === 0 ? 'completo' : liberi === 1 ? '1 posto libero' : `${liberi} posti liberi`}</span>
+                    )}
                   </span>
-                  <span className="home-azione">{liberi === 0 ? 'Apri' : 'Iscriviti'}</span>
+                  <span className={`home-azione${azione(t).tono}`}>{azione(t).testo}</span>
                 </button>
               </li>
             )
