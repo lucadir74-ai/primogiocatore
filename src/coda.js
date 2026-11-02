@@ -1,5 +1,5 @@
 // Primo Giocatore - partite in attesa di rete
-// v4.3.0 - 202610252200 (una coda per persona: su un telefono condiviso le partite in attesa non finiscono nel profilo di un altro; invio mai doppio)
+// v4.4.0 - 202611030400 (partita e giocatori salvati insieme, tutto o niente; una partita riprovata non diventa un doppione)
 //
 // Quando manca la linea la partita resta sul telefono e parte da sola
 // appena la rete torna. Vale solo per le partite nuove: modificarne
@@ -88,6 +88,21 @@ export async function scriviPartita(supabase, profilo, dati) {
     }),
   }
 
+  // Partita, giocatori e parziali in una chiamata sola (partite_sicure.sql):
+  // se la rete cade a metà non resta una partita senza giocatori, e una
+  // partita nuova riprovata non diventa un doppione (nuovo_id).
+  const { data: salvata, error: eSalva } = await supabase.rpc('salva_partita', {
+    p_dati: {
+      ...campi,
+      partita_id: dati.partita_id || null,
+      nuovo_id: dati.partita_id ? null : (dati.nuovo_id || null),
+      giocatori: dati.giocatori,
+    },
+  })
+  if (!eSalva) return salvata
+  // Script non ancora lanciato: si salva come prima, in più passaggi.
+  if (!/salva_partita/.test(eSalva.message || '')) throw eSalva
+
   let id = dati.partita_id
   if (id) {
     const { error } = await supabase.from('partite').update(campi).eq('id', id)
@@ -153,7 +168,9 @@ async function inviaCodaOra(supabase, profilo, avviso) {
 
   for (const r of righe) {
     try {
-      await scriviPartita(supabase, profilo, r)
+      // Il numero della coda fa da numero della partita: se il primo invio
+      // era arrivato ma la risposta no, il secondo non crea un doppione.
+      await scriviPartita(supabase, profilo, { ...r, nuovo_id: r.nuovo_id || r.id })
       togliDallaCoda(profilo.id, r.id)
       inviate++
       avviso({ inviate, totale: righe.length })

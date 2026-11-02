@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.22.0 - 202611021300 (non mostra gli ospiti uniti a un altro)
+// v4.23.0 - 202611030400 (pari in testa: prima si sceglie chi ha vinto; numero della partita nuova creato subito, niente doppioni se la rete cade)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -653,6 +653,12 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     setErrore(''); setMessaggio('')
     if (!gioco) { setErrore('Scegli prima il gioco.'); return }
     if (righe.length < 1) { setErrore('Aggiungi almeno un giocatore.'); return }
+    // Pari in testa: prima si decide chi ha vinto (o la vittoria condivisa),
+    // altrimenti la partita resterebbe senza vincitore.
+    if (pareggio && !vincitoreScelto) {
+      setErrore('Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso, oppure «Vittoria condivisa», poi registra.')
+      return
+    }
 
     setSalvando(true)
     try {
@@ -660,6 +666,9 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       // gli spareggi cambiano da gioco a gioco.
       const dati = {
         partita_id: partitaId || null,
+        // Il numero della partita nuova nasce qui: un secondo invio della
+        // stessa partita (rete caduta) non crea un doppione.
+        nuovo_id: partitaId ? null : crypto.randomUUID(),
         gioco_id: gioco.id,
         luogo,
         giocata_il: new Date(quando).toISOString(),
