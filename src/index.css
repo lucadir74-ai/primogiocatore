@@ -2700,3 +2700,25 @@ button.numerone:active { transform: scale(0.98); }
   .barra-basso { padding-left: 0.15rem; padding-right: 0.15rem; gap: 0; }
   .barra-basso button { font-size: 0.6rem; letter-spacing: -0.02em; padding-left: 0; padding-right: 0; }
 }
+
+/* Calendario: il numero dei dimostratori sotto l'ora, non sopra
+   (nelle celle piccole si sovrapponevano). */
+.cella .conta { position: static; margin-top: 0.08rem; line-height: 1.15; padding: 0 0.2rem; }
+.cella .ora + .conta, .cella .numero + .conta { margin-top: 0.05rem; }
+.cella { gap: 0; }
+
+/* La voce attiva della barra in fondo non diventa più larga (il grassetto
+   faceva tagliare «Statistiche» proprio sulla sua pagina): si riconosce
+   dal colore e da una lineetta sopra l'icona. */
+.barra-basso button.attiva { font-weight: 500; position: relative; }
+.barra-basso button.attiva::before {
+  content: '';
+  position: absolute;
+  top: 0.05rem;
+  left: 50%;
+  width: 1.2rem;
+  height: 3px;
+  margin-left: -0.6rem;
+  border-radius: 3px;
+  background: var(--attivo);
+}

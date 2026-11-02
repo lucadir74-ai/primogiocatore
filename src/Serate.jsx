@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.10.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
+// v4.10.2 - 202611030800 (legenda del calendario completa: spiega anche il puntino dei tavoli)
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -451,8 +451,9 @@ export default function Serate({ profilo }) {
       {caricamento && <p className="aiuto">Carico&hellip;</p>}
 
       <p className="aiuto legenda">
-        I giorni con il bordo sono aperti. Il numero in basso è quanti dimostratori
-        ci sono. La striscia colorata è la tua risposta.
+        Bordo e ora: serata aperta (barrata se annullata). Numero in basso: quanti
+        dimostratori ci sono. Striscia in alto: la tua risposta (verde sì, giallo
+        forse, rosso no). Puntino: quel giorno ci sono tavoli in programma.
       </p>
 
       {profilo.organizzatore && (
