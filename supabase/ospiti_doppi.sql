@@ -1,5 +1,5 @@
 -- Primo Giocatore - ospiti doppi: unione automatica
--- v1.0.0 - 202611021300
+-- v1.0.2 - 202611021430 (il primo controllo non gira più qui: lo fa il server)
 -- Si può rilanciare senza danni. Non cancella partite né account.
 --
 -- Prima gli ospiti doppi li sistemava a mano un organizzatore. Ora:
@@ -14,7 +14,9 @@
 -- 3. L'ospite unito non si cancella: resta come «questo nome è quello»
 --    (colonna unito_in), così chi lo usa ancora per nome o lo importa di
 --    nuovo finisce sull'ospite giusto senza creare un altro doppione.
--- 4. Il controllo gira da solo ogni ora sul server (pg_cron).
+-- 4. Il controllo gira da solo ogni ora sul server (pg_cron), anche la
+--    prima volta: il pannello di Supabase ha un limite di tempo, il server no.
+--    Se un controllo è ancora in corso, il successivo salta il giro.
 -- 5. «Unisci doppioni» nell'app passa dal database: funziona anche con
 --    ospiti creati da altri (solo per chi organizza).
 -- Il collegamento ospite → account per nome resta quello di «Sei tu?».
@@ -261,6 +263,11 @@ declare
   n_account int := 0;
   n_partite int := 0;
 begin
+  -- Un controllo alla volta: se il precedente non ha finito, si salta.
+  if not pg_try_advisory_xact_lock(hashtext('riconcilia_ospiti')) then
+    return jsonb_build_object('saltato', 'controllo precedente ancora in corso');
+  end if;
+
   -- Livello 1a: stesso numero BGA fra ospiti liberi.
   for r in
     select s.bga_id, array_agg(s.id order by s.partite desc, s.id) as ids
@@ -298,31 +305,35 @@ begin
       from partecipazioni pa
       left join ospiti o on o.id = pa.ospite_id
     ),
+    -- Ogni partita con l'elenco dei suoi giocatori in un'unica riga:
+    -- il confronto fra due partite si fa sui due elenchi, senza rileggere
+    -- tutte le partecipazioni a ogni coppia (era quello a rendere lento).
     pt as (
       select p.id, p.registrata_da as reg, p.gioco_id, p.giocata_il::date as d,
-             p.bga_tavolo::text as tav, count(*) as n
+             p.bga_tavolo::text as tav, array_agg(c.k) as ks, count(*) as n,
+             bool_or(c.k like 'o%') as con_ospiti
       from partite p join chi c on c.partita_id = p.id
       where p.gioco_id is not null
       group by p.id
     ),
+    -- Servono solo partite con almeno un ospite libero e due giocatori.
+    pto as (select * from pt where con_ospiti and n >= 2),
     coppie as (
-      select a1.id as p1, b1.id as p2, a1.gioco_id, a1.d
-      from pt a1 join pt b1
+      select a1.id as p1, b1.id as p2, a1.gioco_id, a1.d, a1.ks as k1, b1.ks as k2
+      from pto a1 join pto b1
         on a1.gioco_id = b1.gioco_id and a1.d = b1.d and a1.id < b1.id
-      where a1.reg is distinct from b1.reg and a1.n = b1.n and a1.n >= 2
+      where a1.reg is distinct from b1.reg and a1.n = b1.n
         and (a1.tav is null or b1.tav is null or a1.tav = b1.tav)
       union
-      select a1.id, b1.id, a1.gioco_id, a1.d
-      from pt a1 join pt b1
+      select a1.id, b1.id, a1.gioco_id, a1.d, a1.ks, b1.ks
+      from pto a1 join pto b1
         on a1.tav = b1.tav and a1.id < b1.id
-      where a1.reg is distinct from b1.reg and a1.n = b1.n and a1.n >= 2
+      where a1.reg is distinct from b1.reg and a1.n = b1.n
     ),
     resti as (
       select c.gioco_id, c.d,
-        (select array_agg(x.k) from chi x where x.partita_id = c.p1
-           and not exists (select 1 from chi y where y.partita_id = c.p2 and y.k = x.k)) as r1,
-        (select array_agg(y.k) from chi y where y.partita_id = c.p2
-           and not exists (select 1 from chi x where x.partita_id = c.p1 and x.k = y.k)) as r2
+             array(select unnest(c.k1) except select unnest(c.k2)) as r1,
+             array(select unnest(c.k2) except select unnest(c.k1)) as r2
       from coppie c
     ),
     prove as (
@@ -391,5 +402,10 @@ select cron.unschedule(jobid) from cron.job where jobname = 'pg-riconcilia-ospit
 select cron.schedule('pg-riconcilia-ospiti', '23 * * * *',
   $$select public.riconcilia_ospiti()$$);
 
--- 9. Subito, una volta: come è andata
-select public.riconcilia_ospiti() as esito;
+-- 9. Installazione finita. Il primo controllo parte al prossimo «:23».
+--    Per vedere com'è andato:
+--    select status, start_time, end_time, return_message
+--    from cron.job_run_details
+--    where jobid = (select jobid from cron.job where jobname = 'pg-riconcilia-ospiti')
+--    order by start_time desc limit 5;
+select 'installato' as esito;
