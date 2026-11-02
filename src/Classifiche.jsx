@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, tutteLeRighe } from './supabase'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 // Le stesse soglie del calcolo sul server (src/primeggioCalcolo.js).
 const MIN_GIOCO = 5
@@ -201,11 +202,11 @@ export default function Classifiche({ profilo, onIndietro }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
 
-      <div className="sottoschede">
+      <BarraScorrevole><div className="sottoschede">
         {[['generale', 'Generale'], ['giochi', 'Per gioco']].map(([id, et]) => (
           <button key={id} className={vista === id ? 'attiva' : ''} onClick={() => setVista(id)}>{et}</button>
         ))}
-      </div>
+      </div></BarraScorrevole>
 
       {caricamento ? (
         <p className="aiuto">Carico le classifiche…</p>

@@ -16,6 +16,7 @@ import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
 import { trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -1144,14 +1145,14 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       <h2>Tavoli</h2>
 
       {(profilo.dimostratore || profilo.organizzatore) && (
-        <div className="sottoschede">
+        <BarraScorrevole><div className="sottoschede">
           <button className={sezione === 'tavoli' ? 'attiva' : ''} onClick={() => setSezione('tavoli')}>
             Tavoli
           </button>
           <button className={sezione === 'calendario' ? 'attiva' : ''} onClick={() => setSezione('calendario')}>
             Calendario interno
           </button>
-        </div>
+        </div></BarraScorrevole>
       )}
 
       {sezione === 'calendario' ? <Serate profilo={profilo} /> : <>
@@ -1175,7 +1176,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           <div className="riga-trova">
             <input value={zonaCercata} onChange={(e) => setZonaCercata(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); cercaZona() } }}
-              placeholder="oppure vicino a… (zona o indirizzo)" aria-label="Cerca i tavoli vicino a una zona" />
+              placeholder="Zona o indirizzo" aria-label="Cerca i tavoli vicino a una zona" />
             <button type="button" className="bottone bottone-secondario" onClick={cercaZona} disabled={cercandoPosizione}>
               Trova
             </button>
@@ -1189,14 +1190,14 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
               torna all'ordine per data
             </button>
           </p>
-          <div className="sottoschede" role="group" aria-label="Distanza massima">
+          <BarraScorrevole><div className="sottoschede" role="group" aria-label="Distanza massima">
             {[...RAGGI, null].map((r) => (
               <button key={r ?? 'tutti'} type="button" className={raggio === r ? 'attiva' : ''}
                 aria-pressed={raggio === r} onClick={() => setRaggio(r)}>
                 {r ? `entro ${r} km` : 'tutti'}
               </button>
             ))}
-          </div>
+          </div></BarraScorrevole>
         </>
       )}
 

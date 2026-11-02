@@ -11,6 +11,7 @@ import { archivioInMemoria, leggiArchivio, seguiArchivio } from './archivio'
 import { unisciCondivise } from './condivise'
 import ImportaLudoteca from './ImportaLudoteca.jsx'
 import Sezione from './Sezione.jsx'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const giorno = (d) =>
   new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -220,14 +221,14 @@ export default function Collezione({ profilo }) {
             )}
           </div>
 
-          <div className="sottoschede">
+          <BarraScorrevole><div className="sottoschede">
             {SEZIONI.map((s) => (
               <button key={s.id} className={sezione === s.id ? 'attiva' : ''}
                 onClick={() => setSezione(s.id)}>
                 {s.etichetta}
               </button>
             ))}
-          </div>
+          </div></BarraScorrevole>
 
           {(dati[sezione] || []).length > 8 && (
             <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}

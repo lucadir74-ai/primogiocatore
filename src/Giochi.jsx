@@ -8,6 +8,7 @@ import Collezione from './Collezione.jsx'
 import Ludoteca from './Ludoteca.jsx'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -405,7 +406,7 @@ export default function Giochi({ profilo }) {
     <div className="scheda">
       <h2>Giochi</h2>
 
-      <div className="sottoschede">
+      <BarraScorrevole><div className="sottoschede">
         <button className={vista === 'collezione' ? 'attiva' : ''} onClick={() => setVista('collezione')}>
           La mia collezione
         </button>
@@ -420,7 +421,7 @@ export default function Giochi({ profilo }) {
         <button className={vista === 'catalogo' ? 'attiva' : ''} onClick={() => setVista('catalogo')}>
           Gestisci
         </button>
-      </div>
+      </div></BarraScorrevole>
 
       {vista === 'chi' ? <ChiCeLha profilo={profilo} /> : vista === 'collezione' ? <Collezione profilo={profilo} />
         : vista === 'ludoteca' ? <Ludoteca profilo={profilo} /> : <>
@@ -575,13 +576,13 @@ export default function Giochi({ profilo }) {
         </p>
       ) : (
         <>
-          <div className="sottoschede">
+          <BarraScorrevole><div className="sottoschede">
             {[['tutti', 'Tutti'], ['collezione', 'In collezione'], ['giocati', 'Solo giocati']].map(([id, etichetta]) => (
               <button key={id} type="button" className={filtro === id ? 'attiva' : ''} onClick={() => setFiltro(id)}>
                 {etichetta} {quanti[id]}
               </button>
             ))}
-          </div>
+          </div></BarraScorrevole>
           <p className="aiuto">
             {filtro === 'tutti' && `${quanti.collezione} in collezione e ${quanti.giocati} che hai giocato senza averli.`}
             {filtro === 'collezione' && (espansioniMie

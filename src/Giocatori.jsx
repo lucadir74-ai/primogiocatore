@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
 const coloreHex = (id) => COLORI.find((c) => c.id === id)?.hex || '#C9D1D8'
@@ -152,13 +153,13 @@ export default function Giocatori({ profilo, onStatistiche }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
 
-      <div className="sottoschede">
+      <BarraScorrevole><div className="sottoschede">
         {[['tutti', 'Tutti'], ['account', 'Con account'], ['ospiti', 'Ospiti']].map(([id, et]) => (
           <button key={id} className={filtro === id ? 'attiva' : ''} onClick={() => setFiltro(id)}>
             {et}
           </button>
         ))}
-      </div>
+      </div></BarraScorrevole>
 
       <div className="campo">
         <label htmlFor="g-cerca">Cerca</label>

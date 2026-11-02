@@ -1,4 +1,4 @@
-// Primo Giocatore v4.24.1 - 202611022200 (la casella password con l'occhio ora è in CasellaPassword.jsx, usata in tutta l'app)
+// Primo Giocatore v4.24.2 - 202611030600 (menu del profilo con la barra scorrevole comune: anche rotella e trascinamento da PC)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -30,6 +30,7 @@ import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
 import CampoPassword from './CasellaPassword.jsx'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -49,41 +50,12 @@ const CHIAVE_GIA_ENTRATO = 'primo-giocatore:gia-entrato'
 // mesi, o per chi organizza, resta solo nel profilo.
 const GIORNI_SEI_TU = 60
 
-// Menu orizzontale che non sta nello schermo: le frecce ai lati dicono
-// che c'è altro e lo fanno scorrere.
+// Menu orizzontale che non sta nello schermo: frecce, rotella e
+// trascinamento li gestisce BarraScorrevole, come per tutte le barre.
 function MenuScorrevole({ voci, attiva, onScegli, etichetta }) {
-  const fila = useRef(null)
-  const [bordi, setBordi] = useState({ sinistra: false, destra: false })
-
-  function misura() {
-    const el = fila.current
-    if (!el) return
-    setBordi({
-      sinistra: el.scrollLeft > 4,
-      destra: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
-    })
-  }
-
-  useEffect(() => {
-    misura()
-    window.addEventListener('resize', misura)
-    return () => window.removeEventListener('resize', misura)
-  }, [voci.length])
-
-  // La voce scelta resta sempre in vista.
-  useEffect(() => {
-    fila.current?.querySelector('[aria-current="page"]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
-  }, [attiva])
-
-  const sposta = (verso) => fila.current?.scrollBy({ left: verso * fila.current.clientWidth * 0.7, behavior: 'smooth' })
-
   return (
-    <div className="menu-scorrevole">
-      {bordi.sinistra && (
-        <button type="button" className="freccia-menu sinistra" onClick={() => sposta(-1)} aria-label="Voci precedenti">‹</button>
-      )}
-      <nav className="sottoschede" aria-label={etichetta} ref={fila} onScroll={misura}>
+    <BarraScorrevole>
+      <nav className="sottoschede" aria-label={etichetta}>
         {voci.map(([id, testo, segno]) => (
           <button key={id} className={attiva === id ? 'attiva' : ''}
             aria-current={attiva === id ? 'page' : undefined}
@@ -92,10 +64,7 @@ function MenuScorrevole({ voci, attiva, onScegli, etichetta }) {
           </button>
         ))}
       </nav>
-      {bordi.destra && (
-        <button type="button" className="freccia-menu destra" onClick={() => sposta(1)} aria-label="Altre voci">›</button>
-      )}
-    </div>
+    </BarraScorrevole>
   )
 }
 

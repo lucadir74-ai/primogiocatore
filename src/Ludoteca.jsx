@@ -11,6 +11,7 @@ import { supabase } from './supabase'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import ImportaLudoteca from './ImportaLudoteca.jsx'
 import Sezione from './Sezione.jsx'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 // «Roma» → «Tana dei Goblin Roma»; un nome che dice già «Tana» resta com'è.
 export const nomeTana = (n) => (!n ? 'la tua Tana' : /tana/i.test(n) ? n : `Tana dei Goblin ${n}`)
@@ -121,10 +122,10 @@ export default function Ludoteca({ profilo }) {
         <>
           <input className="campo-cerca" type="search" value={cerca} onChange={(e) => setCerca(e.target.value)}
             placeholder="Cerca per gioco o posizione" aria-label="Cerca nella ludoteca" />
-          <div className="sottoschede">
+          <BarraScorrevole><div className="sottoschede">
             <button className={ordine === 'nome' ? 'attiva' : ''} onClick={() => setOrdine('nome')}>Per nome</button>
             <button className={ordine === 'posizione' ? 'attiva' : ''} onClick={() => setOrdine('posizione')}>Per posizione</button>
-          </div>
+          </div></BarraScorrevole>
         </>
       )}
 

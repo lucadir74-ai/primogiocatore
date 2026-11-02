@@ -8,6 +8,7 @@ import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -507,22 +508,22 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
       {errore && <div className="avviso errore">{errore}</div>}
 
-      <div className="sottoschede">
+      <BarraScorrevole><div className="sottoschede">
         {[['persona', 'Giocatore'], ['gioco', 'Gioco'], ['luogo', 'Luogo'], ['gruppo', 'Tutti']].map(([id, et]) => (
           <button key={id} className={tipo === id ? 'attiva' : ''} onClick={() => cambiaTipo(id)}>
             {et}
           </button>
         ))}
-      </div>
+      </div></BarraScorrevole>
 
       {quanteOnline > 0 && (
-        <div className="sottoschede sottoschede-dove">
+        <BarraScorrevole><div className="sottoschede sottoschede-dove">
           {[['tutte', 'Tutte'], ['vivo', 'Dal vivo'], ['online', 'Online']].map(([id, et]) => (
             <button key={id} className={dove === id ? 'attiva' : ''} onClick={() => setDove(id)}>
               {et}
             </button>
           ))}
-        </div>
+        </div></BarraScorrevole>
       )}
 
       {tipo !== 'gruppo' && tutteOpzioni.length > 0 && (

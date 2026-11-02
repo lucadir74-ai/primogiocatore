@@ -1,5 +1,5 @@
 // Primo Giocatore - casella unica per cercare e scegliere
-// v1.0.0 - 202610181930
+// v1.0.1 - 202611030600 (la freccia ⌄ resta anche con una scelta fatta: si capisce che è una tendina)
 //
 // Prende il posto della coppia «casella di ricerca + menu a tendina».
 // Una casella sola: mostra la scelta attuale; toccandola si scrive e
@@ -121,7 +121,8 @@ export default function CercaScegli({
         <button type="button" className="cerca-scegli-via" aria-label="Togli la scelta"
           onClick={() => onScegli('')}>×</button>
       )}
-      {!aperta && !scelta && <span className="cerca-scegli-freccia" aria-hidden="true">⌄</span>}
+      {/* La freccia dice che si può cambiare: anche quando c'è già una scelta. */}
+      {!aperta && !(scelta && svuotabile) && <span className="cerca-scegli-freccia" aria-hidden="true">⌄</span>}
 
       {aperta && (
         <ul className="tendina" role="listbox" id={idElenco} ref={elenco}>

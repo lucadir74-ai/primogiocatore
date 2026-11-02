@@ -8,6 +8,7 @@
 // Per giorni e orari fuori dall'elenco restano i campi del telefono.
 
 import { useState } from 'react'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const ORE = ['10:00', '15:00', '18:00', '20:30', '21:00', '21:30']
 
@@ -78,7 +79,7 @@ export default function SceltaQuando({ valore, onCambia, serate = [], facoltativ
         )}
       </p>
 
-      <div className="giorni-scorrevoli">
+      <BarraScorrevole><div className="giorni-scorrevoli">
         {elenco.map((d) => {
           const s = serataDi(d)
           return (
@@ -91,7 +92,7 @@ export default function SceltaQuando({ valore, onCambia, serate = [], facoltativ
             </button>
           )
         })}
-      </div>
+      </div></BarraScorrevole>
 
       <div className="pastiglie-persone">
         {altraData || dataFuori ? (

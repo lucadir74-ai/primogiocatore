@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
+import BarraScorrevole from './BarraScorrevole.jsx'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -167,7 +168,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
 
-      <div className="sottoschede">
+      <BarraScorrevole><div className="sottoschede">
         {SEZIONI.map((s) => (
           <button
             key={s.id}
@@ -177,7 +178,7 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
             {s.etichetta}
           </button>
         ))}
-      </div>
+      </div></BarraScorrevole>
 
       {partite.length > 1 && (
         <input
@@ -195,13 +196,13 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
       )}
 
       {quanteOnline > 0 && (
-        <div className="sottoschede sottoschede-dove">
+        <BarraScorrevole><div className="sottoschede sottoschede-dove">
           {[['tutte', 'Tutte'], ['vivo', 'Dal vivo'], ['online', 'Online']].map(([id, et]) => (
             <button key={id} className={dove === id ? 'attiva' : ''} onClick={() => setDove(id)}>
               {et}
             </button>
           ))}
-        </div>
+        </div></BarraScorrevole>
       )}
 
       {partite.length === 0 && <p className="aiuto">Ancora nessuna partita registrata.</p>}

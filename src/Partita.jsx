@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.23.0 - 202611030400 (pari in testa: prima si sceglie chi ha vinto; numero della partita nuova creato subito, niente doppioni se la rete cade)
+// v4.23.1 - 202611030600 (segnaposto della ricerca più corto: non si tagliava più a metà)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -831,7 +831,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               value={filtro}
               onChange={(e) => { setFiltro(e.target.value); setSuBgg(null) }}
               onKeyDown={(e) => e.key === 'Enter' && cercaSuBgg()}
-              placeholder="Scrivi le prime lettere, poi Invio per cercare su BGG"
+              placeholder="Scrivi il nome del gioco"
             />
           </div>
           {trovati.length > 0 && (
