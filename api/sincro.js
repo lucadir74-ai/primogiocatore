@@ -1,5 +1,5 @@
 // Primo Giocatore - sincronizzazione programmata con Board Game Arena
-// v1.3.0 - 202610312300 (storico a metà: si continua a leggerlo, ogni 10 minuti, anche se ci sono già partite BGA)
+// v1.3.1 - 202611022300 (BGA che non risponde come al solito: errore registrato, non sessione scaduta)
 //
 // Gira sul server, chiamata da Supabase (pg_cron) ogni 10 minuti: così
 // le partite BGA entrano anche a telefono spento, su iPhone come su
@@ -36,7 +36,7 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PUBBLICA = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 const SEGRETO = process.env.SINCRO_SECRET
-const VERSIONE = 'server 1.3.0'
+const VERSIONE = 'server 1.3.1'
 
 const OGNI = 55 * 60000          // ogni iscritto al massimo una volta all'ora
 const NUOVO_ISCRITTO_FINO = 30000 // dopo 30 secondi non si comincia un altro iscritto
@@ -76,6 +76,8 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
   // Con uno storico ancora da finire non si fa il controllo leggero.
   if (ultimaBga && !precedente?.pagina_storico) {
     const r = await leggi(db, utenteId, { fino: ultimaBga - 7 * 86400, da: 1 })
+    // BGA non risponde come al solito: si registra e si riprova al prossimo giro.
+    if (r.errore) throw new Error(r.errore)
     if (r.scaduta) {
       await esito({ in_corso: false, importate: 0, in_sospeso: 0, errore: 'sessione BGA scaduta', storico: 'solo le novità' })
       return { scaduta: true }
@@ -120,6 +122,7 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
       // Il primo giro delle novità è già stato letto qui sopra.
       const r = (primaLettura && !storico && da === 1) ? primaLettura : await leggi(db, utenteId, { fino, da })
       primaLettura = null
+      if (r.errore) throw new Error(r.errore)
       if (r.scaduta) {
         await esito({ in_corso: false, importate: nuove, in_sospeso: inSospeso, errore: 'sessione BGA scaduta', storico: aPunto() })
         return { scaduta: true }

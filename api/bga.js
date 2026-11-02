@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.4.0 - 202610312300 (niente più tetto di 1000 pagine: con 10 partite a pagina lo storico si fermava a 10.000 partite)
+// v1.5.0 - 202611022300 (un rifiuto momentaneo di BGA non segna più la sessione scaduta; si riprova con i cookie riletti)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -38,6 +38,8 @@ const UA = 'Mozilla/5.0 (Linux; Android 14) PrimoGiocatore/1.0'
 // finito bene (successo con lo storico lungo di un iscritto, 24/10).
 const TEMPO_LETTURA = 15000
 const PAUSA_PAGINE = 700
+// Prima di dare la sessione per scaduta si riprova una volta, dopo questa pausa.
+const PAUSA_RIPROVA = 2500
 
 /* ---------------- Cifratura dei cookie ---------------- */
 
@@ -189,42 +191,78 @@ async function stato(db, utenteId) {
   return { collegato: true, bga_id, bga_nome, collegata_il, ultima_lettura, ultimo_errore }
 }
 
+// Apre la cronologia e legge la prima pagina. Distingue due casi:
+// - «sessione»: BGA risponde normalmente ma dice che non sei dentro;
+// - «momentaneo»: BGA non risponde come al solito (troppe richieste,
+//   manutenzione, errore del server, rete): la sessione può essere buona.
+async function apri(cookieCifrati, id, pagina) {
+  let cookie
+  try { cookie = decifra(cookieCifrati) } catch { return { esito: 'sessione' } }
+  const b = browser(cookie)
+  try {
+    const r = await b.chiama(`/gamestats?player=${id}`)
+    const html = await r.text()
+    if (!r.ok) return { esito: 'momentaneo', motivo: `HTTP ${r.status}` }
+    const token = trovaToken(html)
+    if (!token) return { esito: 'sessione' }
+    const rp = await b.chiama(`/gamestats/gamestats/getGames.html?player=${id}&opponent_id=0&finished=1&page=${pagina}&updateStats=0`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Request-Token': token, Referer: `${b.origine()}/gamestats?player=${id}` },
+    })
+    const testo = await rp.text()
+    if (!rp.ok) return { esito: 'momentaneo', motivo: `HTTP ${rp.status}` }
+    let j = null
+    try { j = JSON.parse(testo) } catch { return { esito: 'momentaneo', motivo: 'risposta non valida' } }
+    if (String(j?.status) !== '1') return { esito: 'sessione' }
+    return { esito: 'ok', b, token, j }
+  } catch (e) {
+    return { esito: 'momentaneo', motivo: String(e?.message || e).slice(0, 80) }
+  }
+}
+
 export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
   const { data: s } = await db.from('bga_sessioni').select('*').eq('utente_id', utenteId).maybeSingle()
   if (!s) return { collegato: false }
-
-  let cookie
-  try { cookie = decifra(s.cookie_cifrati) } catch {
-    await db.from('bga_sessioni').update({ ultimo_errore: 'scaduta' }).eq('utente_id', utenteId)
-    return { scaduta: true }
-  }
-  const b = browser(cookie)
   const id = String(s.bga_id)
-  const scaduta = async () => {
+  const prima = Number(da) || 1
+
+  // Primo tentativo; se va male, si aspetta un attimo e si riprova con i
+  // cookie riletti dal database: se intanto un'altra lettura (l'app o il
+  // server) li ha rinnovati, si usano quelli nuovi. La sessione si segna
+  // scaduta solo se BGA dice due volte di fila che non sei dentro: un
+  // rifiuto momentaneo non deve fermare la sincronizzazione automatica.
+  let a = await apri(s.cookie_cifrati, id, prima)
+  if (a.esito !== 'ok') {
+    await new Promise((ok) => setTimeout(ok, PAUSA_RIPROVA))
+    const { data: s2 } = await db.from('bga_sessioni').select('cookie_cifrati').eq('utente_id', utenteId).maybeSingle()
+    const b2 = await apri(s2?.cookie_cifrati || s.cookie_cifrati, id, prima)
+    if (b2.esito !== 'ok' && (a.esito === 'momentaneo' || b2.esito === 'momentaneo')) {
+      return { errore: `BGA in questo momento non risponde come al solito (${b2.motivo || a.motivo || 'riprova'}): la sessione resta valida, si riprova al prossimo giro.`, momentaneo: true }
+    }
+    a = b2
+  }
+  if (a.esito !== 'ok') {
     await db.from('bga_sessioni').update({ ultimo_errore: 'scaduta' }).eq('utente_id', utenteId)
     return { scaduta: true }
   }
-
-  const r = await b.chiama(`/gamestats?player=${id}`)
-  const token = trovaToken(await r.text())
-  if (!token) return scaduta()
+  const { b, token } = a
 
   const inizio = Date.now()
   const tavoli = []
-  let pagina = Number(da) || 1
+  let pagina = prima
   let continua = null
   // BGA dà 10 partite a pagina: il limite vero è il tempo (TEMPO_LETTURA),
   // questo tetto serve solo a non girare all'infinito.
   for (; pagina <= 100000; pagina++) {
     if (Date.now() - inizio > TEMPO_LETTURA) { continua = pagina; break }
-    const rp = await b.chiama(`/gamestats/gamestats/getGames.html?player=${id}&opponent_id=0&finished=1&page=${pagina}&updateStats=0`, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Request-Token': token, Referer: `${b.origine()}/gamestats?player=${id}` },
-    })
     let j = null
-    try { j = JSON.parse(await rp.text()) } catch { /* non è JSON */ }
+    if (pagina === prima) j = a.j   // la prima pagina è già stata letta
+    else {
+      const rp = await b.chiama(`/gamestats/gamestats/getGames.html?player=${id}&opponent_id=0&finished=1&page=${pagina}&updateStats=0`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Request-Token': token, Referer: `${b.origine()}/gamestats?player=${id}` },
+      })
+      try { j = JSON.parse(await rp.text()) } catch { /* non è JSON */ }
+    }
     if (String(j?.status) !== '1') {
-      // Sessione non più valida (BGA risponde con un errore di sessione).
-      if (pagina === Number(da || 1)) return scaduta()
       continua = pagina   // un intoppo a metà: si riprende da qui
       break
     }

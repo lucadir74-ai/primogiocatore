@@ -1,5 +1,5 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.4.0 - 202610292345 (nome e cognome nei dati base)
+// v1.4.1 - 202611022300 (partite BGA: conta anche quelle arrivate prima da BGG e collegate)
 // Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
 // Dall'elenco soci arriva anche la riga del socio (socio): se non ha
 // ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
@@ -172,7 +172,9 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
                   </>
                 )}
                 <Riga etichetta="Partite importate da BGA"
-                  valore={r.bga ? `${r.bga}${r.ultima_bga ? ` · la più recente del ${giorno(r.ultima_bga)}` : ''}` : 'nessuna'}
+                  valore={r.bga
+                    ? `${r.bga}${r.bga_collegate ? ` (${r.bga_collegate} arrivate prima da BGG)` : ''}${r.ultima_bga ? ` · la più recente del ${giorno(r.ultima_bga)}` : ''}`
+                    : 'nessuna'}
                   tono={r.bga ? null : 'no'} />
               </ul>
 
