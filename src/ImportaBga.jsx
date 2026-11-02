@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.4.0 - 202611011400 (giochi da riconoscere: «scegli» apre la ricerca già col nome BGA e cerca subito su BGG)
+// v3.4.1 - 202611022200 (password BGA con il tasto «mostra»)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
+import CasellaPassword from './CasellaPassword.jsx'
 import {
   segnalibroBga, baseSegnalibro, analizzaBga, salvaAbbinamento, classificaBga, importaBga,
   inEsclusiva, sincroAutomaticaInCorso,
@@ -446,7 +447,7 @@ function ModuloAccesso({ utente, setUtente, password, setPassword, occupato, onI
       </div>
       <div className="campo">
         <label htmlFor="bga-password">Password BGA</label>
-        <input id="bga-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+        <CasellaPassword id="bga-password" value={password} onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password" onKeyDown={(e) => { if (e.key === 'Enter' && utente.trim() && password) onInvia() }} />
       </div>
       <button className="bottone" onClick={onInvia} disabled={occupato || !utente.trim() || !password}>

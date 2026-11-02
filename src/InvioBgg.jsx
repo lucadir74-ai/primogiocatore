@@ -1,11 +1,12 @@
 // Primo Giocatore - invio delle partite a BoardGameGeek (riquadro)
-// v1.1.0 - 202610260000 (un solo riquadro BGG: i pezzi dell'invio si inseriscono nella sezione BoardGameGeek di Dati e import)
+// v1.1.1 - 202611022200 (password BGG con il tasto «mostra»)
 //
 // useInvioBgg tiene lo stato del collegamento; i tre pezzi sotto lo
 // mostrano nei punti giusti della sezione, senza un secondo riquadro.
 
 import { useEffect, useState } from 'react'
 import { chiamaInvioBgg, inviaABggSeServe, segnaCollegatoBgg } from './invioBgg'
+import CasellaPassword from './CasellaPassword.jsx'
 
 const quando = (x) => new Date(x).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 
@@ -65,7 +66,7 @@ function CampoPassword({ invio, profilo, etichetta }) {
     <>
       <div className="campo">
         <label htmlFor="bgg-password">Password BGG di {profilo.bgg_username}</label>
-        <input id="bgg-password" type="password" value={invio.password} autoComplete="current-password"
+        <CasellaPassword id="bgg-password" value={invio.password} autoComplete="current-password"
           onChange={(e) => invio.setPassword(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && invio.password) invio.collega() }} />
       </div>

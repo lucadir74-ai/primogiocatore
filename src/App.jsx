@@ -1,4 +1,4 @@
-// Primo Giocatore v4.24.0 - 202610311500 (avviso in cima per le partite BGA che aspettano una scelta)
+// Primo Giocatore v4.24.1 - 202611022200 (la casella password con l'occhio ora è in CasellaPassword.jsx, usata in tutta l'app)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -29,6 +29,7 @@ import ImportaBga from './ImportaBga.jsx'
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
+import CampoPassword from './CasellaPassword.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
 const SEZIONI_PROFILO = [
@@ -137,49 +138,6 @@ function Marchio({ onClick }) {
 function Avviso({ tipo, testo }) {
   if (!testo) return null
   return <div className={`avviso ${tipo}`}>{testo}</div>
-}
-
-/* ---------------- Casella password con l'occhio ---------------- */
-
-// Una casella password con un tasto per vedere quello che si è scritto.
-// Resta nascosta finché non la mostri, e torna nascosta a ogni apertura.
-function CampoPassword({ id, value, onChange, autoComplete, onKeyDown }) {
-  const [visibile, setVisibile] = useState(false)
-  return (
-    <div style={{ position: 'relative' }}>
-      <input
-        id={id}
-        type={visibile ? 'text' : 'password'}
-        value={value}
-        onChange={onChange}
-        autoComplete={autoComplete}
-        onKeyDown={onKeyDown}
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
-        style={{ paddingRight: '3rem' }}
-      />
-      <button
-        type="button"
-        onClick={() => setVisibile((v) => !v)}
-        aria-label={visibile ? 'Nascondi password' : 'Mostra password'}
-        aria-pressed={visibile}
-        title={visibile ? 'Nascondi password' : 'Mostra password'}
-        style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '2.9rem',
-          display: 'grid', placeItems: 'center', background: 'none', border: 0,
-          padding: 0, cursor: 'pointer', color: 'var(--inchiostro-tenue, currentColor)',
-        }}
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-          <circle cx="12" cy="12" r="3" />
-          {visibile && <path d="M3 3l18 18" />}
-        </svg>
-      </button>
-    </div>
-  )
 }
 
 /* ---------------- Accesso e registrazione ---------------- */
