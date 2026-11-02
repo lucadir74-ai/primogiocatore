@@ -1,5 +1,5 @@
 // Primo Giocatore - import da CSV delle posizioni dei giochi
-// v1.2.1 - 202611012230 (barra di avanzamento mentre prende i titoli da BGG)
+// v1.3.0 - 202611021200 (messaggio per l'AI ed esempio dedicati alla casa)
 //
 // modo «tana»: la ludoteca della Tana (posizione, copie, note).
 // modo «casa»: la propria collezione; si abbina solo ai propri giochi e
@@ -7,7 +7,8 @@
 // si aggiungono: restano elencati, da sistemare su BGG.
 //
 // Si fotografano i ripiani, un'AI (Claude, ChatGPT…) legge i titoli sui
-// dorsi e restituisce un CSV titolo;posizione;copie;note. Qui lo si
+// dorsi e restituisce un CSV: titolo;posizione;copie;note per la Tana,
+// titolo;posizione;note per casa (le copie a casa non contano). Qui lo si
 // incolla o si carica il file: l'app abbina ogni titolo al catalogo,
 // chi gestisce controlla quelli dubbi e salva tutto in una volta.
 // Servono gli script ludoteca_import.sql (tana), collezione_import.sql (casa)
@@ -20,6 +21,8 @@ import { supabase, fetchBgg } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 
 export const MESSAGGIO_AI = `Ti mando le foto dei ripiani di una ludoteca di giochi da tavolo; per ogni foto ti scrivo la posizione (es. B3). Leggi i titoli sui dorsi delle scatole e rispondi solo con un CSV con separatore punto e virgola e intestazione titolo;posizione;copie;note. Se lo stesso gioco compare più volte nella stessa posizione, scrivi una sola riga con il numero di copie. Scrivi il titolo come appare sulla scatola. Se un titolo non lo leggi con sicurezza, scrivi «da verificare» nelle note. Non inventare titoli che non riesci a leggere.`
+
+export const MESSAGGIO_AI_CASA = `Ti mando le foto degli scaffali dei miei giochi da tavolo di casa; per ogni foto ti scrivo la posizione (es. B3). Leggi i titoli sui dorsi delle scatole e rispondi solo con un CSV con separatore punto e virgola e intestazione titolo;posizione;note. Una riga per ogni gioco, anche le espansioni. Scrivi il titolo come appare sulla scatola. Se un titolo non lo leggi con sicurezza, scrivi «da verificare» nelle note; altrimenti lascia le note vuote. Non inventare titoli che non riesci a leggere.`
 
 // CSV: separatore indovinato dalla prima riga (; , o tab), virgolette rispettate.
 function leggiCsv(testo) {
@@ -133,7 +136,7 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
   }
 
   async function copiaMessaggio() {
-    try { await navigator.clipboard.writeText(MESSAGGIO_AI); setCopiato(true) } catch { setCopiato(false) }
+    try { await navigator.clipboard.writeText(casa ? MESSAGGIO_AI_CASA : MESSAGGIO_AI); setCopiato(true) } catch { setCopiato(false) }
   }
 
   async function sceltoFile(e) {
@@ -150,11 +153,15 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
     setErrore(''); setAperta(null)
     const tabella = leggiCsv(ripulisci(daLeggere))
     if (!tabella.length) { setErrore('Non trovo righe da leggere.'); return }
-    // Con l'intestazione si leggono le colonne per nome; senza, nell'ordine titolo;posizione;copie;note.
+    // Con l'intestazione si leggono le colonne per nome; senza, nell'ordine
+    // titolo;posizione;copie;note (Tana) o titolo;posizione;note (casa; una
+    // riga a quattro colonne si legge comunque come quella della Tana).
     const col = tabella[0].map(colonna)
     const conTesta = col.includes('titolo')
-    const ordine = conTesta ? col : ['titolo', 'posizione', 'copie', 'note']
     const lette = (conTesta ? tabella.slice(1) : tabella).map((r, i) => {
+      const ordine = conTesta ? col
+        : casa && r.length < 4 ? ['titolo', 'posizione', 'note']
+          : ['titolo', 'posizione', 'copie', 'note']
       const o = {}
       ordine.forEach((c, j) => { if (c) o[c] = String(r[j] ?? '').trim() })
       const incerto = DA_VERIFICARE.test(o.note || '')
@@ -339,9 +346,11 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
           {copiato ? 'Messaggio copiato ✓' : 'Copia il messaggio per l’AI'}
         </button>
         <div className="campo" style={{ marginTop: '0.8rem' }}>
-          <label htmlFor="lud-csv">{casa ? 'CSV (titolo;posizione; copie e note non servono)' : 'CSV (titolo;posizione;copie;note)'}</label>
+          <label htmlFor="lud-csv">{casa ? 'CSV (titolo;posizione;note)' : 'CSV (titolo;posizione;copie;note)'}</label>
           <textarea id="lud-csv" rows={6} value={testo} onChange={(e) => setTesto(e.target.value)}
-            placeholder={'titolo;posizione;copie;note\nCarcassonne;B3;2;\nTicket to Ride: Europe;B3;1;scatola rovinata'}
+            placeholder={casa
+              ? 'titolo;posizione;note\nCarcassonne;B3;\nTicket to Ride: Europe;B3;da verificare'
+              : 'titolo;posizione;copie;note\nCarcassonne;B3;2;\nTicket to Ride: Europe;B3;1;scatola rovinata'}
             style={{ width: '100%', fontFamily: 'monospace' }} />
         </div>
         <input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={sceltoFile} className="campo-file"
