@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.8.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
+// v4.9.0 - 202611030100 (iscrizione e contatti in un passaggio solo; senza account si va in attesa)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -104,26 +104,20 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
     setInvio(true)
     try {
-      const { data: iscrizione, error } = await supabase
-        .from('iscrizioni_tavolo')
-        .insert({
-          tavolo_id: tavoloId,
-          utente_id: sessione?.user?.id || null,
-          nome_visibile: nome.trim(),
-          stato: pieno || approvazione ? 'attesa' : 'confermato',
-          disposto_a_dimostrare: libero && disposto,
-        })
-        .select('id').single()
-      if (error) throw error
-
-      const { error: e2 } = await supabase.from('iscrizioni_contatti').insert({
-        iscrizione_id: iscrizione.id,
-        email: email.trim() || null,
-        telefono: telefono.trim() || null,
+      // Iscrizione e contatti insieme, in un passaggio solo: lo stato
+      // (confermato o in attesa) lo decide il database.
+      const { data: stato, error } = await supabase.rpc('iscriviti_tavolo', {
+        p_tavolo: tavoloId,
+        p_nome: nome.trim(),
+        p_email: email.trim() || null,
+        p_telefono: telefono.trim() || null,
+        p_disposto: Boolean(libero && disposto),
       })
-      if (e2) throw e2
-
-      setFatto(true)
+      if (error) {
+        throw new Error(/iscriviti_tavolo/.test(error.message)
+          ? 'Manca lo script tavoli_bgg_verifica.sql nel database.' : error.message)
+      }
+      setFatto(stato || 'attesa')
       carica()
     } catch (e) {
       setErrore(e.message)
@@ -243,9 +237,15 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
       {fatto ? (
         <div className="avviso ok">
-          {approvazione
-            ? 'Richiesta inviata: chi organizza deve accettarti. Lo vedi nell\u2019app, in Tavoli.'
-            : <>Iscrizione registrata{pieno ? ' in lista d\u2019attesa' : ''}. Ci vediamo al tavolo.</>}
+          {fatto === 'gia'
+            ? 'Risulti già iscritto a questo tavolo.'
+            : fatto === 'confermato'
+              ? 'Iscrizione registrata. Ci vediamo al tavolo.'
+              : !sessione
+                ? 'Richiesta inviata: chi organizza ti confermerà, usando i contatti che hai lasciato.'
+                : approvazione
+                  ? 'Richiesta inviata: chi organizza deve accettarti. Lo vedi nell\u2019app, in Tavoli.'
+                  : 'Iscrizione registrata in lista d\u2019attesa: se si libera un posto, chi organizza ti conferma.'}
         </div>
       ) : chiuse ? (
         <div className="avviso errore">Le iscrizioni a questo tavolo sono chiuse.</div>
@@ -256,9 +256,12 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
       ) : (
         <>
           <h3 className="titolo-sezione">
-            {approvazione ? 'Chiedi di partecipare' : pieno ? 'Mettiti in lista d\u2019attesa' : 'Iscriviti'}
+            {approvazione || !sessione ? 'Chiedi di partecipare' : pieno ? 'Mettiti in lista d\u2019attesa' : 'Iscriviti'}
           </h3>
           {approvazione && <p className="aiuto">A questo tavolo chi organizza sceglie chi accettare.</p>}
+          {!approvazione && !sessione && (
+            <p className="aiuto">Senza account la tua iscrizione resta in attesa finché chi organizza non la conferma.</p>
+          )}
 
           {errore && <div className="avviso errore">{errore}</div>}
 
@@ -306,7 +309,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
           </label>
 
           <button className="bottone" onClick={iscrivi} disabled={invio}>
-            {invio ? 'Invio…' : approvazione ? 'Chiedi di partecipare' : pieno ? 'Mettimi in attesa' : 'Iscrivimi'}
+            {invio ? 'Invio…' : approvazione || !sessione ? 'Chiedi di partecipare' : pieno ? 'Mettimi in attesa' : 'Iscrivimi'}
           </button>
 
           {!sessione && (

@@ -1,7 +1,5 @@
 // Primo Giocatore - import da CSV delle posizioni dei giochi
-// v1.4.0 - 202611021900 (casa: «cerca» anche su BGG e si può aggiungere un gioco
-//   alla collezione; abbinamento per parole; espansioni nel messaggio per l'AI;
-//   schermo acceso durante il lavoro)
+// v1.4.1 - 202611030100 (le frasi dell'AI prima e dopo il CSV non entrano più come giochi)
 //
 // modo «tana»: la ludoteca della Tana (posizione, copie, note).
 // modo «casa»: la propria collezione; si abbina ai propri giochi e si
@@ -136,7 +134,15 @@ export default function ImportaLudoteca({ modo = 'tana', tana, esistenti, mieiGi
 
   async function analizza(daLeggere = testo) {
     setErrore(''); setAperta(null)
-    const tabella = leggiCsv(ripulisci(daLeggere))
+    let tabella = leggiCsv(ripulisci(daLeggere))
+    // L'AI spesso scrive una frase prima e dopo il CSV («Ecco il CSV…»,
+    // «Fammi sapere…»): si parte dalla riga d'intestazione, se c'è, e si
+    // tengono solo le righe con più campi (le frasi ne hanno uno solo).
+    const testa = tabella.findIndex((r) => r.map(colonna).includes('titolo'))
+    if (testa > 0) tabella = tabella.slice(testa)
+    if (tabella.some((r) => r.filter((x) => x.trim()).length >= 2)) {
+      tabella = tabella.filter((r, i) => (testa >= 0 && i === 0) || r.filter((x) => x.trim()).length >= 2)
+    }
     if (!tabella.length) { setErrore('Non trovo righe da leggere.'); return }
     // Con l'intestazione si leggono le colonne per nome; senza, nell'ordine
     // titolo;posizione;copie;note (Tana) o titolo;posizione;note (casa; una

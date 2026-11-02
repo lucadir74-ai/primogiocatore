@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.8.0 - 202610252330 (le partite inviate da qui a BGG non rientrano come doppioni, né quelle cancellate qui e in attesa di essere tolte da BGG)
+// v1.9.0 - 202611030100 (iscritti riconosciuti dal nome utente BGG; le partite da BGG cancellate qui non rientrano)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -60,7 +60,14 @@ async function inviateDaQui(profiloId) {
       tutteLeRighe(() => supabase.from('bgg_da_eliminare').select('bgg_play_id')
         .eq('utente_id', profiloId), 1000, 'bgg_play_id'),
     ])
-    return [...a, ...b].map((x) => x.bgg_play_id)
+    // Le partite arrivate da BGG e cancellate qui apposta: non rientrano.
+    // Senza lo script tavoli_bgg_verifica.sql la tabella non c'è: niente.
+    let c = []
+    try {
+      c = await tutteLeRighe(() => supabase.from('bgg_scartate').select('bgg_play_id')
+        .eq('utente_id', profiloId), 1000, 'bgg_play_id')
+    } catch { c = [] }
+    return [...a, ...b, ...c].map((x) => x.bgg_play_id)
   } catch {
     return []
   }
@@ -210,6 +217,18 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   if (io?.bga_username?.trim()) mieiNomi.add(io.bga_username.trim().toLowerCase())
   for (const o of collegati || []) if (o.nome?.trim()) mieiNomi.add(o.nome.trim().toLowerCase())
 
+  // Gli altri iscritti si riconoscono dal loro nome utente BGG: entrano
+  // con il loro account, non come ospiti, e la partita conta per loro.
+  const perUsername = new Map()
+  const nomiUtente = [...new Set(conGioco.flatMap((p) => p.giocatori.map((g) => (g.username || '').trim().toLowerCase())).filter(Boolean))]
+  if (nomiUtente.length) {
+    const conBgg = await tutteLeRighe(() => supabase.from('profili').select('id, bgg_username').not('bgg_username', 'is', null))
+    for (const x of conBgg) {
+      const u = (x.bgg_username || '').trim().toLowerCase()
+      if (u && x.id !== profiloId) perUsername.set(u, x.id)
+    }
+  }
+
   let fatte = 0
   for (const p of conGioco) {
     avanzamento({ fase: 'Importo', fatto: fatte, totale: conGioco.length })
@@ -249,11 +268,22 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
     // partita: se due righe sembrano te, la seconda resta ospite.
     const righe = []
     let giaIo = false
+    const accountUsati = new Set()
     for (const g of p.giocatori) {
       const sonoIo = !giaIo && (
         (g.username && g.username.toLowerCase() === utente.toLowerCase()) ||
         mieiNomi.has((g.nome || '').trim().toLowerCase()))
       if (sonoIo) giaIo = true
+      const altroAccount = !sonoIo && g.username ? perUsername.get(g.username.trim().toLowerCase()) : null
+      if (altroAccount && !accountUsati.has(altroAccount)) {
+        accountUsati.add(altroAccount)
+        righe.push({
+          partita_id: partita.id, utente_id: altroAccount, ospite_id: null,
+          punteggio_totale: g.punteggio, vincitore: g.vincitore,
+          ordine_turno: g.posizione, primo_giocatore: g.posizione === 1,
+        })
+        continue
+      }
       let ospiteId = null
       if (!sonoIo) {
         const nome = (g.nome || 'Sconosciuto').trim()
@@ -287,6 +317,8 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
       // Senza giocatori la partita resterebbe orfana: si toglie, così
       // alla prossima sincronizzazione viene reimportata intera.
       await supabase.from('partite').delete().eq('id', partita.id)
+      // Tolta per un errore, non scartata da chi gioca: deve poter rientrare.
+      try { await supabase.from('bgg_scartate').delete().eq('utente_id', profiloId).eq('bgg_play_id', p.bgg_play_id) } catch { /* niente */ }
       throw e2
     }
     fatte++
