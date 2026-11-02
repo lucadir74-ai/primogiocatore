@@ -2722,3 +2722,7 @@ button.numerone:active { transform: scale(0.98); }
   border-radius: 3px;
   background: var(--attivo);
 }
+
+/* Home: il primo passo che manca per portare dentro le partite. */
+.avviso.primo-passo { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; margin: 0.4rem 0 0.2rem; }
+.avviso.primo-passo span { font-size: 0.9rem; }

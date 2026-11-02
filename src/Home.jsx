@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.3.0 - 202611030700 (tavoli in programma: nome su due righe, posti liberi chiari, tasto secondo chi sei)
+// v1.4.0 - 202611030900 (avviso «Porta qui le tue partite» per chi non ha mai fatto il primo import da BGG o collegato BGA)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -41,8 +41,22 @@ function Icona({ d }) {
   )
 }
 
-export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico }) {
+export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati }) {
   const [tavoli, setTavoli] = useState(null)
+  // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
+  // importata (la lettura automatica parte solo dopo il primo import), o
+  // nome BGA senza aver mai collegato l'account.
+  const [daBgg, setDaBgg] = useState(null)
+  useEffect(() => {
+    if (!profilo.bgg_username?.trim()) return
+    supabase.from('partite').select('id', { count: 'exact', head: true })
+      .eq('registrata_da', profilo.id).like('chiave_esterna', 'bgg:%')
+      .then(({ count, error }) => { if (!error) setDaBgg(count ?? 0) })
+  }, [profilo.id, profilo.bgg_username])
+  const manca = [
+    profilo.bgg_username?.trim() && daBgg === 0 ? 'BGG' : null,
+    profilo.bga_username?.trim() && !profilo.bga_id ? 'BGA' : null,
+  ].filter(Boolean)
   const [ipg, setIpg] = useState(null)
   const ordina = (righe) => unisciCondivise([...righe].reverse(), [profilo.id])
     .filter((p) => giocataDa(p, profilo.id))
@@ -171,6 +185,17 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
           </span>
         </button>
       </div>
+
+      {manca.length > 0 && onDati && (
+        <div className="avviso primo-passo">
+          <strong>Porta qui le tue partite {manca.join(' e ')}</strong>
+          <span>
+            {manca.includes('BGG') && 'La prima volta si importano a mano: poi si aggiornano da sole. '}
+            {manca.includes('BGA') && 'Per BGA collega l\u2019account con la password: poi le partite arrivano da sole, anche a telefono spento.'}
+          </span>
+          <button type="button" className="tasto-piccolo primario" onClick={onDati}>Vai a Dati e import</button>
+        </div>
+      )}
 
       <h3 className="titolo-sezione">In programma</h3>
       {tavoli == null ? (

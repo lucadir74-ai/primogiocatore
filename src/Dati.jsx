@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v4.3.0 - 202610311900 (sezione «Archivio sul telefono»: prova dell'archivio salvato e «Ricarica tutto»)
+// v4.4.0 - 202611030900 (import da BGG: schermo acceso e messaggio chiaro se la connessione cade)
 
 import { useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -182,12 +182,23 @@ export default function Dati({ profilo }) {
 
   // Legge tutte le pagine delle partite da BGG e prepara l'anteprima,
   // segnalando quelle che sembrano già presenti.
+  // Un archivio grande richiede minuti: lo schermo resta acceso, altrimenti
+  // il telefono si spegne e il browser taglia la connessione a metà.
+  const schermoBgg = useRef(null)
+  async function tieniAcceso(si) {
+    try {
+      if (si && !schermoBgg.current && navigator.wakeLock) schermoBgg.current = await navigator.wakeLock.request('screen')
+      if (!si && schermoBgg.current) { await schermoBgg.current.release(); schermoBgg.current = null }
+    } catch { schermoBgg.current = null }
+  }
+
   async function leggiDaBgg(opzioni = {}) {
     setErrore(''); setMessaggio('')
     const utente = utenteBgg.trim()
     if (!utente) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
 
     setLavorando(true)
+    tieniAcceso(true)
     try {
       // Il nome utente serve anche all'aggiornamento automatico: si
       // salva con qualunque dei due tasti, non solo con «Aggiorna».
@@ -211,6 +222,7 @@ export default function Dati({ profilo }) {
     } finally {
       setLavorando(false)
       setAvanzamento(null)
+      tieniAcceso(false)
     }
   }
 
@@ -223,6 +235,7 @@ export default function Dati({ profilo }) {
 
   async function confermaBgg(includiSospette) {
     setErrore(''); setMessaggio(''); setLavorando(true)
+    tieniAcceso(true)
     try {
       const daFare = anteprimaBgg.partite.filter((p) => includiSospette || !p.sospetta)
       const { fatte } = await importaPartiteBgg({
@@ -236,10 +249,13 @@ export default function Dati({ profilo }) {
       )
       setAnteprimaBgg(null)
     } catch (e) {
-      setErrore(e.message)
+      setErrore(/failed to fetch|load failed|networkerror/i.test(e.message || '')
+        ? 'La connessione si è interrotta: tocca di nuovo «Importa». Le partite già entrate vengono saltate, si riprende da dove si era arrivati.'
+        : e.message)
     } finally {
       setLavorando(false)
       setAvanzamento(null)
+      tieniAcceso(false)
     }
   }
 

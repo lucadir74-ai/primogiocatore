@@ -1,4 +1,4 @@
-// Primo Giocatore v4.25.0 - 202611030700 (Home nella barra in fondo; «Esci» solo nel Profilo)
+// Primo Giocatore v4.25.1 - 202611030900 (dalla Home si va a Dati e import per il primo import)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -1177,6 +1177,7 @@ export default function App() {
               onApriTavolo={(id) => { setApriTavolo({ id, quando: Date.now() }); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
               onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
               onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
+              onDati={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}
             />
           ) : scheda === 'partita' ? (
             <Partita

@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.9.0 - 202611030100 (iscritti riconosciuti dal nome utente BGG; le partite da BGG cancellate qui non rientrano)
+// v1.10.0 - 202611030900 (import a blocchi di 100: da 2 chiamate a partita a 2 per blocco; ospiti nuovi creati tutti insieme)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -203,7 +203,6 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   // Anche gli ospiti già collegati a un account: vedi mappaOspitiPerNome.
   const esistenti = await ospitiPerImport()
   const ospiti = mappaOspitiPerNome(esistenti, profiloId)
-  const luoghi = new Map()
 
   // Gli altri nomi con cui compari: le partite di Board Game Arena che
   // BG Stats pubblica su BGG portano il nome BGA, non il nome utente BGG.
@@ -229,99 +228,111 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
     }
   }
 
-  let fatte = 0
+  // I luoghi, una volta per nome.
+  const luoghi = new Map()
   for (const p of conGioco) {
-    avanzamento({ fase: 'Importo', fatto: fatte, totale: conGioco.length })
-    const giocoId = idGioco.get(p.gioco.bgg_id)
-    if (!giocoId) continue
+    if (!p.luogo) continue
+    const k = p.luogo.toLowerCase()
+    if (luoghi.has(k)) continue
+    const online = PAROLE_ONLINE.some((w) => k.includes(w))
+    luoghi.set(k, await trovaOCreaLuogo(p.luogo, profiloId, online ? 'online' : 'altro'))
+  }
 
-    let luogoId = null
-    if (p.luogo) {
-      const k = p.luogo.toLowerCase()
-      if (!luoghi.has(k)) {
-        const online = PAROLE_ONLINE.some((w) => k.includes(w))
-        luoghi.set(k, await trovaOCreaLuogo(p.luogo, profiloId, online ? 'online' : 'altro'))
-      }
-      luogoId = luoghi.get(k)
-    }
-
-    const punteggi = p.giocatori.map((g) => g.punteggio)
-    const { data: partita, error: e1 } = await supabase.from('partite').insert({
-      gioco_id: giocoId,
-      luogo_id: luogoId,
-      giocata_il: `${p.data}T20:00:00`,
-      durata_minuti: p.durata_minuti,
-      tipo_punteggio: 'punti',
-      note: p.note,
-      chiave_esterna: `bgg:${p.bgg_play_id}`,
-      impronta: impronta({ giocoId, giocataIl: p.data, punteggi }),
-      registrata_da: profiloId,
-    }).select('id').single()
-    // Già entrata (un import interrotto, o una lettura con doppioni):
-    // si salta, non si ferma tutto.
-    if (e1?.code === '23505') continue
-    if (e1) throw e1
-
-    // Il proprietario dell'archivio si riconosce dal nome utente BGG o
-    // da uno dei suoi altri nomi; gli altri entrano come ospiti,
-    // riusando i tuoi quando il nome coincide. Una volta sola per
-    // partita: se due righe sembrano te, la seconda resta ospite.
-    const righe = []
+  // Chi è chi in ogni partita: tu, un altro iscritto (dal nome utente BGG)
+  // o un ospite. Una volta sola per partita.
+  const giocatoriDi = (p) => {
     let giaIo = false
     const accountUsati = new Set()
-    for (const g of p.giocatori) {
+    return p.giocatori.map((g) => {
       const sonoIo = !giaIo && (
         (g.username && g.username.toLowerCase() === utente.toLowerCase()) ||
         mieiNomi.has((g.nome || '').trim().toLowerCase()))
-      if (sonoIo) giaIo = true
-      const altroAccount = !sonoIo && g.username ? perUsername.get(g.username.trim().toLowerCase()) : null
-      if (altroAccount && !accountUsati.has(altroAccount)) {
-        accountUsati.add(altroAccount)
-        righe.push({
-          partita_id: partita.id, utente_id: altroAccount, ospite_id: null,
-          punteggio_totale: g.punteggio, vincitore: g.vincitore,
-          ordine_turno: g.posizione, primo_giocatore: g.posizione === 1,
-        })
-        continue
-      }
-      let ospiteId = null
-      if (!sonoIo) {
-        const nome = (g.nome || 'Sconosciuto').trim()
-        ospiteId = ospiti.get(nome.toLowerCase())
-        if (!ospiteId) {
-          const { data: creato, error } = await supabase.from('ospiti')
-            .insert({ nome, creato_da: profiloId }).select('id').single()
-          if (error) throw error
-          ospiteId = creato.id
-          ospiti.set(nome.toLowerCase(), ospiteId)
-        }
-      }
-      righe.push({
-        partita_id: partita.id,
-        utente_id: sonoIo ? profiloId : null,
-        ospite_id: ospiteId,
-        punteggio_totale: g.punteggio,
-        vincitore: g.vincitore,
-        ordine_turno: g.posizione,
-        primo_giocatore: g.posizione === 1,
-      })
+      if (sonoIo) { giaIo = true; return { g, utente: profiloId } }
+      const altro = g.username ? perUsername.get(g.username.trim().toLowerCase()) : null
+      if (altro && !accountUsati.has(altro)) { accountUsati.add(altro); return { g, utente: altro } }
+      return { g, ospite: (g.nome || 'Sconosciuto').trim() }
+    })
+  }
+
+  // Gli ospiti che mancano si creano tutti insieme, prima di scrivere.
+  const nuoviNomi = new Map()
+  for (const p of conGioco) {
+    for (const x of giocatoriDi(p)) {
+      if (x.ospite && !ospiti.get(x.ospite.toLowerCase())) nuoviNomi.set(x.ospite.toLowerCase(), x.ospite)
     }
+  }
+  const daCreare = [...nuoviNomi.values()]
+  for (let i = 0; i < daCreare.length; i += 200) {
+    const { data: creati, error } = await supabase.from('ospiti')
+      .insert(daCreare.slice(i, i + 200).map((nome) => ({ nome, creato_da: profiloId }))).select('id, nome')
+    if (error) throw error
+    for (const o of creati || []) ospiti.set(o.nome.trim().toLowerCase(), o.id)
+  }
+
+  const rigaPartita = (p) => ({
+    gioco_id: idGioco.get(p.gioco.bgg_id),
+    luogo_id: p.luogo ? luoghi.get(p.luogo.toLowerCase()) : null,
+    giocata_il: `${p.data}T20:00:00`,
+    durata_minuti: p.durata_minuti,
+    tipo_punteggio: 'punti',
+    note: p.note,
+    chiave_esterna: `bgg:${p.bgg_play_id}`,
+    impronta: impronta({ giocoId: idGioco.get(p.gioco.bgg_id), giocataIl: p.data, punteggi: p.giocatori.map((g) => g.punteggio) }),
+    registrata_da: profiloId,
+  })
+  const righeGiocatori = (p, partitaId) => {
+    const righe = giocatoriDi(p).map(({ g, utente: u, ospite }) => ({
+      partita_id: partitaId,
+      utente_id: u || null,
+      ospite_id: ospite ? ospiti.get(ospite.toLowerCase()) : null,
+      punteggio_totale: g.punteggio,
+      vincitore: g.vincitore,
+      ordine_turno: g.posizione,
+      primo_giocatore: g.posizione === 1,
+    }))
     // Una partita registrata su BGG senza giocatori è comunque di chi
-    // l'ha registrata: senza nessuno al tavolo non conterebbe per
-    // nessuno, mentre BGG e BG Stats la contano.
-    if (!righe.length) {
-      righe.push({ partita_id: partita.id, utente_id: profiloId, ospite_id: null })
-    }
+    // l'ha registrata: senza nessuno al tavolo non conterebbe per nessuno.
+    return righe.length ? righe : [{ partita_id: partitaId, utente_id: profiloId, ospite_id: null }]
+  }
+  // Tolta per un errore, non scartata da chi gioca: deve poter rientrare.
+  const togliOrfane = async (ids, playIds) => {
+    if (!ids.length) return
+    await supabase.from('partite').delete().in('id', ids)
+    try { await supabase.from('bgg_scartate').delete().eq('utente_id', profiloId).in('bgg_play_id', playIds) } catch { /* niente */ }
+  }
+
+  // A blocchi di 100: due chiamate al database per blocco invece di due
+  // o tre per partita (con migliaia di partite erano minuti di attesa).
+  let fatte = 0
+  const BLOCCO = 100
+  for (let i = 0; i < conGioco.length; i += BLOCCO) {
+    avanzamento({ fase: 'Importo', fatto: fatte, totale: conGioco.length })
+    const blocco = conGioco.slice(i, i + BLOCCO).filter((p) => idGioco.get(p.gioco.bgg_id))
+    if (!blocco.length) continue
+    let create = []
+    const { data, error: e1 } = await supabase.from('partite').insert(blocco.map(rigaPartita)).select('id, chiave_esterna')
+    if (!e1) create = data || []
+    else if (e1.code === '23505') {
+      // Qualcuna è già entrata (un import interrotto): una alla volta, saltando quelle.
+      for (const p of blocco) {
+        const { data: una, error } = await supabase.from('partite').insert(rigaPartita(p)).select('id, chiave_esterna').single()
+        if (error?.code === '23505') continue
+        if (error) throw error
+        create.push(una)
+      }
+    } else throw e1
+    if (!create.length) continue
+
+    const perChiave = new Map(blocco.map((p) => [`bgg:${p.bgg_play_id}`, p]))
+    const righe = create.flatMap((c) => righeGiocatori(perChiave.get(c.chiave_esterna), c.id))
     const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
     if (e2) {
-      // Senza giocatori la partita resterebbe orfana: si toglie, così
-      // alla prossima sincronizzazione viene reimportata intera.
-      await supabase.from('partite').delete().eq('id', partita.id)
-      // Tolta per un errore, non scartata da chi gioca: deve poter rientrare.
-      try { await supabase.from('bgg_scartate').delete().eq('utente_id', profiloId).eq('bgg_play_id', p.bgg_play_id) } catch { /* niente */ }
+      // Senza giocatori le partite resterebbero orfane: si tolgono, così
+      // alla prossima sincronizzazione vengono reimportate intere.
+      await togliOrfane(create.map((c) => c.id), create.map((c) => Number(String(c.chiave_esterna).slice(4))))
       throw e2
     }
-    fatte++
+    fatte += create.length
   }
 
   segnaSincro()
