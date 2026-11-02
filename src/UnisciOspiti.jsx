@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.7.0 - 202611021300 (unione fatta dal database; nascosti gli ospiti già uniti a un altro)
+// v3.8.0 - 202611021600 (elenco «Unioni fatte» con «separa»: l'ultima parola è di chi conosce le persone)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -8,6 +8,85 @@ import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
 import CercaScegli from './CercaScegli.jsx'
+import Sezione from './Sezione.jsx'
+
+const MOTIVI = {
+  'numero BGA': 'stesso numero BGA',
+  'partite in comune': 'partite in comune',
+  'a mano': 'unito a mano',
+  'prima del registro': 'unito in precedenza',
+}
+
+// Le unioni fatte (dal sistema o a mano), con la possibilità di separare
+// due persone che in realtà sono diverse: non verranno più riunite.
+function UnioniFatte({ onCambio }) {
+  const [unioni, setUnioni] = useState(null)
+  const [cerca, setCerca] = useState('')
+  const [errore, setErrore] = useState('')
+  const [messaggio, setMessaggio] = useState('')
+  const [lavorando, setLavorando] = useState(false)
+
+  async function carica() {
+    const { data, error } = await supabase.rpc('elenco_unioni')
+    if (error) {
+      setErrore(/elenco_unioni/.test(error.message || '') ? 'Manca lo script ospiti_doppi.sql (v1.1.0) nel database.' : error.message)
+      setUnioni([])
+    } else setUnioni(data || [])
+  }
+  useEffect(() => { carica() }, [])
+
+  async function separa(u) {
+    setErrore(''); setMessaggio('')
+    if (!confirm(`«${u.unito}» e «${u.dentro}» sono due persone diverse? Le partite di «${u.unito}» tornano a lui e il sistema non li unirà più.`)) return
+    setLavorando(true)
+    const { data, error } = await supabase.rpc('separa_ospite', { p_unione: u.id })
+    setLavorando(false)
+    if (error) { setErrore(error.message); return }
+    setMessaggio(data
+      ? `«${u.unito}» separato da «${u.dentro}»: ${data} ${data === 1 ? 'partita tornata' : 'partite tornate'}.`
+      : `«${u.unito}» separato da «${u.dentro}». Nessuna partita da riportare: se ne aveva, spostale a mano.`)
+    carica()
+    onCambio?.()
+  }
+
+  if (unioni === null) return <p className="aiuto">Carico…</p>
+  const q = cerca.trim().toLowerCase()
+  const elenco = q
+    ? unioni.filter((u) => `${u.unito} ${u.dentro}`.toLowerCase().includes(q))
+    : unioni
+  return (
+    <div>
+      <p className="aiuto">
+        Il sistema unisce da solo gli ospiti con lo stesso numero BGA e quelli che
+        compaiono nelle stesse partite registrate da due iscritti. Se due persone
+        sono diverse, tocca «separa»: tornano separate e non verranno più unite.
+      </p>
+      {errore && <div className="avviso errore">{errore}</div>}
+      {messaggio && <div className="avviso ok">{messaggio}</div>}
+      {unioni.length > 8 && (
+        <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}
+          placeholder="Cerca un nome" aria-label="Cerca fra le unioni" />
+      )}
+      {elenco.length === 0 ? (
+        <p className="aiuto">{q ? 'Nessuna unione con questo nome.' : 'Nessuna unione da mostrare.'}</p>
+      ) : (
+        <ul className="elenco elenco-scorrevole">
+          {elenco.slice(0, 80).map((u) => (
+            <li key={u.id}>
+              <div className="nome-giocatore">
+                <strong>{u.unito} → {u.dentro}</strong>
+                <span className="anno block">
+                  {MOTIVI[u.come] || u.come}{u.creato_da ? ` · inserito da ${u.creato_da}` : ''}
+                </span>
+              </div>
+              <button className="bottone-piatto" onClick={() => separa(u)} disabled={lavorando}>separa</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 export default function UnisciOspiti({ profilo, onRichieste }) {
   const [ospiti, setOspiti] = useState([])
@@ -268,9 +347,13 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
 
       <p className="aiuto">
         Il numero fra parentesi è quante partite ha quell&rsquo;ospite. Tieni quello con più
-        partite come destinazione: è la scelta che tocca meno righe. Le partite registrate
-        da altri non si possono spostare: quelle le deve sistemare chi le ha inserite.
+        partite come destinazione. Si spostano anche le partite registrate da altri; se
+        ti sbagli, l&rsquo;unione si annulla da «Unioni fatte».
       </p>
+
+      <Sezione id="ospiti-unioni" titolo="Unioni fatte" nota="separa chi è diverso">
+        <UnioniFatte onCambio={carica} />
+      </Sezione>
     </div>
   )
 }

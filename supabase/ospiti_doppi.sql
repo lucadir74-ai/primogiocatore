@@ -1,5 +1,5 @@
 -- Primo Giocatore - ospiti doppi: unione automatica
--- v1.0.2 - 202611021430 (il primo controllo non gira più qui: lo fa il server)
+-- v1.1.0 - 202611021600 (registro delle unioni e «separa»: chi conosce le persone ha l'ultima parola)
 -- Si può rilanciare senza danni. Non cancella partite né account.
 --
 -- Prima gli ospiti doppi li sistemava a mano un organizzatore. Ora:
@@ -19,6 +19,11 @@
 --    Se un controllo è ancora in corso, il successivo salta il giro.
 -- 5. «Unisci doppioni» nell'app passa dal database: funziona anche con
 --    ospiti creati da altri (solo per chi organizza).
+-- 6. Ogni unione si registra (ospiti_unioni) e si può annullare con
+--    «separa» dalla sezione Ospiti: le partite tornano indietro e la
+--    coppia finisce fra le «persone diverse» (ospiti_diversi), che il
+--    controllo non riunisce più. Le unioni fatte prima del registro si
+--    ricostruiscono da chi ha registrato le partite.
 -- Il collegamento ospite → account per nome resta quello di «Sei tu?».
 
 -- 1. Colonna dell'unione ---------------------------------------------------
@@ -26,6 +31,37 @@ alter table public.ospiti add column if not exists unito_in uuid
   references public.ospiti(id) on delete set null;
 create index if not exists ospiti_unito_in on public.ospiti (unito_in);
 create index if not exists ospiti_bga_id   on public.ospiti (bga_id);
+
+-- Registro delle unioni, per poterle annullare.
+create table if not exists public.ospiti_unioni (
+  id             uuid primary key default gen_random_uuid(),
+  da             uuid not null references public.ospiti(id) on delete cascade,
+  verso          uuid not null references public.ospiti(id) on delete cascade,
+  come           text not null,               -- numero BGA, partite in comune, a mano, prima del registro
+  quando         timestamptz not null default now(),
+  fatta_da       uuid,                        -- chi ha unito a mano
+  partecipazioni uuid[] not null default '{}',
+  iscrizioni     uuid[] not null default '{}',
+  disponibilita  uuid[] not null default '{}',
+  tavoli         uuid[] not null default '{}',
+  bga_preso      boolean not null default false,
+  annullata_il   timestamptz,
+  annullata_da   uuid
+);
+create index if not exists ospiti_unioni_da on public.ospiti_unioni (da);
+alter table public.ospiti_unioni enable row level security;
+-- Si legge e si scrive solo dalle funzioni qui sotto.
+
+-- Coppie che qualcuno ha detto essere persone diverse: mai più unite.
+create table if not exists public.ospiti_diversi (
+  a        uuid not null references public.ospiti(id) on delete cascade,
+  b        uuid not null references public.ospiti(id) on delete cascade,
+  deciso_da uuid,
+  deciso_il timestamptz not null default now(),
+  primary key (a, b),
+  check (a < b)
+);
+alter table public.ospiti_diversi enable row level security;
 
 -- 2. L'ospite «vero» in fondo alla catena delle unioni --------------------
 create or replace function public.ospite_radice(p uuid)
@@ -46,12 +82,17 @@ begin
 end $f$;
 
 -- 3. Unire un ospite dentro un altro (uso interno) ------------------------
-create or replace function public.unisci_dentro(p_da uuid, p_verso uuid)
+drop function if exists public.unisci_dentro(uuid, uuid);
+create or replace function public.unisci_dentro(p_da uuid, p_verso uuid, p_come text default 'a mano')
  returns boolean language plpgsql security definer set search_path to 'public'
 as $f$
 declare
   d ospiti%rowtype;
   t ospiti%rowtype;
+  v_part uuid[];
+  v_iscr uuid[];
+  v_disp uuid[];
+  v_tav  uuid[];
 begin
   p_da := ospite_radice(p_da);
   p_verso := ospite_radice(p_verso);
@@ -62,6 +103,11 @@ begin
 
   -- Numeri BGA diversi: persone diverse.
   if d.bga_id is not null and t.bga_id is not null and d.bga_id <> t.bga_id then
+    return false;
+  end if;
+  -- Qualcuno ha già detto che sono persone diverse.
+  if exists (select 1 from ospiti_diversi
+             where a = least(p_da, p_verso) and b = greatest(p_da, p_verso)) then
     return false;
   end if;
   -- Quello che resta è già un iscritto: si collega all'account.
@@ -77,6 +123,7 @@ begin
   where p.ospite_id = p_da
     and exists (select 1 from partecipazioni x
                 where x.partita_id = p.partita_id and x.ospite_id = p_verso);
+  select coalesce(array_agg(id), '{}') into v_part from partecipazioni where ospite_id = p_da;
   update partecipazioni set ospite_id = p_verso where ospite_id = p_da;
 
   -- Né due volte allo stesso tavolo o alla stessa serata.
@@ -84,14 +131,17 @@ begin
   where i.ospite_id = p_da
     and exists (select 1 from iscrizioni_tavolo x
                 where x.tavolo_id = i.tavolo_id and x.ospite_id = p_verso);
+  select coalesce(array_agg(id), '{}') into v_iscr from iscrizioni_tavolo where ospite_id = p_da;
   update iscrizioni_tavolo set ospite_id = p_verso where ospite_id = p_da;
 
   delete from disponibilita d2
   where d2.ospite_id = p_da
     and exists (select 1 from disponibilita x
                 where x.serata_id = d2.serata_id and x.ospite_id = p_verso);
+  select coalesce(array_agg(id), '{}') into v_disp from disponibilita where ospite_id = p_da;
   update disponibilita set ospite_id = p_verso where ospite_id = p_da;
 
+  select coalesce(array_agg(id), '{}') into v_tav from tavoli where dimostratore_ospite_id = p_da;
   update tavoli set dimostratore_ospite_id = p_verso where dimostratore_ospite_id = p_da;
 
   -- Le richieste «Sei tu?» passano all'ospite che resta.
@@ -110,6 +160,11 @@ begin
 
   update ospiti set unito_in = p_verso where unito_in = p_da;
   update ospiti set unito_in = p_verso where id = p_da;
+
+  insert into ospiti_unioni (da, verso, come, fatta_da, partecipazioni, iscrizioni,
+                             disponibilita, tavoli, bga_preso)
+  values (p_da, p_verso, p_come, auth.uid(), v_part, v_iscr, v_disp, v_tav,
+          t.bga_id is null and d.bga_id is not null);
   return true;
 end $f$;
 
@@ -255,8 +310,8 @@ as $f$
 declare
   r record;
   i int;
-  a uuid;
-  b uuid;
+  va uuid;
+  vb uuid;
   da uuid;
   verso uuid;
   n_bga int := 0;
@@ -278,7 +333,7 @@ begin
     group by s.bga_id having count(*) > 1
   loop
     for i in 2 .. array_length(r.ids, 1) loop
-      if unisci_dentro(r.ids[i], r.ids[1]) then n_bga := n_bga + 1; end if;
+      if unisci_dentro(r.ids[i], r.ids[1], 'numero BGA') then n_bga := n_bga + 1; end if;
     end loop;
   end loop;
 
@@ -347,20 +402,22 @@ begin
     )
     select oa, ob from prove where volte >= 2
   loop
-    a := ospite_radice(r.oa);
-    b := ospite_radice(r.ob);
-    continue when a is null or b is null or a = b;
+    va := ospite_radice(r.oa);
+    vb := ospite_radice(r.ob);
+    continue when va is null or vb is null or va = vb;
+    continue when exists (select 1 from ospiti_diversi
+                          where ospiti_diversi.a = least(va, vb) and ospiti_diversi.b = greatest(va, vb));
     -- Mai stati insieme nella stessa partita.
     continue when exists (select 1 from partecipazioni x
                           join partecipazioni y on y.partita_id = x.partita_id
-                          where x.ospite_id = a and y.ospite_id = b);
+                          where x.ospite_id = va and y.ospite_id = vb);
     -- Resta quello con il numero BGA, altrimenti quello con più partite.
-    select id into verso from ospiti where id in (a, b)
+    select id into verso from ospiti where id in (va, vb)
     order by (bga_id is not null) desc,
              (select count(*) from partecipazioni pa where pa.ospite_id = ospiti.id) desc, id
     limit 1;
-    da := case when verso = a then b else a end;
-    if unisci_dentro(da, verso) then n_partite := n_partite + 1; end if;
+    da := case when verso = va then vb else va end;
+    if unisci_dentro(da, verso, 'partite in comune') then n_partite := n_partite + 1; end if;
   end loop;
 
   return jsonb_build_object('stesso_numero_bga', n_bga,
@@ -387,15 +444,99 @@ begin
   if b1 is not null and b2 is not null and b1 <> b2 then
     raise exception 'Hanno numeri BGA diversi: sono due persone diverse.';
   end if;
-  if not unisci_dentro(p_da, p_verso) then
-    raise exception 'Unione non riuscita.';
+  if not unisci_dentro(p_da, p_verso, 'a mano') then
+    raise exception 'Unione non riuscita: forse qualcuno li ha segnati come persone diverse.';
   end if;
 end $f$;
 
-revoke execute on function public.unisci_dentro(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.unisci_dentro(uuid, uuid, text) from public, anon, authenticated;
 revoke execute on function public.riconcilia_ospiti() from public, anon, authenticated;
 revoke execute on function public.unisci_ospiti(uuid, uuid) from public, anon;
 grant execute on function public.unisci_ospiti(uuid, uuid) to authenticated;
+
+-- 7b. Le unioni fatte prima del registro --------------------------------
+-- Si ricostruiscono da chi ha registrato le partite: le partecipazioni
+-- dell'ospite che resta, nelle partite registrate da chi aveva creato
+-- l'ospite unito. Se li aveva creati la stessa persona non si può dire:
+-- separando torna solo il nome.
+insert into public.ospiti_unioni (da, verso, come, quando, partecipazioni)
+select o.id, o.unito_in, 'prima del registro', now(),
+       coalesce((select array_agg(pa.id)
+                 from partecipazioni pa join partite pt on pt.id = pa.partita_id
+                 where pa.ospite_id = public.ospite_radice(o.id)
+                   and pt.registrata_da = o.creato_da
+                   and r.creato_da is distinct from o.creato_da), '{}')
+from public.ospiti o
+join public.ospiti r on r.id = public.ospite_radice(o.id)
+where o.unito_in is not null
+  and not exists (select 1 from public.ospiti_unioni u where u.da = o.id and u.annullata_il is null);
+
+-- 7c. Elenco delle unioni per la sezione Ospiti ---------------------------
+create or replace function public.elenco_unioni()
+ returns table(id uuid, unito text, dentro text, come text, quando timestamptz,
+               partite int, creato_da text)
+ language sql stable security definer set search_path to 'public'
+as $f$
+  select u.id, d.nome, r.nome, u.come, u.quando, cardinality(u.partecipazioni),
+         (select coalesce(p.nickname, p.nome) from profili p where p.id = d.creato_da)
+  from ospiti_unioni u
+  join ospiti d on d.id = u.da
+  join ospiti r on r.id = ospite_radice(u.verso)
+  where u.annullata_il is null
+    and d.unito_in is not null
+    and (e_organizzatore() or d.creato_da = auth.uid())
+  order by u.quando desc, d.nome
+  limit 500;
+$f$;
+
+-- 7d. Separa: annulla un'unione --------------------------------------------
+create or replace function public.separa_ospite(p_unione uuid)
+ returns int language plpgsql security definer set search_path to 'public'
+as $f$
+declare
+  u ospiti_unioni%rowtype;
+  d ospiti%rowtype;
+  v_radice uuid;
+  v_tornate int;
+begin
+  if auth.uid() is null then raise exception 'Serve un account.'; end if;
+  select * into u from ospiti_unioni where id = p_unione and annullata_il is null;
+  if not found then raise exception 'Unione non trovata o già annullata.'; end if;
+  select * into d from ospiti where id = u.da;
+  if not (e_organizzatore() or d.creato_da = auth.uid()) then
+    raise exception 'Solo chi organizza o chi ha creato l''ospite può separarlo.';
+  end if;
+
+  v_radice := ospite_radice(u.verso);
+  -- Prima l'ospite torna libero, poi le sue cose tornano a lui.
+  update ospiti set unito_in = null where id = u.da;
+
+  update partecipazioni pa set ospite_id = u.da
+  where pa.id = any(u.partecipazioni) and pa.ospite_id = v_radice
+    and not exists (select 1 from partecipazioni x
+                    where x.partita_id = pa.partita_id and x.ospite_id = u.da);
+  get diagnostics v_tornate = row_count;
+  update iscrizioni_tavolo set ospite_id = u.da
+  where id = any(u.iscrizioni) and ospite_id = v_radice;
+  update disponibilita set ospite_id = u.da
+  where id = any(u.disponibilita) and ospite_id = v_radice;
+  update tavoli set dimostratore_ospite_id = u.da
+  where id = any(u.tavoli) and dimostratore_ospite_id = v_radice;
+  if u.bga_preso then
+    update ospiti set bga_id = null where id = v_radice and bga_id = d.bga_id;
+  end if;
+
+  update ospiti_unioni set annullata_il = now(), annullata_da = auth.uid() where id = u.id;
+  insert into ospiti_diversi (a, b, deciso_da)
+  values (least(u.da, v_radice), greatest(u.da, v_radice), auth.uid())
+  on conflict do nothing;
+  return v_tornate;
+end $f$;
+
+revoke execute on function public.elenco_unioni() from public, anon;
+grant execute on function public.elenco_unioni() to authenticated;
+revoke execute on function public.separa_ospite(uuid) from public, anon;
+grant execute on function public.separa_ospite(uuid) to authenticated;
 
 -- 8. Ogni ora sul server ---------------------------------------------------
 select cron.unschedule(jobid) from cron.job where jobname = 'pg-riconcilia-ospiti';
