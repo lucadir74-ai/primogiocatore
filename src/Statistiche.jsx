@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.22.0 - 202610311000 (partita cancellata: la cancellazione parte subito anche verso BGG)
+// v3.22.1 - 202611030500 (singolare e plurale: «1 partita», «1 vinta», «1 gioco»)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useState } from 'react'
@@ -692,7 +692,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
+        <Numerone cifra={d.sue.length} testo={(d.sue.length) === 1 ? 'partita' : 'partite'} info={spiega('partite')} />
         {ipg && (
           <Numerone
             cifra={ipg.ipg}
@@ -700,7 +700,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
             info={<>{spiega('ipg')}<p>Quello globale è la media degli IPG di ogni gioco: contano di più i giochi complessi e quelli giocati spesso. In classifica entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.</p></>}
           />
         )}
-        <Numerone cifra={d.vinte} testo={`vinte (${perc(d.vinte, d.competitive.length)})`} info={spiega('vinte', d)} />
+        <Numerone cifra={d.vinte} testo={`${d.vinte === 1 ? 'vinta' : 'vinte'} (${perc(d.vinte, d.competitive.length)})`} info={spiega('vinte', d)} />
         <Numerone
           cifra={d.rendimento != null ? `${d.rendimento.toFixed(2)}×` : '—'}
           testo="rispetto all'atteso"
@@ -708,7 +708,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
           info={spiega('atteso', d)}
         />
         <Numerone cifra={d.piazz != null ? `${Math.round(d.piazz * 100)}%` : '—'} testo="degli avversari finiti dietro" info={spiega('dietro')} />
-        <Numerone cifra={d.giochiDiversi} testo="giochi diversi" info={spiega('giochi')} />
+        <Numerone cifra={d.giochiDiversi} testo={(d.giochiDiversi) === 1 ? 'gioco' : 'giochi diversi'} info={spiega('giochi')} />
         <Numerone cifra={durata(d.minuti)} testo="al tavolo" info={spiega('alTavolo')} />
       </div>
       <p className="aiuto">Tocca un numero per sapere cosa vuol dire.</p>
@@ -734,7 +734,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGioco(g.id)}>{g.nome}</button>
                   <span className="anno block">
-                    {g.competitive} partite · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
+                    {g.competitive} {g.competitive === 1 ? 'partita' : 'partite'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
                     {ipgGioco(g.id) && ` · IPG ${ipgGioco(g.id).ipg}${ipgGioco(g.id).posizione ? ` (${ipgGioco(g.id).posizione}°)` : ''}`}
                   </span>
                 </div>
@@ -759,7 +759,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
                   {g.nome}
                 </button>
                 <span className="anno block">
-                  {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {g.vinte} vinte
+                  {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
                   {r != null ? ` · ${r.toFixed(2)}× atteso` : ''}
                 </span>
                 {rip && <span className="anno block">{rip}</span>}
@@ -784,7 +784,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
               <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(a.chiave)}>{a.nome}</button>
-              <span className="anno block">{a.insieme} partite insieme</span>
+              <span className="anno block">{a.insieme} {a.insieme === 1 ? 'partita' : 'partite'} insieme</span>
             </div>
             <span className={`bilancio${a.sue > a.altrui ? ' avanti' : a.sue < a.altrui ? ' indietro' : ''}`}>
               {a.sue} – {a.altrui}
@@ -1004,8 +1004,8 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
-        <Numerone cifra={d.giocatori.length} testo="giocatori" info={spiega('giocatori')} />
+        <Numerone cifra={d.sue.length} testo={(d.sue.length) === 1 ? 'partita' : 'partite'} info={spiega('partite')} />
+        <Numerone cifra={d.giocatori.length} testo={(d.giocatori.length) === 1 ? 'giocatore' : 'giocatori'} info={spiega('giocatori')} />
         {mioIpg && (
           <Numerone
             cifra={mioIpg.ipg}
@@ -1169,9 +1169,9 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={d.sue.length} testo="partite" info={spiega('partite')} />
-        <Numerone cifra={d.giochi.length} testo="giochi diversi" info={spiega('giochi')} />
-        <Numerone cifra={d.persone.length} testo="giocatori" info={spiega('giocatori')} />
+        <Numerone cifra={d.sue.length} testo={(d.sue.length) === 1 ? 'partita' : 'partite'} info={spiega('partite')} />
+        <Numerone cifra={d.giochi.length} testo={(d.giochi.length) === 1 ? 'gioco' : 'giochi diversi'} info={spiega('giochi')} />
+        <Numerone cifra={d.persone.length} testo={(d.persone.length) === 1 ? 'giocatore' : 'giocatori'} info={spiega('giocatori')} />
         {d.durataMedia != null && <Numerone cifra={durata(d.durataMedia)} testo="durata media" info={spiega('durataMedia')} />}
       </div>
 
@@ -1213,9 +1213,9 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
   return (
     <>
       <div className="numeroni">
-        <Numerone cifra={partite.length} testo="partite" info={spiega('partite')} />
-        <Numerone cifra={d.giochi.length} testo="giochi diversi" info={spiega('giochi')} />
-        <Numerone cifra={d.persone.length} testo="giocatori" info={spiega('giocatori')} />
+        <Numerone cifra={partite.length} testo={(partite.length) === 1 ? 'partita' : 'partite'} info={spiega('partite')} />
+        <Numerone cifra={d.giochi.length} testo={(d.giochi.length) === 1 ? 'gioco' : 'giochi diversi'} info={spiega('giochi')} />
+        <Numerone cifra={d.persone.length} testo={(d.persone.length) === 1 ? 'giocatore' : 'giocatori'} info={spiega('giocatori')} />
         <Numerone cifra={durata(d.minuti)} testo="al tavolo" info={spiega('alTavolo')} />
       </div>
 
