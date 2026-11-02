@@ -1,5 +1,5 @@
 // Primo Giocatore - partite condivise
-// v1.2.0 - 202610062330
+// v1.3.0 - 202611030200 (serve una prova per fondere due copie: punteggi poco comuni o un account in comune)
 //
 // La stessa serata registrata da due persone (ognuna nel proprio
 // archivio, per esempio importando BG Stats o sincronizzando BGG)
@@ -11,8 +11,10 @@
 // - entrambe con i punteggi: gli stessi punteggi, nello stesso giorno
 //   o in giorni vicini. Il giorno vicino serve per le serate che
 //   finiscono dopo mezzanotte: BG Stats salva l'ora, BGG solo la data,
-//   e la stessa partita può cadere su due date diverse;
-// - a una mancano i punteggi: stesso giorno e stesso numero di giocatori.
+//   e la stessa partita può cadere su due date diverse. Se i punteggi
+//   sono banali (1-0, 7-5) serve anche un account in comune;
+// - a una mancano i punteggi: stesso giorno, stesso numero di giocatori
+//   e almeno un account in comune.
 // L'accoppiamento è uno a uno: tre partite uguali nello stesso giorno
 // in due archivi restano tre, non una.
 
@@ -25,11 +27,35 @@ const punteggiDi = (p) => (p.partecipazioni || [])
   .map(Number)
   .sort((a, b) => a - b)
 
+// Gli account presenti in una partita (giocatori con account o ospiti
+// collegati a un account), più chi l'ha registrata.
+function accountDi(p) {
+  const s = new Set()
+  if (p.registrata_da) s.add(p.registrata_da)
+  for (const x of p.partecipazioni || []) {
+    const k = x.utente_id || x.ospiti?.utente_collegato
+    if (k) s.add(k)
+  }
+  return s
+}
+const inComune = (a, b) => [...a._account].some((k) => b._account.has(k))
+// Punteggi che difficilmente si ripetono per caso: un 1-0 o un 7-5 sì,
+// un 82-75-61 no.
+const distintivi = (punti) => punti.length >= 2 && punti.reduce((t, v) => t + Math.abs(v), 0) >= 20
+
+// Due copie sono la stessa partita solo con una prova: gli stessi
+// punteggi poco comuni, oppure almeno una persona con account in comune
+// (chi registra compare nell'altra copia). Senza prova restano due:
+// due tavoli dello stesso gioco nella stessa serata non si fondono più.
 function compatibili(a, b, stessoGiorno) {
   const pa = a._punti
   const pb = b._punti
-  if (pa.length && pb.length) return pa.length === pb.length && pa.every((v, i) => v === pb[i])
-  return stessoGiorno && (a.p.partecipazioni || []).length === (b.p.partecipazioni || []).length
+  const comune = inComune(a, b)
+  if (pa.length && pb.length) {
+    const uguali = pa.length === pb.length && pa.every((v, i) => v === pb[i])
+    return uguali && (comune || distintivi(pa))
+  }
+  return stessoGiorno && comune && (a.p.partecipazioni || []).length === (b.p.partecipazioni || []).length
 }
 
 // preferiti: chi registra le copie da tenere, in ordine di preferenza
@@ -58,7 +84,7 @@ export function unisciCondivise(partite, preferiti = [], suUnione = null) {
     if (new Set(gruppo.map((x) => x.p.registrata_da)).size < 2) continue
 
     const ordinate = gruppo
-      .map((x) => ({ ...x, _giorno: numeroGiorno(giornoDi(x.p)), _punti: punteggiDi(x.p) }))
+      .map((x) => ({ ...x, _giorno: numeroGiorno(giornoDi(x.p)), _punti: punteggiDi(x.p), _account: accountDi(x.p) }))
       .sort((a, b) => rango(a.p) - rango(b.p) || a.i - b.i)
 
     const tenutePerGiorno = new Map()   // numero giorno -> [{ ..., assorbiti }]
