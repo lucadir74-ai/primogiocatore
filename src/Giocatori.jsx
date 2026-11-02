@@ -1,5 +1,5 @@
 // Primo Giocatore - Giocatori
-// v1.1.0 - 202610211000 (più veloce: query più leggera, dati ricordati fra una visita e l'altra, elenco a pagine)
+// v1.1.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
 //
 // Le persone con cui hai giocato: chi ha un account e chi è ospite.
 // Un ospite collegato a un account ("sono io") è la stessa persona e
@@ -47,7 +47,7 @@ export default function Giocatori({ profilo, onStatistiche }) {
           )
         `)),
         tutteLeRighe(() => supabase.from('ospiti')
-          .select('id, nome, utente_collegato').eq('creato_da', profilo.id)),
+          .select('id, nome, utente_collegato').eq('creato_da', profilo.id).is('unito_in', null)),
       ])
 
       // Gli account collegati agli ospiti non arrivano dalla partita:

@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.6.0 - 202610210140 (ospiti che sembrano iscritti: stesso nome o stesso numero BGA di un account, si collegano con un tocco)
+// v3.7.0 - 202611021300 (unione fatta dal database; nascosti gli ospiti già uniti a un altro)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -33,8 +33,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       setPersone(pr)
       const conteggio = new Map()
       for (const r of p) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
-      // Quelli già collegati a un account non sono più ospiti.
-      setOspiti(o.filter((x) => !x.utente_collegato)
+      // Quelli già collegati a un account, o uniti a un altro ospite,
+      // non sono più ospiti da gestire.
+      setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in)
         .map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
     } catch (e) {
       setErrore(e.message)
@@ -117,40 +118,20 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     }
     const a = ospiti.find((x) => x.id === daUnire)
     const b = ospiti.find((x) => x.id === verso)
-    if (!confirm(`Unire «${a.nome}» dentro «${b.nome}»? «${a.nome}» sparisce e le sue ${a.partite} partite passano a «${b.nome}». Non si torna indietro.`)) return
+    if (!confirm(`Unire «${a.nome}» dentro «${b.nome}»? «${a.nome}» sparisce e le sue partite passano a «${b.nome}». Non si torna indietro.`)) return
 
     setLavorando(true)
     try {
-      // Se i due compaiono nella stessa partita, una delle due righe va
-      // eliminata: nel database una persona non può stare due volte
-      // allo stesso tavolo.
-      const { data: righeA } = await supabase
-        .from('partecipazioni').select('id, partita_id').eq('ospite_id', daUnire)
-      const { data: righeB } = await supabase
-        .from('partecipazioni').select('partita_id').eq('ospite_id', verso)
-
-      const partiteDiB = new Set((righeB || []).map((r) => r.partita_id))
-      const doppie = (righeA || []).filter((r) => partiteDiB.has(r.partita_id))
-
-      if (doppie.length) {
-        const { error } = await supabase
-          .from('partecipazioni').delete().in('id', doppie.map((r) => r.id))
-        if (error) throw error
+      // Lo fa il database: sposta anche le partite, i tavoli e le serate
+      // registrati da altri, e se i due erano nella stessa partita ne
+      // tiene uno solo. Il nome unito resta collegato: chi lo usa ancora
+      // finisce su «${b.nome}».
+      const { error } = await supabase.rpc('unisci_ospiti', { p_da: daUnire, p_verso: verso })
+      if (error) {
+        if (/unisci_ospiti/.test(error.message || '')) throw new Error('Manca lo script ospiti_doppi.sql nel database.')
+        throw error
       }
-
-      const { error: e1 } = await supabase
-        .from('partecipazioni').update({ ospite_id: verso }).eq('ospite_id', daUnire)
-      if (e1) throw e1
-
-      await supabase.from('iscrizioni_tavolo').update({ ospite_id: verso }).eq('ospite_id', daUnire)
-
-      const { error: e3 } = await supabase.from('ospiti').delete().eq('id', daUnire)
-      if (e3) throw e3
-
-      setMessaggio(
-        `«${a.nome}» unito in «${b.nome}»` +
-        (doppie.length ? `, ${doppie.length} doppioni nella stessa partita eliminati` : '') + '.'
-      )
+      setMessaggio(`«${a.nome}» unito in «${b.nome}».`)
       setDaUnire(''); setVerso('')
       carica()
     } catch (e) {

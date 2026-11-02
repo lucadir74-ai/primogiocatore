@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.21.0 - 202610300000 (giocatori cercati anche per nome, cognome e nomi collegati; ospiti nuovi con nome e cognome)
+// v4.22.0 - 202611021300 (non mostra gli ospiti uniti a un altro)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -163,15 +163,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     const [g, p, o, f, l, c] = await Promise.all([
       giochiMiei(profilo.id, '*'),
       tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
-      tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato').order('nome')),
+      tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato, unito_in').order('nome')),
       tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
       tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
       tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
     ])
     setCatalogo(g)
     setPersone(p)
-    // Gli ospiti già collegati a un account non si mostrano: c'è la persona.
-    setOspiti(o.filter((x) => !x.utente_collegato))
+    // Gli ospiti già collegati a un account, o uniti a un altro ospite,
+    // non si mostrano: c'è la persona.
+    setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in))
 
     // I nomi con cui le persone erano state inserite come ospiti
     // («kaihla», «gess»...): scrivendoli si trova l'account giusto.

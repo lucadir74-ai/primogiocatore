@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del dimostratore di un tavolo
-// v1.0.0 - 202609301500
+// v1.0.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
 //
 // Il dimostratore si prende fra i dimostratori: chi ha un account ed è
 // segnato come tale, oppure un ospite dimostratore. Se la persona c'è
@@ -28,7 +28,7 @@ export default function CercaDimostratore({ profilo, disponibili = [], onScegli,
         supabase.from('profili').select('id, nome, nickname, dimostratore')
           .or(`nome.ilike.%${q}%,nickname.ilike.%${q}%`).limit(12),
         supabase.from('ospiti').select('id, nome, dimostratore')
-          .ilike('nome', `%${q}%`).is('utente_collegato', null).limit(12),
+          .ilike('nome', `%${q}%`).is('utente_collegato', null).is('unito_in', null).limit(12),
       ])
       const tutti = [
         ...(p.data || []).map((x) => ({ ...daProfilo(x), dimostratore: x.dimostratore })),

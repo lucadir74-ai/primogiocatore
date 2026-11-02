@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.10.0 - 202609302300
+// v4.10.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
 //
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
@@ -84,7 +84,7 @@ export default function Serate({ profilo }) {
       supabase.from('profili').select('id, nome, nickname')
         .eq('dimostratore', true),
       supabase.from('ospiti').select('id, nome')
-        .eq('dimostratore', true).is('utente_collegato', null),
+        .eq('dimostratore', true).is('utente_collegato', null).is('unito_in', null),
     ])
     if (p.error || o.error) { setErrore((p.error || o.error).message); return }
     setDimostratori([
@@ -105,7 +105,7 @@ export default function Serate({ profilo }) {
         .eq('dimostratore', false).limit(8),
       supabase.from('ospiti').select('id, nome')
         .ilike('nome', `%${q}%`)
-        .eq('dimostratore', false).is('utente_collegato', null).limit(8),
+        .eq('dimostratore', false).is('utente_collegato', null).is('unito_in', null).limit(8),
     ])
     return [
       ...(p.data || []).map((x) => ({ chiave: `p:${x.id}`, tipo: 'profilo', id: x.id, nome: daMostrare(x) })),
