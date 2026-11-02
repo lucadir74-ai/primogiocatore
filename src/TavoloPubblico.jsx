@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.9.0 - 202611030100 (iscrizione e contatti in un passaggio solo; senza account si va in attesa)
+// v4.10.0 - 202611030300 (tavolo e iscritti da tavolo_pubblico: senza account si vede solo il tavolo del link)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -43,30 +43,18 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
 
   async function carica() {
     setCaricamento(true)
-    const { data, error } = await supabase
-      .from('tavoli')
-      .select(`
-        id, titolo, descrizione, inizio, posti_min, posti_max, su_approvazione, stato, pubblicato,
-        dimostratore_nome, dimostratore_foto, chiusura_iscrizioni, note,
-        giochi:tavoli_gioco_id_fkey ( nome, immagine_url, immagine_grande, min_giocatori, max_giocatori, durata_minuti ),
-        luoghi ( nome, tipo, piattaforma, creato_da, nome_per_altri )
-      `)
-      .eq('id', tavoloId)
-      .maybeSingle()
+    // Tavolo, gioco, luogo e iscritti in una chiamata sola: funziona anche
+    // senza account (serve lo script ultimi_ritocchi.sql).
+    const { data: pagina, error } = await supabase.rpc('tavolo_pubblico', { p_tavolo: tavoloId })
+    const data = pagina?.tavolo || null
 
-    if (error) setErrore(error.message)
+    if (error) setErrore(/tavolo_pubblico/.test(error.message) ? 'Manca lo script ultimi_ritocchi.sql nel database.' : error.message)
     else if (!data) setErrore('Questo tavolo non esiste, oppure non è più pubblicato.')
     else {
       setTavolo(data)
       const { data: po } = await supabase.rpc('posizioni_tavoli', { p_tavolo: String(tavoloId) })
       setPosizione(Array.isArray(po) && po[0] ? po[0] : null)
-      const { data: is } = await supabase
-        .from('iscrizioni_tavolo')
-        .select('id, stato, nome_visibile, utente_id, ruolo, disposto_a_dimostrare, profili:utente_id ( nome, nickname )')
-        .eq('tavolo_id', tavoloId)
-        .neq('stato', 'annullato')
-        .order('creata_il')
-      setIscritti(is || [])
+      setIscritti(pagina.iscritti || [])
     }
     setCaricamento(false)
   }

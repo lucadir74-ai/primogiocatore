@@ -1,5 +1,5 @@
 // Primo Giocatore - collegamento con Board Game Arena
-// v1.5.0 - 202611022300 (un rifiuto momentaneo di BGA non segna più la sessione scaduta; si riprova con i cookie riletti)
+// v1.6.0 - 202611030300 (conta le partite scartate: annullate e finite per abbandono)
 //
 // Chi vuole collega il proprio account BGA una volta, con nome e
 // password. Il server entra su BGA come farebbe il browser, prende il
@@ -248,6 +248,8 @@ export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
 
   const inizio = Date.now()
   const tavoli = []
+  // Le partite che l'import scarta apposta, per dirlo a chi importa.
+  const scartate = { annullate: 0, abbandonate: 0 }
   let pagina = prima
   let continua = null
   // BGA dà 10 partite a pagina: il limite vero è il tempo (TEMPO_LETTURA),
@@ -273,6 +275,8 @@ export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
       if (fino && Number(t.end) < fino) { vecchie = true; continue }
       const c = compattaTavolo(t)
       if (c) tavoli.push(c)
+      else if (String(t.cancelled) === '1') scartate.annullate++
+      else scartate.abbandonate++
     }
     if (vecchie) break
     await new Promise((ok) => setTimeout(ok, PAUSA_PAGINE))
@@ -285,7 +289,7 @@ export async function leggi(db, utenteId, { fino = 0, da = 1 }) {
     ultimo_errore: null,
   }).eq('utente_id', utenteId)
 
-  return { giocatore: id, nome: s.bga_nome || '', tavoli, completo: !fino, continua }
+  return { giocatore: id, nome: s.bga_nome || '', tavoli, scartate, completo: !fino, continua }
 }
 
 /* ---------------- Ingresso ---------------- */

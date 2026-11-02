@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.4.1 - 202611022200 (password BGA con il tasto «mostra»)
+// v3.5.0 - 202611030300 (barra nella rilettura dello storico; quante partite BGA sono scartate e perché)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -144,7 +144,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       setSalto([])
       setAvanzamento(null)
       if (!a.tavoli.length) {
-        setEsito({ niente: true, giaImportati: a.giaImportati })
+        setEsito({ niente: true, giaImportati: a.giaImportati, scartate: a.scartate })
         setFase('fatto')
         azzeraSospese()
       } else if (a.giochiDaAbbinare.length) setFase('giochi')
@@ -210,7 +210,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
     try {
       const r = await inEsclusiva(() => importaBga({ profilo, analisi: a, classi: c, incerteNuove, avanzamento: setAvanzamento }))
       setAvanzamento(null)
-      setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati })
+      setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati, scartate: a.scartate })
       setFase('fatto')
       azzeraSospese()
     } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('anteprima') }
@@ -399,6 +399,12 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
             {classi.senzaGioco > 0 && (
               <li><span><strong>{classi.senzaGioco}</strong> di giochi lasciati fuori: saltate per ora</span></li>
             )}
+            {analisi.scartate?.abbandonate > 0 && (
+              <li><span><strong>{analisi.scartate.abbandonate}</strong> finite per abbandono o tempo scaduto: non si importano</span></li>
+            )}
+            {analisi.scartate?.annullate > 0 && (
+              <li><span><strong>{analisi.scartate.annullate}</strong> annullate su BGA: non si importano</span></li>
+            )}
           </ul>
           {classi.incerte.length > 0 && (
             <label className="aiuto" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -419,6 +425,15 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
               : `Fatto: ${esito.nuove} partite nuove, ${esito.collegate} già presenti collegate a BGA.`}
             {esito.senzaGioco ? ` ${esito.senzaGioco} partite di giochi lasciati fuori torneranno la prossima volta.` : ''}
           </div>
+          {(esito.scartate?.abbandonate > 0 || esito.scartate?.annullate > 0) && (
+            <p className="aiuto">
+              Non importate perché su BGA non sono finite normalmente:
+              {esito.scartate.abbandonate ? ` ${esito.scartate.abbandonate} per abbandono o tempo scaduto` : ''}
+              {esito.scartate.abbandonate && esito.scartate.annullate ? ',' : ''}
+              {esito.scartate.annullate ? ` ${esito.scartate.annullate} annullate` : ''}.
+              Il contatore del profilo BGA le conta lo stesso: per questo i due numeri non coincidono.
+            </p>
+          )}
           <p className="aiuto">
             Da ora la sincronizzazione con BGG non riporta più le partite di Board Game Arena: arrivano solo da qui.
           </p>

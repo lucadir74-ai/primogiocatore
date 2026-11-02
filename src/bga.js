@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.9.0 - 202611011530 (import: un tavolo che hai già con la stessa chiave non si reinserisce, si collega)
+// v3.10.0 - 202611030300 (barra della rilettura stimata sulle partite già importate; conteggio delle partite scartate)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -276,6 +276,7 @@ export async function analizzaBga(profilo, arrivo, memoria = null) {
     completo: Boolean(arrivo.completo),
     tavoli: daGuardare,
     giaImportati: unici.length - daGuardare.length,
+    scartate: arrivo.scartate || null,   // annullate e abbandonate (solo dal collegamento con password)
     mappa,
     giochiDaAbbinare,
     righe,
@@ -578,19 +579,36 @@ export async function leggiDaServer(profilo, { tutto = false, dal = null, avanza
   const base = await baseSegnalibro(profilo)
   const fino = tutto || !base.fino ? 0 : (dal ?? base.fino - 7 * 86400)
   const tavoli = []
+  const scartate = { annullate: 0, abbandonate: 0 }
   let da = 1
   let ultima = null
+  // Per la barra dello storico: BGA non dice in anticipo quante partite ci
+  // sono, si stima con quelle già importate (alla prima importazione no).
+  let stima = 0
+  if (!fino) {
+    try {
+      const { count } = await supabase.from('partite').select('id', { count: 'exact', head: true })
+        .eq('registrata_da', profilo.id).not('bga_tavolo', 'is', null)
+      stima = count || 0
+    } catch { stima = 0 }
+  }
   for (let giro = 0; giro < 200; giro++) {
-    avanzamento({ fase: fino ? 'Cerco le partite nuove su BGA' : `Leggo tutto lo storico BGA: ${tavoli.length} partite`, fatto: 0, totale: 1 })
+    const lette = tavoli.length + scartate.annullate + scartate.abbandonate
+    avanzamento(fino
+      ? { fase: 'Cerco le partite nuove su BGA', fatto: 0, totale: 1 }
+      : { fase: `Leggo tutto lo storico BGA: ${lette} partite${stima ? ` (circa ${stima} già importate)` : ''}`,
+          fatto: stima ? Math.min(tavoli.length, stima) : 0, totale: stima || 1 })
     const r = await chiamaBga('leggi', { fino, da })
     if (r.scaduta) return { scaduta: true }
     if (r.collegato === false) return { scollegato: true }
     tavoli.push(...r.tavoli)
+    scartate.annullate += r.scartate?.annullate || 0
+    scartate.abbandonate += r.scartate?.abbandonate || 0
     ultima = r
     if (!r.continua) break
     da = r.continua
   }
-  return { tipo: 'pg-bga-dati', giocatore: ultima.giocatore, nome: ultima.nome, tavoli, completo: !fino }
+  return { tipo: 'pg-bga-dati', giocatore: ultima.giocatore, nome: ultima.nome, tavoli, scartate, completo: !fino }
 }
 
 const CHIAVE_ORA = 'primo-giocatore:bga-ultima-sincro'
