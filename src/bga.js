@@ -621,10 +621,11 @@ const OGNI_ORE_BGA = 1
 // tavoli di giochi da abbinare e le partite incerte.
 export async function importaSicure(profilo, arrivo, memoria) {
   const a = await analizzaBga(profilo, arrivo, memoria)
-  if (!a.tavoli.length) return { nuove: 0, inSospeso: 0 }
+  if (!a.tavoli.length) return { nuove: 0, inSospeso: 0, senzaGioco: 0, incerte: 0 }
   const c = await classificaBga(a)
   const inSospeso = c.incerte.length + c.senzaGioco
-  if (!c.nuove.length && !c.collegate.length) return { nuove: 0, inSospeso }
+  const dettaglio = { senzaGioco: c.senzaGioco, incerte: c.incerte.length }
+  if (!c.nuove.length && !c.collegate.length) return { nuove: 0, inSospeso, ...dettaglio }
   const r = await importaBga({ profilo, analisi: a, classi: { ...c, incerte: [] } })
   // L'archivio in memoria resta in pari con quello che si è appena
   // scritto: una partita collegata non va ricollegata al giro dopo, e un
@@ -637,7 +638,7 @@ export async function importaSicure(profilo, arrivo, memoria) {
     }
     for (const x of r.create || []) memoria.righe.push({ id: x.id, bga_tavolo: x.bga_tavolo, partecipazioni: [] })
   }
-  return { nuove: r.nuove, inSospeso }
+  return { nuove: r.nuove, inSospeso, ...dettaglio }
 }
 
 function leggiStorico(chiave) {
