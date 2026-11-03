@@ -176,6 +176,14 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
                     ? `${r.bga}${r.bga_collegate ? ` (${r.bga_collegate} arrivate prima da BGG)` : ''}${r.ultima_bga ? ` · la più recente del ${giorno(r.ultima_bga)}` : ''}`
                     : 'nessuna'}
                   tono={r.bga ? null : 'no'} />
+                {esitoBga?.storico_annullate != null && (
+                  <>
+                    <Riga etichetta="Non importate: annullate" valore={esitoBga.storico_annullate} />
+                    <Riga etichetta="Non importate: abbandonate" valore={esitoBga.storico_abbandonate} />
+                    <Riga etichetta="Gioco non abbinato a BGG" valore={esitoBga.storico_senza_gioco} />
+                    <Riga etichetta="Da confermare (incerte)" valore={esitoBga.storico_incerte} />
+                  </>
+                )}
               </ul>
 
               <h4 className="finestra-sottotitolo">Partite</h4>

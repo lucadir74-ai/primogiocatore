@@ -115,6 +115,28 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
     let da = storico ? (precedente?.pagina_storico || 1) : 1
     const dal = fino ? new Date((fino - 30 * 86400) * 1000).toISOString().slice(0, 10) : null
     const memoria = { righe: null }
+    // Perché le partite BGA non coincidono con quelle importate: durante lo
+    // storico si contano (a pezzi, da un giro all'altro) quelle scartate.
+    const conti = { annullate: 0, abbandonate: 0, senzaGioco: 0, incerte: 0 }
+    if (storico && precedente?.pagina_storico) {
+      const { data: p0 } = await db.from('bga_esiti')
+        .select('storico_annullate, storico_abbandonate, storico_senza_gioco, storico_incerte')
+        .eq('utente_id', utenteId).maybeSingle()
+      conti.annullate = p0?.storico_annullate || 0
+      conti.abbandonate = p0?.storico_abbandonate || 0
+      conti.senzaGioco = p0?.storico_senza_gioco || 0
+      conti.incerte = p0?.storico_incerte || 0
+    }
+    // A parte e senza errori: se lo script SQL (bga_scarti.sql) non c'è, non si perde altro.
+    const salvaConti = async () => {
+      if (!storico) return
+      try {
+        await db.from('bga_esiti').update({
+          storico_annullate: conti.annullate, storico_abbandonate: conti.abbandonate,
+          storico_senza_gioco: conti.senzaGioco, storico_incerte: conti.incerte,
+        }).eq('utente_id', utenteId)
+      } catch { /* solo diagnostica */ }
+    }
     const aPunto = () => (storico ? `storico fino a pagina ${da}` : 'solo le novità')
 
     let finito = false
@@ -136,10 +158,15 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
         const e = await importaSicure(profilo, { giocatore: r.giocatore, nome: r.nome, tavoli: r.tavoli, completo: false }, memoria)
         nuove += e.nuove
         inSospeso += e.inSospeso
+        conti.senzaGioco += e.senzaGioco || 0
+        conti.incerte += e.incerte || 0
       }
+      conti.annullate += r.scartate?.annullate || 0
+      conti.abbandonate += r.scartate?.abbandonate || 0
       if (!r.continua) { finito = true; break }
       da = r.continua
       if (storico) await esito({ in_corso: true, importate: nuove, in_sospeso: inSospeso, errore: null, storico: aPunto(), pagina_storico: da })
+      await salvaConti()
     }
 
     await esito({
@@ -149,6 +176,7 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
       storico: finito ? (storico ? 'storico completo' : 'solo le novità') : `${aPunto()}, riprende al prossimo giro`,
       pagina_storico: finito ? null : (storico ? da : null),
     })
+    await salvaConti()
   } finally {
     usaClient(null)
   }
