@@ -2,7 +2,7 @@
 // v3.22.1 - 202611030500 (singolare e plurale: «1 partita», «1 vinta», «1 gioco»)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
-import { Children, useEffect, useMemo, useState } from 'react'
+import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
@@ -171,6 +171,20 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
       ? lista.filter((p) => p.luoghi?.tipo === 'online')
       : lista.filter((p) => p.luoghi?.tipo !== 'online'))
   const partite = filtra(uniche)
+
+  // I calcoli di ogni scheda (giocatore, gioco, luogo, gruppo) si rifacevano
+  // a ogni disegno della pagina, anche solo per l'arrivo del Primeggio: su un
+  // telefono bastava per bloccare lo schermo. Ora si fanno una volta per
+  // soggetto, e si rifanno solo se cambiano le partite o il filtro.
+  const memoria = useRef({ uniche: null, tutte: null, dove: null, valori: new Map() })
+  function ricordo(chiave, calcola) {
+    const m = memoria.current
+    if (m.uniche !== uniche || m.tutte !== tuttePartite || m.dove !== dove) {
+      m.uniche = uniche; m.tutte = tuttePartite; m.dove = dove; m.valori = new Map()
+    }
+    if (!m.valori.has(chiave)) m.valori.set(chiave, calcola())
+    return m.valori.get(chiave)
+  }
 
   const quanteOnline = tuttePartite.filter((p) => p.luoghi?.tipo === 'online').length
 
@@ -542,7 +556,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         <p className="aiuto">Ancora nessuna partita registrata.</p>
       ) : tipo === 'persona' ? (
         <SchedaPersona
-          d={dellaPersona(attivo)}
+          d={ricordo('persona:' + attivo, () => dellaPersona(attivo))}
           ipg={ipgDi(attivo)}
           ipgGioco={(g) => ipgDi(attivo, g)}
           inClassifica={classificaDi().length}
@@ -555,8 +569,8 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         />
       ) : tipo === 'gioco' ? (
         <SchedaGioco
-          d={delGioco(attivo)}
-          io={dellaPersona(profilo.id, attivo)}
+          d={ricordo('gioco:' + attivo, () => delGioco(attivo))}
+          io={ricordo('io-gioco:' + attivo, () => dellaPersona(profilo.id, attivo))}
           classifica={classificaDi(attivo)}
           mioIpg={ipgDi(profilo.id, attivo)}
           nome={elenchi.giochi.find((g) => g[0] === attivo)?.[1]}
@@ -568,7 +582,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         />
       ) : tipo === 'luogo' ? (
         <SchedaLuogo
-          d={delLuogo(attivo)}
+          d={ricordo('luogo:' + attivo, () => delLuogo(attivo))}
           istogramma={istogramma}
           vaiAlGiocatore={vaiAlGiocatore}
           vaiAlGioco={vaiAlGioco}
@@ -578,7 +592,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         />
       ) : (
         <SchedaGruppo
-          d={delGruppo()} partite={partite} istogramma={istogramma}
+          d={ricordo('gruppo', () => delGruppo())} partite={partite} istogramma={istogramma}
           vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco}
           classifica={classificaDi()} profilo={profilo}
           aggiornato={primeggio[0]?.aggiornato_il}
