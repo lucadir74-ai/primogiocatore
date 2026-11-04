@@ -2,14 +2,13 @@
 // v3.22.1 - 202611030500 (singolare e plurale: «1 partita», «1 vinta», «1 gioco»)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
-import { Children, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
-import { inizia, registra } from './misure'
 
 // L'istogramma chiedeva il nome del mese due volte per ogni partita, e
 // ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
@@ -113,14 +112,6 @@ const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sc
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
 export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
-  // Quanto passa dall'inizio del disegno a quando React ha finito di
-  // aggiornare la pagina (calcolo + costruzione): separa il lavoro di React
-  // da quello del browser (impaginazione), che viene dopo.
-  const inizioDisegno = performance.now()
-  useLayoutEffect(() => {
-    const ms = performance.now() - inizioDisegno
-    if (ms > 50) registra('Statistiche: disegno (React)', ms)
-  })
   const inMemoria = archivioInMemoria(profilo.id)
   const [tuttePartite, setPartite] = useState(inMemoria || [])
   const [caricamento, setCaricamento] = useState(!inMemoria)
@@ -220,12 +211,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (m.uniche !== uniche || m.tutte !== tuttePartite || m.dove !== dove) {
       m.uniche = uniche; m.tutte = tuttePartite; m.dove = dove; m.valori = new Map()
     }
-    if (!m.valori.has(chiave)) {
-      // Quanto dura il solo calcolo, per separarlo dal disegno della scheda.
-      const fine = inizia('Statistiche: calcolo ' + chiave.split(':')[0])
-      m.valori.set(chiave, calcola())
-      fine(`${tuttePartite.length} partite`)
-    }
+    if (!m.valori.has(chiave)) m.valori.set(chiave, calcola())
     return m.valori.get(chiave)
   }
 

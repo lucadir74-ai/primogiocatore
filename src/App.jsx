@@ -11,7 +11,6 @@ import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
 import { inviaABggSeServe } from './invioBgg'
-import { segnaPagina, misura } from './misure'
 
 // Le schede si scaricano solo quando si aprono: il primo caricamento
 // porta la Home e poco altro, il resto arriva a richiesta.
@@ -877,7 +876,7 @@ export default function App() {
   useEffect(() => {
     if (!profilo?.bgg_username) return
     return quandoLibero(() => {
-      misura('BGG: sincronizzazione all’apertura', () => sincronizzaSeServe(profilo))
+      sincronizzaSeServe(profilo)
         .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
         .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
     }, 4000)
@@ -888,7 +887,7 @@ export default function App() {
   useEffect(() => {
     if (!profilo?.bga_id || daBga) return   // non nella scheda aperta dal segnalibro
     return quandoLibero(() => {
-      misura('BGA: sincronizzazione all’apertura', () => sincronizzaBgaSeServe(profilo))
+      sincronizzaBgaSeServe(profilo)
         .then((r) => {
           if (r) setAvvisoBga(r)
           // Partite nuove da BGA: verso BGG, se l'iscritto l'ha chiesto.
@@ -916,7 +915,7 @@ export default function App() {
   // chi ha registrato senza rete o ha cancellato e corretto partite.
   useEffect(() => {
     if (!profilo?.id || daBga) return
-    return quandoLibero(() => { misura('BGG: invio partite in attesa', () => inviaABggSeServe(profilo)) }, 14000)
+    return quandoLibero(() => { inviaABggSeServe(profilo) }, 14000)
   }, [profilo?.id])
 
   function apriSezione(id) {
@@ -995,9 +994,6 @@ export default function App() {
       .then(({ data }) => setOrgTana(Boolean(data?.length)))
   }
   useEffect(() => { setAmmesso(null); controllaAccesso() }, [profilo?.id])
-
-  // Le misure dei tempi sanno in che pagina si è.
-  useEffect(() => { segnaPagina(scheda === 'profilo' ? `profilo/${sezioneProfilo}` : scheda) }, [scheda, sezioneProfilo])
 
   // La pagina aperta finisce nell'indirizzo e nella cronologia.
   const inApp = !!(sessione && profilo && !tavoloPubblico && !daBga)

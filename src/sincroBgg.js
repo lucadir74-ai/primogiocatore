@@ -13,7 +13,6 @@
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome, ospitiPerImport } from './giochiMiei'
-import { inizia } from './misure'
 
 const CHIAVE_ULTIMA = 'primo-giocatore:ultima-sincro-bgg'
 const CHIAVE_COMPLETA = 'primo-giocatore:ultimo-controllo-completo-bgg'
@@ -109,9 +108,7 @@ export function dataValida(d) {
 export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamento = () => {} }) {
   const tutte = []
   let pagina = 1
-  let totale = 0
-  const fineLettura = inizia(dal ? 'BGG: lettura recente (rete)' : 'BGG: lettura completa (rete)')
-  // BGG dà cento partite per pagina. Prima ci si fermava a 3000: chi
+  let totale = 0  // BGG dà cento partite per pagina. Prima ci si fermava a 3000: chi
   // ne ha di più perdeva le più vecchie. Ora si legge tutto, fino a
   // 50.000 partite, cioè ben oltre qualsiasi archivio reale.
   while (pagina <= 500) {
@@ -125,9 +122,6 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     if (tutte.length >= totale || dati.partite.length === 0) break
     pagina++
   }
-
-  fineLettura(`${tutte.length} partite, ${pagina} pagine`)
-  const fineElabora = inizia('BGG: elaborazione dopo la lettura (db + confronto)')
 
   // Una lettura lunga dura minuti: se intanto su BGG entrano partite
   // nuove (per esempio BG Stats che sta pubblicando), le pagine
@@ -183,7 +177,6 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     return { ...p, impronta: imp, sospetta: esito.presente, debole: esito.modo === 'debole' }
   })
 
-  fineElabora(`${tutte.length} lette, ${daGuardare.length} da guardare`)
   return {
     partite: conStato,
     sospette: conStato.filter((p) => p.sospetta).length,
@@ -403,16 +396,11 @@ export function scartaNomeBga(profiloId, nome) {
 
 // { nome, partite, righe: [id partecipazione], ospiti: [id] } oppure null
 export async function cercaNomeBga(profiloId) {
-  const fineScarico = inizia('Nome BGA: scarico partite BGG')
   const righe = await tutteLeRighe(() => supabase.from('partite')
     .select('id, partecipazioni ( id, utente_id, ospite_id, ospiti:ospite_id ( nome, utente_collegato ) )')
     .eq('registrata_da', profiloId)
     .like('chiave_esterna', 'bgg:%'))
-  fineScarico(`${righe.length} partite`)
-  const fineCalcolo = inizia('Nome BGA: calcolo')
-  try {
-    return calcolaNomeBga(profiloId, righe)
-  } finally { fineCalcolo() }
+  return calcolaNomeBga(profiloId, righe)
 }
 
 function calcolaNomeBga(profiloId, righe) {

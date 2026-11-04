@@ -10,7 +10,6 @@ import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMie
 import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
-import Tempi from './Tempi.jsx'
 import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -666,10 +665,6 @@ export default function Dati({ profilo }) {
       </Sezione>
 
       <ArchivioTelefono profilo={profilo} />
-
-      <Sezione id="tempi" titolo="Tempi dell’app" nota="per capire dove rallenta">
-        <Tempi />
-      </Sezione>
 
       <Sezione id="esporta" titolo="Esporta" nota="una copia delle tue partite">
         <button className="bottone" onClick={esportaJson} disabled={lavorando}>
