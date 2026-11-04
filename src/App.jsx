@@ -805,6 +805,15 @@ function IconaEsci() {
   )
 }
 
+// Ultimi numeri degli avvisi (richieste, partite BGA in sospeso) su questo telefono.
+const CHIAVE_AVVISI = 'primo-giocatore:avvisi'
+function leggiAvvisi() {
+  try { return JSON.parse(localStorage.getItem(CHIAVE_AVVISI) || '{}') || {} } catch { return {} }
+}
+function salvaAvvisi(id, parziale) {
+  try { localStorage.setItem(CHIAVE_AVVISI, JSON.stringify({ ...leggiAvvisi(), id, ...parziale })) } catch { /* niente */ }
+}
+
 // Esegue il lavoro dopo un ritardo, quando il browser è libero. Restituisce
 // la funzione che lo annulla (si usa come pulizia di useEffect).
 function quandoLibero(lavoro, ritardo) {
@@ -852,8 +861,11 @@ export default function App() {
   const modoStoria = useRef('replace')
   // Dati da allegare al prossimo passo, es. { ritornoA: '/storico' }.
   const statoProssimo = useRef(null)
-  const [daApprovare, setDaApprovare] = useState(0)
-  const [tavoliChiesti, setTavoliChiesti] = useState(0)   // richieste di tavolo per me
+  // I riquadri avviso stanno sopra il contenuto: se comparissero solo a dati
+  // arrivati, spingerebbero giù la Home. Si parte dai numeri dell'ultima
+  // volta, e poi si correggono.
+  const [daApprovare, setDaApprovare] = useState(() => leggiAvvisi().daApprovare || 0)
+  const [tavoliChiesti, setTavoliChiesti] = useState(() => leggiAvvisi().tavoliChiesti || 0)   // richieste di tavolo per me
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
   const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
 
@@ -888,11 +900,15 @@ export default function App() {
   // Partite BGA rimaste in sospeso (anche dalla sincronizzazione sul
   // server, a telefono spento): si ricontrolla cambiando pagina, così
   // l'avviso sparisce appena la scelta è fatta in Dati e import.
-  const [sospeseBga, setSospeseBga] = useState(0)
+  const [sospeseBga, setSospeseBga] = useState(() => leggiAvvisi().sospeseBga || 0)
   useEffect(() => {
     if (!profilo?.bga_id || daBga) return
     supabase.from('bga_esiti').select('in_sospeso').eq('utente_id', profilo.id).maybeSingle()
-      .then(({ data }) => setSospeseBga(data?.in_sospeso || 0), () => {})
+      .then(({ data }) => {
+        const n = data?.in_sospeso || 0
+        setSospeseBga(n)
+        salvaAvvisi(profilo.id, { sospeseBga: n })
+      }, () => {})
   }, [profilo?.id, scheda])
 
   // Invio a BGG delle partite in attesa (le tiene il database): qui per
@@ -911,8 +927,13 @@ export default function App() {
   // Chi organizza vede quante richieste "sono io" aspettano.
   useEffect(() => {
     if (!profilo) return
-    contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)
-    contaRichiesteTavolo().then(setTavoliChiesti)
+    // Numeri di un altro account su questo telefono: via, prima di mostrarli.
+    if (leggiAvvisi().id && leggiAvvisi().id !== profilo.id) {
+      setDaApprovare(0); setTavoliChiesti(0); setSospeseBga(0)
+      salvaAvvisi(profilo.id, { daApprovare: 0, tavoliChiesti: 0, sospeseBga: 0 })
+    }
+    contaRichiesteDaApprovare(profilo.id).then((n) => { setDaApprovare(n); salvaAvvisi(profilo.id, { daApprovare: n }) })
+    contaRichiesteTavolo().then((n) => { setTavoliChiesti(n); salvaAvvisi(profilo.id, { tavoliChiesti: n }) })
   }, [profilo?.id, scheda])
 
   // Una volta entrato su questo telefono, la prossima volta si parte dall'accesso.
