@@ -48,6 +48,16 @@ export function inizia(nome) {
   }
 }
 
+// Una durata già misurata (per esempio dal disegno di una pagina).
+export function registra(nome, ms, dettaglio = '') {
+  const t1 = performance.now()
+  recenti.push({ nome, t0: t1 - ms, t1 })
+  if (recenti.length > 100) recenti.shift()
+  const m = leggi()
+  m.fasi.push({ q: new Date().toISOString(), nome, ms: Math.round(ms), d: dettaglio ? String(dettaglio).slice(0, 80) : '' })
+  scrivi(m)
+}
+
 // Il lavoro intero, comunque finisca.
 export async function misura(nome, lavoro) {
   const fine = inizia(nome)

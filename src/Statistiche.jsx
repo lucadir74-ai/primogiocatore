@@ -2,14 +2,14 @@
 // v3.22.1 - 202611030500 (singolare e plurale: «1 partita», «1 vinta», «1 gioco»)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
-import { Children, useEffect, useMemo, useRef, useState } from 'react'
+import { Children, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
-import { inizia } from './misure'
+import { inizia, registra } from './misure'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -101,6 +101,14 @@ const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sc
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
 export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
+  // Quanto passa dall'inizio del disegno a quando React ha finito di
+  // aggiornare la pagina (calcolo + costruzione): separa il lavoro di React
+  // da quello del browser (impaginazione), che viene dopo.
+  const inizioDisegno = performance.now()
+  useLayoutEffect(() => {
+    const ms = performance.now() - inizioDisegno
+    if (ms > 50) registra('Statistiche: disegno (React)', ms)
+  })
   const inMemoria = archivioInMemoria(profilo.id)
   const [tuttePartite, setPartite] = useState(inMemoria || [])
   const [caricamento, setCaricamento] = useState(!inMemoria)
@@ -903,11 +911,14 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
   const [giorni, setGiorni] = useState(10)
 
   // Raggruppate per giorno: le serate di gioco stanno insieme.
+  // Solo a lista aperta: chiusa non serve, e con migliaia di partite pesa.
   const perGiorno = new Map()
-  for (const p of [...partite].reverse()) {
-    const k = p.giocata_il.slice(0, 10)
-    if (!perGiorno.has(k)) perGiorno.set(k, [])
-    perGiorno.get(k).push(p)
+  if (visibile) {
+    for (const p of [...partite].reverse()) {
+      const k = p.giocata_il.slice(0, 10)
+      if (!perGiorno.has(k)) perGiorno.set(k, [])
+      perGiorno.get(k).push(p)
+    }
   }
 
   const nomeDiRiga = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
