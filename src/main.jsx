@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import { registerSW } from 'virtual:pwa-register'
+import { avviaMisure } from './misure'
+
+// Parte subito: i blocchi dello schermo si contano dall'apertura.
+avviaMisure()
 
 // Tiene l'app disponibile senza rete e la aggiorna da sola
 // alla prima ricarica dopo un nuovo caricamento.
