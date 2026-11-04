@@ -63,15 +63,22 @@ function SpiegaPrimeggio() {
 const durata = (min) => (min >= 60 ? `${Math.round(min / 60)} h` : `${min} min`)
 
 /* Una lista lunga mostra le prime voci; il resto a richiesta. */
-function ElencoCorto({ children, quante = 5 }) {
+// Con dati + riga le voci si costruiscono solo per quelle che si vedono:
+// con centinaia di giochi o di avversari, costruirle tutte per mostrarne
+// cinque era il grosso del tempo di disegno su un telefono.
+function ElencoCorto({ children, quante = 5, dati = null, riga = null }) {
   const [tutte, setTutte] = useState(false)
-  const voci = Children.toArray(children).flat()
+  const voci = dati ? null : Children.toArray(children).flat()
+  const totale = dati ? dati.length : voci.length
+  const visibili = dati
+    ? (tutte ? dati : dati.slice(0, quante)).map((x, i) => riga(x, i))
+    : (tutte ? voci : voci.slice(0, quante))
   return (
     <>
-      <ul className="elenco">{tutte ? voci : voci.slice(0, quante)}</ul>
-      {voci.length > quante && (
+      <ul className="elenco">{visibili}</ul>
+      {totale > quante && (
         <button className="bottone-piatto mostra-tutti" onClick={() => setTutte(!tutte)}>
-          {tutte ? 'Mostra meno' : `Mostra tutti (${voci.length})`}
+          {tutte ? 'Mostra meno' : `Mostra tutti (${totale})`}
         </button>
       )}
     </>
@@ -133,7 +140,17 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
       setRicalcolo(`Non riuscito: ${e.message}`)
     }
   }
-  const ipgDi = (id, gioco = '') => primeggio.find((r) => r.profilo_id === id && r.gioco_id === String(gioco || ''))
+  // Un indice invece di una ricerca nell'elenco intero a ogni voce: la
+  // scheda di un giocatore chiedeva l'IPG di ogni gioco, più volte.
+  const indiceIpg = useMemo(() => {
+    const m = new Map()
+    for (const r of primeggio) {
+      const k = `${r.profilo_id}|${r.gioco_id}`
+      if (!m.has(k)) m.set(k, r)
+    }
+    return m
+  }, [primeggio])
+  const ipgDi = (id, gioco = '') => indiceIpg.get(`${id}|${String(gioco || '')}`)
   const classificaDi = (gioco = '') => primeggio
     .filter((r) => r.gioco_id === String(gioco || '') && r.posizione != null)
     .sort((a, b) => a.posizione - b.posizione)
@@ -748,8 +765,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
             I giochi ordinati per vittorie rispetto all'atteso, con almeno {MIN_CLASSIFICA} partite
             competitive: sotto quella soglia il numero dipende troppo dal caso.
           </p>
-          <ElencoCorto>
-            {d.piuForte.map((g, i) => (
+          <ElencoCorto dati={d.piuForte} riga={(g, i) => (
               <li key={g.id}>
                 <span className="posto">{i + 1}°</span>
                 <div className="nome-giocatore">
@@ -763,14 +779,12 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
                   {g.rendimento.toFixed(2)}×
                 </span>
               </li>
-            ))}
-          </ElencoCorto>
+            )} />
         </>
       )}
 
       <h3 className="titolo-sezione">Gioco per gioco</h3>
-      <ElencoCorto>
-        {d.perGioco.map((g, i) => {
+      <ElencoCorto dati={d.perGioco} riga={(g, i) => {
           const r = g.attese > 0 ? g.vinte / g.attese : null
           const rip = riepilogoPunteggi(g.punteggi)
           return (
@@ -795,12 +809,10 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
               </div>
             </li>
           )
-        })}
-      </ElencoCorto>
+        }} />
 
       <h3 className="titolo-sezione">Testa a testa</h3>
-      <ElencoCorto>
-        {d.contro.map((a, i) => (
+      <ElencoCorto dati={d.contro} riga={(a, i) => (
           <li key={`${a.chiave ?? a.id ?? a.nome}|${i}`}>
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
@@ -811,8 +823,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
               {a.sue} – {a.altrui}
             </span>
           </li>
-        ))}
-      </ElencoCorto>
+        )} />
     </>
   )
 }
