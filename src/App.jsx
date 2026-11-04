@@ -99,7 +99,7 @@ function Marchio({ onClick }) {
   return (
     <Contenitore className={'marchio' + (onClick ? ' marchio-tasto' : '')}
       {...(onClick ? { href: '/', title: 'Home', onClick: (e) => { e.preventDefault(); onClick() } } : {})}>
-      <img className="logo-tana" src="/logo-tdg-roma.png" alt="Tana dei Goblin Roma" />
+      <img className="logo-tana" src="/logo-tdg-roma.png" width="192" height="202" alt="Tana dei Goblin Roma" />
       <h1>
         Primo Giocatore
         <span>by TdG Roma</span>
