@@ -11,7 +11,19 @@ import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import { inizia, registra } from './misure'
 
-const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
+// L'istogramma chiedeva il nome del mese due volte per ogni partita, e
+// ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
+// migliaia di partite, su un telefono, erano centinaia di millisecondi.
+// Un formattatore solo, e il testo ricordato per ogni mese.
+const formatoMese = new Intl.DateTimeFormat('it-IT', { month: 'short', year: '2-digit' })
+const nomiMesi = new Map()
+const mese = (d) => {
+  const dt = new Date(d)
+  const k = dt.getFullYear() * 12 + dt.getMonth()
+  let v = nomiMesi.get(k)
+  if (v === undefined) { v = formatoMese.format(dt); nomiMesi.set(k, v) }
+  return v
+}
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 const perc = (parte, tutto) => (tutto === 0 ? '—' : `${Math.round((parte / tutto) * 100)}%`)
 
@@ -496,7 +508,10 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
   function istogramma(insieme) {
     const m = new Map()
-    for (const p of insieme) m.set(mese(p.giocata_il), (m.get(mese(p.giocata_il)) || 0) + 1)
+    for (const p of insieme) {
+      const k = mese(p.giocata_il)
+      m.set(k, (m.get(k) || 0) + 1)
+    }
     const righe = [...m.entries()].slice(-12)
     return { righe, massimo: Math.max(1, ...righe.map(([, n]) => n)) }
   }
