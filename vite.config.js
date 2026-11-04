@@ -17,6 +17,18 @@ const indirizzoPubblico = {
 }
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // Librerie a parte: cambiano di rado, quindi restano in cache fra un
+        // aggiornamento dell'app e l'altro.
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          supabase: ['@supabase/supabase-js'],
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     indirizzoPubblico,

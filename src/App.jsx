@@ -3,29 +3,32 @@
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare } from './supabase'
-import Giochi from './Giochi.jsx'
-import Partita from './Partita.jsx'
-import Storico from './Storico.jsx'
-import Statistiche from './Statistiche.jsx'
-import Dati from './Dati.jsx'
-import UnisciOspiti from './UnisciOspiti.jsx'
-import Giocatori from './Giocatori.jsx'
 import NomeBga from './NomeBga.jsx'
-import Tavoli from './Tavoli.jsx'
-import Luoghi from './Luoghi.jsx'
-import GiochiDoppi from './GiochiDoppi.jsx'
-import TavoloPubblico from './TavoloPubblico.jsx'
-import Classifiche from './Classifiche.jsx'
-import Organizzatori from './Organizzatori.jsx'
-import Soci from './Soci.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
 import { inviaABggSeServe } from './invioBgg'
-import ImportaBga from './ImportaBga.jsx'
+
+// Le schede si scaricano solo quando si aprono: il primo caricamento
+// porta la Home e poco altro, il resto arriva a richiesta.
+const Giochi = lazy(() => import('./Giochi.jsx'))
+const Partita = lazy(() => import('./Partita.jsx'))
+const Storico = lazy(() => import('./Storico.jsx'))
+const Statistiche = lazy(() => import('./Statistiche.jsx'))
+const Dati = lazy(() => import('./Dati.jsx'))
+const UnisciOspiti = lazy(() => import('./UnisciOspiti.jsx'))
+const Giocatori = lazy(() => import('./Giocatori.jsx'))
+const Tavoli = lazy(() => import('./Tavoli.jsx'))
+const Luoghi = lazy(() => import('./Luoghi.jsx'))
+const GiochiDoppi = lazy(() => import('./GiochiDoppi.jsx'))
+const TavoloPubblico = lazy(() => import('./TavoloPubblico.jsx'))
+const Classifiche = lazy(() => import('./Classifiche.jsx'))
+const Organizzatori = lazy(() => import('./Organizzatori.jsx'))
+const Soci = lazy(() => import('./Soci.jsx'))
+const ImportaBga = lazy(() => import('./ImportaBga.jsx'))
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
@@ -802,6 +805,20 @@ function IconaEsci() {
   )
 }
 
+// Esegue il lavoro dopo un ritardo, quando il browser è libero. Restituisce
+// la funzione che lo annulla (si usa come pulizia di useEffect).
+function quandoLibero(lavoro, ritardo) {
+  let id
+  const t = setTimeout(() => {
+    if ('requestIdleCallback' in window) id = window.requestIdleCallback(lavoro, { timeout: 5000 })
+    else lavoro()
+  }, ritardo)
+  return () => {
+    clearTimeout(t)
+    if (id != null && 'cancelIdleCallback' in window) window.cancelIdleCallback(id)
+  }
+}
+
 export default function App() {
   const [tavoloPubblico] = useState(tavoloDalLink())
   const [daBga, setDaBga] = useState(bgaDalLink())
@@ -842,24 +859,30 @@ export default function App() {
 
   // Partite nuove su BGG (anche quelle che BG Stats ci pubblica, comprese
   // quelle di Board Game Arena): arrivano da sole all'apertura.
+  // Le sincronizzazioni partono a pagina già disegnata, a distanza di pochi
+  // secondi una dall'altra: insieme, sul telefono, bloccavano lo schermo.
   useEffect(() => {
     if (!profilo?.bgg_username) return
-    sincronizzaSeServe(profilo)
-      .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
-      .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
+    return quandoLibero(() => {
+      sincronizzaSeServe(profilo)
+        .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
+        .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
+    }, 4000)
   }, [profilo?.id])
 
   // Board Game Arena, per chi l'ha collegato con la password.
   const [avvisoBga, setAvvisoBga] = useState(null)   // { nuove } | { inSospeso } | { scaduta }
   useEffect(() => {
     if (!profilo?.bga_id || daBga) return   // non nella scheda aperta dal segnalibro
-    sincronizzaBgaSeServe(profilo)
-      .then((r) => {
-        if (r) setAvvisoBga(r)
-        // Partite nuove da BGA: verso BGG, se l'iscritto l'ha chiesto.
-        if (r?.nuove) inviaABggSeServe(profilo)
-      })
-      .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
+    return quandoLibero(() => {
+      sincronizzaBgaSeServe(profilo)
+        .then((r) => {
+          if (r) setAvvisoBga(r)
+          // Partite nuove da BGA: verso BGG, se l'iscritto l'ha chiesto.
+          if (r?.nuove) inviaABggSeServe(profilo)
+        })
+        .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
+    }, 9000)
   }, [profilo?.id])
 
   // Partite BGA rimaste in sospeso (anche dalla sincronizzazione sul
@@ -876,7 +899,7 @@ export default function App() {
   // chi ha registrato senza rete o ha cancellato e corretto partite.
   useEffect(() => {
     if (!profilo?.id || daBga) return
-    inviaABggSeServe(profilo)
+    return quandoLibero(() => { inviaABggSeServe(profilo) }, 14000)
   }, [profilo?.id])
 
   function apriSezione(id) {
@@ -1028,6 +1051,7 @@ export default function App() {
         </div>
       </header>
 
+      <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
       {tavoloPubblico ? (
         <>
           <TavoloPubblico tavoloId={tavoloPubblico} sessione={sessione} profilo={profilo} />
@@ -1297,6 +1321,7 @@ export default function App() {
           )}
         </>
       )}
+      </Suspense>
     </div>
   )
 }

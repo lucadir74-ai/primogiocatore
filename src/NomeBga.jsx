@@ -24,10 +24,13 @@ export default function NomeBga({ profilo, quando }) {
       localStorage.setItem(chiave, String(Date.now()))
     } catch { /* senza memoria si controlla lo stesso */ }
     let vivo = true
-    cercaNomeBga(profilo.id)
-      .then((t) => { if (vivo) setTrovato(t) })
-      .catch(() => { /* si riprova alla prossima occasione */ })
-    return () => { vivo = false }
+    // Dopo un po': è la lettura più pesante e non serve al primo schermo.
+    const t = setTimeout(() => {
+      cercaNomeBga(profilo.id)
+        .then((x) => { if (vivo) setTrovato(x) })
+        .catch(() => { /* si riprova alla prossima occasione */ })
+    }, quando ? 1000 : 20000)
+    return () => { vivo = false; clearTimeout(t) }
   }, [profilo?.id, quando])
 
   async function si() {
