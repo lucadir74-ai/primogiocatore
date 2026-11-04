@@ -9,6 +9,7 @@ import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } fr
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import { inizia } from './misure'
 
 const mese = (d) => new Date(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -182,7 +183,12 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     if (m.uniche !== uniche || m.tutte !== tuttePartite || m.dove !== dove) {
       m.uniche = uniche; m.tutte = tuttePartite; m.dove = dove; m.valori = new Map()
     }
-    if (!m.valori.has(chiave)) m.valori.set(chiave, calcola())
+    if (!m.valori.has(chiave)) {
+      // Quanto dura il solo calcolo, per separarlo dal disegno della scheda.
+      const fine = inizia('Statistiche: calcolo ' + chiave.split(':')[0])
+      m.valori.set(chiave, calcola())
+      fine(`${tuttePartite.length} partite`)
+    }
     return m.valori.get(chiave)
   }
 
