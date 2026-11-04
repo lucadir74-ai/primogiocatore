@@ -15,14 +15,34 @@ const SEZIONI = [
   { id: 'luoghi', etichetta: 'Luoghi' },
 ]
 
-const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
+// Un formattatore solo e le date già viste ricordate: toLocaleDateString
+// ne costruisce uno nuovo a ogni chiamata, e per ogni riga era lento.
+const formatoData = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
+const dateViste = new Map()
+const data = (d) => {
+  const dt = new Date(d)
+  const k = dt.getFullYear() * 10000 + dt.getMonth() * 100 + dt.getDate()
+  let v = dateViste.get(k)
+  if (v === undefined) { v = formatoData.format(dt); dateViste.set(k, v) }
+  return v
+}
+
+// Unire le copie sulle partite di tutto l'archivio costa: se arriva di nuovo
+// lo stesso elenco (apertura e rilettura), il risultato si riusa.
+const giaOrdinate = new WeakMap()
 
 const PER_PAGINA = 50
 
 export default function Storico({ profilo, onModifica, onApri, ripristina }) {
   const [sezione, setSezione] = useState('partite')
   // Dalla più recente; unite le copie della stessa partita (vince la tua).
-  const ordina = (righe) => unisciCondivise([...righe].reverse(), [profilo.id])
+  const ordina = (righe) => {
+    const prima = giaOrdinate.get(righe)
+    if (prima && prima.id === profilo.id) return prima.valore
+    const valore = unisciCondivise([...righe].reverse(), [profilo.id])
+    giaOrdinate.set(righe, { id: profilo.id, valore })
+    return valore
+  }
   const inMemoria = archivioInMemoria(profilo.id)
   const [partite, setPartite] = useState(() => (inMemoria ? ordina(inMemoria) : []))
   const [aperta, setAperta] = useState(null)
