@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.23.1 - 202611030600 (segnaposto della ricerca più corto: non si tagliava più a metà)
+// v4.24.0 - 202611091300 (elenchi salvati sul telefono: la pagina e la ricerca del gioco sono subito pronte)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -11,6 +11,10 @@ import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
+import { archivioInMemoria, leggiDalTelefono, salvaSulTelefono } from './archivio'
+
+// Gli elenchi dell'ultima apertura, per riaprire la pagina all'istante.
+let elenchiInMemoria = null
 
 const LIMITE_NOMI = 12
 
@@ -65,7 +69,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   // Partita appena registrata: se è a punti si mostrano i record.
   const [riepilogo, setRiepilogo] = useState(null)
 
-  useEffect(() => { caricaElenchi() }, [])
+  const montata = useRef(true)
+  useEffect(() => { montata.current = true; caricaElenchi(); return () => { montata.current = false } }, [])
 
   // Appena la rete torna, le partite in attesa partono da sole.
   useEffect(() => {
@@ -159,61 +164,96 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     if (secondi > 0) setMinuti(String(Math.max(1, Math.round(secondi / 60))))
   }, [secondi])
 
-  async function caricaElenchi() {
-    const [g, p, o, f, l, c] = await Promise.all([
-      giochiMiei(profilo.id, '*'),
-      tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
-      tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato, unito_in').order('nome')),
-      tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id')),
-      tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
-      tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
-    ])
-    setCatalogo(g)
-    setPersone(p)
+  // Gli elenchi (giochi, persone, ospiti, luoghi) restano sul telefono:
+  // aprendo la pagina si usano subito quelli dell'ultima volta, intanto si
+  // rileggono dal database e la pagina si aggiorna da sola.
+  function applicaElenchi(d) {
+    // Si tengono anche i giochi aggiunti da BGG mentre si rileggeva.
+    setCatalogo((prima) => {
+      const m = new Map(prima.map((g) => [g.id, g]))
+      for (const g of d.giochi) m.set(g.id, g)
+      return [...m.values()]
+    })
+    setPersone(d.persone)
     // Gli ospiti già collegati a un account, o uniti a un altro ospite,
     // non si mostrano: c'è la persona.
-    setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in))
-
+    setOspiti(d.ospiti.filter((x) => !x.utente_collegato && !x.unito_in))
     // I nomi con cui le persone erano state inserite come ospiti
     // («kaihla», «gess»...): scrivendoli si trova l'account giusto.
-    {
-      const { data: nc } = await supabase.from('nomi_collegati').select('utente_id, nome, cognome')
-      const m = new Map()
-      for (const r of nc || []) {
-        if (!m.has(r.utente_id)) m.set(r.utente_id, [])
-        m.get(r.utente_id).push([r.nome, r.cognome].filter(Boolean).join(' '))
-      }
-      setNomiCollegati(m)
-    }
-    setLuoghiNoti(l.map((x) => x.nome))
-    setMiaCollezione(new Set(c.map((x) => x.gioco_id)))
-
+    setNomiCollegati(new Map(d.nomiCollegati))
+    setLuoghiNoti(d.luoghi)
+    setMiaCollezione(new Set(d.collezione))
     // Quante partite ha ciascuno: i soliti compagni vanno davanti,
     // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
-    {
-      const c = new Map()
-      for (const r of f) {
-        const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
-        c.set(k, (c.get(k) || 0) + 1)
-      }
-      setFrequenza(c)
-    }
-
+    setFrequenza(new Map(d.frequenza))
     // Chi c'era all'ultima partita: se se ne fa subito un'altra, sono
     // quasi sempre gli stessi.
-    const { data: ultima } = await supabase
-      .from('partite')
-      .select('id, giocata_il, partecipazioni!inner ( utente_id )')
-      .eq('partecipazioni.utente_id', profilo.id)
-      .order('giocata_il', { ascending: false })
-      .limit(1)
-    if (ultima?.[0]) {
+    setUltimaPartita(d.ultimaPartita)
+  }
+
+  async function caricaElenchi() {
+    const chiave = `elenchi-partita:${profilo.id}`
+    const vecchi = elenchiInMemoria?.chiave === chiave ? elenchiInMemoria
+      : (await leggiDalTelefono(chiave))?.dati
+    if (vecchi?.chiave === chiave) applicaElenchi(vecchi)
+
+    // Le partecipazioni per contare chi gioca di più: se l'archivio è già
+    // in memoria (Storico, Statistiche, Home) non si rileggono.
+    const archivio = archivioInMemoria(profilo.id)
+    const partecipazioni = archivio
+      ? Promise.resolve(archivio.flatMap((x) => x.partecipazioni || []))
+      : tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id'))
+
+    const giochi = giochiMiei(profilo.id, '*')
+    // Senza elenchi salvati il catalogo si mostra appena arriva, senza aspettare il resto.
+    if (!vecchi) giochi.then((g) => setCatalogo((prima) => (prima.length ? prima : g))).catch(() => {})
+
+    const ultima = (async () => {
+      const { data: u } = await supabase
+        .from('partite')
+        .select('id, giocata_il, partecipazioni!inner ( utente_id )')
+        .eq('partecipazioni.utente_id', profilo.id)
+        .order('giocata_il', { ascending: false })
+        .limit(1)
+      if (!u?.[0]) return []
       const { data: chi } = await supabase
         .from('partecipazioni')
         .select('utente_id, ospite_id, ordine_turno')
-        .eq('partita_id', ultima[0].id)
-      setUltimaPartita((chi || [])
-        .map((x) => (x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`)))
+        .eq('partita_id', u[0].id)
+      return (chi || []).map((x) => (x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`))
+    })()
+
+    try {
+      const [g, p, o, f, l, c, nc, up] = await Promise.all([
+        giochi,
+        tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
+        tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato, unito_in').order('nome')),
+        partecipazioni,
+        tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
+        tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
+        supabase.from('nomi_collegati').select('utente_id, nome, cognome').then(({ data }) => data || []),
+        ultima,
+      ])
+      const nomi = new Map()
+      for (const r of nc) {
+        if (!nomi.has(r.utente_id)) nomi.set(r.utente_id, [])
+        nomi.get(r.utente_id).push([r.nome, r.cognome].filter(Boolean).join(' '))
+      }
+      const conta = new Map()
+      for (const r of f) {
+        const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
+        conta.set(k, (conta.get(k) || 0) + 1)
+      }
+      const nuovi = {
+        chiave, giochi: g, persone: p, ospiti: o, luoghi: l.map((x) => x.nome),
+        collezione: c.map((x) => x.gioco_id), nomiCollegati: [...nomi], frequenza: [...conta], ultimaPartita: up,
+      }
+      elenchiInMemoria = nuovi
+      if (montata.current) applicaElenchi(nuovi)
+      salvaSulTelefono(chiave, nuovi)
+    } catch (e) {
+      // Con gli elenchi dell'ultima volta si va avanti lo stesso (es. senza rete).
+      if (!vecchi && montata.current) setErrore(e.message)
     }
   }
 

@@ -1,5 +1,5 @@
 // Primo Giocatore - l'archivio delle partite, uno solo per tutta l'app
-// v1.3.0 - 202611011100 (le case degli altri si vedono come «Casa di …»)
+// v1.4.0 - 202611091300 (archivio sul telefono per tutti; posto per altri elenchi)
 //
 // Storico e Statistiche leggevano ognuno, a ogni apertura, tutte le
 // partite (migliaia, con giocatori e punteggi). Ora le legge una volta
@@ -43,7 +43,7 @@ const ascoltatori = new Set()
      legge tutto come prima: l'originale resta sempre nel database.
    Interruttore: 'prova' = solo su chi lo attiva in Dati e import,
    'tutti' = per tutti, 'spento' = mai (si legge tutto ogni volta). */
-export const ARCHIVIO_LOCALE = 'prova'
+export const ARCHIVIO_LOCALE = 'tutti'
 const CHIAVE_PROVA = 'primo-giocatore:archivio-locale'
 const VERSIONE_CACHE = 2   // 2: luoghi con proprietario e nome per gli altri
 const RILETTURA_COMPLETA = 7 * 86400000   // una settimana
@@ -86,6 +86,12 @@ async function cacheOp(modo, fn) {
 const leggiCache = (utente) => cacheOp('readonly', (st) => st.get(utente))
 const scriviCache = (record) => cacheOp('readwrite', (st) => st.put(record))
 const cancellaCache = (utente) => cacheOp('readwrite', (st) => st.delete(utente))
+
+// Lo stesso posto sul telefono per altre cose da tenere (catalogo dei
+// giochi, elenchi della pagina Partita): la chiave è una stringa qualunque
+// nel campo «utente». Se la memoria non c'è, si torna null e basta.
+export const leggiDalTelefono = (chiave) => leggiCache(chiave)
+export const salvaSulTelefono = (chiave, dati) => scriviCache({ utente: chiave, salvato_il: Date.now(), dati })
 
 /* ---------------------------------------------------------------
    Lettura dal database
