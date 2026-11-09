@@ -2726,3 +2726,43 @@ button.numerone:active { transform: scale(0.98); }
 /* Home: il primo passo che manca per portare dentro le partite. */
 .avviso.primo-passo { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; margin: 0.4rem 0 0.2rem; }
 .avviso.primo-passo span { font-size: 0.9rem; }
+
+/* ---------- Nuova partita: tutto a portata di pollice ---------- */
+
+/* Il tasto «Registra partita» resta sempre visibile sopra la barra in fondo */
+.barra-registra {
+  position: sticky;
+  bottom: calc(3.7rem + env(safe-area-inset-bottom));
+  z-index: 12;
+  margin: 1rem -1.35rem 0;
+  padding: 0.6rem 1.35rem;
+  background: color-mix(in srgb, var(--superficie) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--bordo);
+}
+.barra-registra .bottone { box-shadow: 0 4px 14px var(--ombra); }
+
+/* Nella schermata della partita i blocchi stanno più vicini */
+.scheda-partita .gioco-scelto { margin-bottom: 0.8rem; }
+.scheda-partita .titolo-sezione { margin-top: 1.2rem; }
+
+/* Quando, note e ordine di turno: a scomparsa */
+.altri-dettagli {
+  margin: 0.4rem 0 0.2rem;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--carta);
+}
+.altri-dettagli > summary {
+  cursor: pointer;
+  padding: 0.75rem 0.9rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.98rem;
+  list-style: none;
+}
+.altri-dettagli > summary::-webkit-details-marker { display: none; }
+.altri-dettagli > summary::after { content: '▾'; float: right; color: var(--inchiostro-tenue); }
+.altri-dettagli[open] > summary::after { content: '▴'; }
+.altri-dettagli > summary .anno { font-family: var(--testo); font-weight: 400; }
+.altri-dettagli-corpo { padding: 0 0.9rem 0.9rem; }

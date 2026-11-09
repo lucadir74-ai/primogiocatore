@@ -798,7 +798,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   return (
-    <div className="scheda">
+    <div className="scheda scheda-partita">
       <h2>{modifica ? 'Modifica partita' : 'Nuova partita'}</h2>
 
       {errore && <div className="avviso errore">{errore}</div>}
@@ -936,13 +936,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           </div>
 
           <div className="campo">
-            <label htmlFor="quando">Quando</label>
-            <input id="quando" type="datetime-local" value={quando}
-              onChange={(e) => setQuando(e.target.value)} />
+            <label htmlFor="luogo">Dove</label>
+            <input id="luogo" value={luogo} onChange={(e) => setLuogo(e.target.value)}
+              list="luoghi-noti" placeholder="Casa mia, sede, online…" />
+            <datalist id="luoghi-noti">
+              {luoghiNoti.map((n) => <option key={n} value={n} />)}
+            </datalist>
           </div>
 
           <div className="campo">
-            <label htmlFor="minuti">Durata</label>
+            <label htmlFor="minuti">Timer</label>
             <div className="riga-minuti">
               <Cronometro secondi={secondi} inCorso={inCorso}
                 onAvviaFerma={avviaOFerma} onAzzera={azzeraTimer} />
@@ -961,6 +964,55 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           )}
 
           <h3 className="titolo-sezione">Chi ha giocato</h3>
+
+          <div className="campo">
+            <label htmlFor="cerca-giocatore">Aggiungi giocatori</label>
+            <input
+              id="cerca-giocatore"
+              className="campo-cerca"
+              value={cercaGiocatore}
+              onChange={(e) => setCercaGiocatore(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !filtroNomi) return
+                e.preventDefault()
+                if (disponibili.length === 1) scegliNome(disponibili[0])
+                else if (disponibili.length === 0 && offriOspite) apriNuovoOspite(cercaGiocatore, 'aggiungi')
+              }}
+              placeholder="Cerca un nome"
+            />
+
+            <div className="pastiglie-persone">
+              {!filtroNomi && ultimiDaAggiungere.length > 1 && (
+                <button className="pastiglia-nome nuovo" onClick={aggiungiTuttiUltima}>
+                  + Tutti quelli dell&rsquo;ultima partita ({ultimiDaAggiungere.length})
+                </button>
+              )}
+              {disponibili.map((x) => (
+                <button key={x.chiave}
+                  className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}${!filtroNomi && ultimaPartita.includes(x.chiave) ? ' ultima' : ''}`}
+                  onClick={() => scegliNome(x)}>
+                  {x.nome}
+                  {filtroNomi && x.dettaglio && <span className="pastiglia-dettaglio"> · {x.dettaglio}</span>}
+                </button>
+              ))}
+              {offriOspite && !nuovoOspite && (
+                <button className="pastiglia-nome nuovo" onClick={() => apriNuovoOspite(cercaGiocatore, 'aggiungi')}>
+                  + Aggiungi «{cercaGiocatore.trim()}» come ospite
+                </button>
+              )}
+            </div>
+            {nuovoOspite?.per === 'aggiungi' && formOspite}
+
+            {!cercaGiocatore.trim() && restanti > 0 && (
+              <p className="aiuto">
+                {ultimiDaAggiungere.length > 0 ? 'In evidenza chi era all\u2019ultima partita. ' : ''}Poi quelli con cui giochi più spesso.
+                Gli altri {restanti} si trovano scrivendo il nome qui sopra.
+              </p>
+            )}
+            {offriOspite && (
+              <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
+            )}
+          </div>
 
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
 
@@ -1106,6 +1158,48 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             />
           )}
 
+          {pareggio && (
+            <div className="blocco-pareggio">
+              <p className="aiuto avviso-pareggio">
+                {condivisa
+                  ? `Vittoria condivisa fra ${contendenti.length} giocatori.`
+                  : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso secondo lo spareggio del gioco, oppure dichiara la vittoria condivisa.'}
+              </p>
+              <button
+                className={`bottone bottone-secondario${condivisa ? ' attivo' : ''}`}
+                onClick={() => setVincitoreScelto(condivisa ? null : 'condivisa')}
+              >
+                {condivisa ? 'Annulla vittoria condivisa' : 'Vittoria condivisa'}
+              </button>
+            </div>
+          )}
+
+          {tipo === 'coop' && (
+            <div className="campo">
+              <label htmlFor="esito">Com'è andata</label>
+              <select id="esito" className="scelta-punteggio larga" value={esitoCoop}
+                onChange={(e) => setEsitoCoop(e.target.value)}>
+                <option value="vinta">Vinta da tutti</option>
+                <option value="persa">Persa da tutti</option>
+              </select>
+            </div>
+          )}
+
+          <details className="altri-dettagli">
+            <summary>Altri dettagli <span className="anno">· quando, note, ordine di turno</span></summary>
+            <div className="altri-dettagli-corpo">
+<div className="campo">
+            <label htmlFor="quando">Quando</label>
+            <input id="quando" type="datetime-local" value={quando}
+              onChange={(e) => setQuando(e.target.value)} />
+          </div>
+
+          <div className="campo">
+            <label htmlFor="note">Note</label>
+            <input id="note" value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder="Espansioni, varianti, aneddoti" />
+          </div>
+
           {righe.length > 1 && (
             <div className="riga-ordine">
               <button
@@ -1140,104 +1234,15 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             </p>
           )}
 
-          {pareggio && (
-            <div className="blocco-pareggio">
-              <p className="aiuto avviso-pareggio">
-                {condivisa
-                  ? `Vittoria condivisa fra ${contendenti.length} giocatori.`
-                  : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso secondo lo spareggio del gioco, oppure dichiara la vittoria condivisa.'}
-              </p>
-              <button
-                className={`bottone bottone-secondario${condivisa ? ' attivo' : ''}`}
-                onClick={() => setVincitoreScelto(condivisa ? null : 'condivisa')}
-              >
-                {condivisa ? 'Annulla vittoria condivisa' : 'Vittoria condivisa'}
-              </button>
-            </div>
-          )}
+                      </div>
+          </details>
 
-          {tipo === 'coop' && (
-            <div className="campo">
-              <label htmlFor="esito">Com'è andata</label>
-              <select id="esito" className="scelta-punteggio larga" value={esitoCoop}
-                onChange={(e) => setEsitoCoop(e.target.value)}>
-                <option value="vinta">Vinta da tutti</option>
-                <option value="persa">Persa da tutti</option>
-              </select>
-            </div>
-          )}
-
-          <div className="campo">
-            <label htmlFor="cerca-giocatore">Aggiungi giocatori</label>
-            <input
-              id="cerca-giocatore"
-              className="campo-cerca"
-              value={cercaGiocatore}
-              onChange={(e) => setCercaGiocatore(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' || !filtroNomi) return
-                e.preventDefault()
-                if (disponibili.length === 1) scegliNome(disponibili[0])
-                else if (disponibili.length === 0 && offriOspite) apriNuovoOspite(cercaGiocatore, 'aggiungi')
-              }}
-              placeholder="Cerca un nome"
-            />
-
-            <div className="pastiglie-persone">
-              {!filtroNomi && ultimiDaAggiungere.length > 1 && (
-                <button className="pastiglia-nome nuovo" onClick={aggiungiTuttiUltima}>
-                  + Tutti quelli dell&rsquo;ultima partita ({ultimiDaAggiungere.length})
-                </button>
-              )}
-              {disponibili.map((x) => (
-                <button key={x.chiave}
-                  className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}${!filtroNomi && ultimaPartita.includes(x.chiave) ? ' ultima' : ''}`}
-                  onClick={() => scegliNome(x)}>
-                  {x.nome}
-                  {filtroNomi && x.dettaglio && <span className="pastiglia-dettaglio"> · {x.dettaglio}</span>}
-                </button>
-              ))}
-              {offriOspite && !nuovoOspite && (
-                <button className="pastiglia-nome nuovo" onClick={() => apriNuovoOspite(cercaGiocatore, 'aggiungi')}>
-                  + Aggiungi «{cercaGiocatore.trim()}» come ospite
-                </button>
-              )}
-            </div>
-            {nuovoOspite?.per === 'aggiungi' && formOspite}
-
-            {!cercaGiocatore.trim() && restanti > 0 && (
-              <p className="aiuto">
-                {ultimiDaAggiungere.length > 0 ? 'In evidenza chi era all\u2019ultima partita. ' : ''}Poi quelli con cui giochi più spesso.
-                Gli altri {restanti} si trovano scrivendo il nome qui sopra.
-              </p>
-            )}
-            {offriOspite && (
-              <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
-            )}
-          </div>
-
-          <div className="campo">
-            <label htmlFor="luogo">Dove</label>
-            <input id="luogo" value={luogo} onChange={(e) => setLuogo(e.target.value)}
-              list="luoghi-noti" placeholder="Casa mia, sede, online…" />
-            <datalist id="luoghi-noti">
-              {luoghiNoti.map((n) => <option key={n} value={n} />)}
-            </datalist>
-            <p className="aiuto">
-              Scrivi le prime lettere: se il posto c'è già te lo propone, così non
-              nascono doppioni.
-            </p>
-          </div>
-
-          <div className="campo">
-            <label htmlFor="note">Note</label>
-            <input id="note" value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="Espansioni, varianti, aneddoti" />
-          </div>
-
-          <button className="bottone" onClick={salva} disabled={salvando}>
+          <div className="barra-registra">
+            <button className="bottone" onClick={salva} disabled={salvando}>
             {salvando ? 'Salvo…' : modifica ? 'Salva modifiche' : 'Registra partita'}
           </button>
+          </div>
+
 
           {modifica ? (
             <button className="bottone bottone-secondario" onClick={() => finitaModifica?.()}>
