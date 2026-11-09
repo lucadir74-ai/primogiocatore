@@ -7,7 +7,6 @@
 
 import { impronta } from './impronta'
 import { trovaOCreaLuogo } from './giochiMiei'
-import { LUOGO_TANA } from './luoghiNome'
 
 // Una coda per persona. Prima era una sola per telefono: su un tablet
 // condiviso le partite in attesa di uno partivano col profilo di chi
@@ -72,8 +71,7 @@ export function eProblemaDiRete(errore) {
 // sia quando la coda riparte, così la logica è una sola.
 export async function scriviPartita(supabase, profilo, dati) {
   // Fra i luoghi che vedi, prima il tuo; se non c'è lo crei tu.
-  const luogoId = await trovaOCreaLuogo(dati.luogo, profilo.id,
-    (dati.luogo || '').trim().toLowerCase() === LUOGO_TANA.toLowerCase() ? 'sede' : 'altro')
+  const luogoId = await trovaOCreaLuogo(dati.luogo, profilo.id)
 
   const campi = {
     gioco_id: dati.gioco_id,

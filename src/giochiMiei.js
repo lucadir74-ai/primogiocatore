@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.4.0 - 202611091300 (giochi giocati letti una volta sola: molto più leggero)
+// v2.5.0 - 202611091500 (la Tana scritta in modi diversi diventa un luogo solo)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -11,6 +11,7 @@
 // chi li crea: fra quelli visibili si preferiscono i propri.
 
 import { supabase, tutteLeRighe } from './supabase.js'
+import { LUOGO_TANA, eLuogoTana } from './luoghiNome.js'
 
 // Prima la lettura portava, per ogni partita giocata, l'intero gioco
 // (migliaia di copie degli stessi giochi). Ora: dalle partite solo l'id
@@ -78,8 +79,10 @@ export function mappaPerNome(righe, profiloId) {
 // Il luogo con quel nome fra quelli che vedi (prima il tuo); se non
 // c'è, lo crei tu.
 export async function trovaOCreaLuogo(nome, profiloId, tipo = 'altro') {
-  const pulito = (nome || '').trim()
+  let pulito = (nome || '').trim()
   if (!pulito) return null
+  // La Tana, comunque sia scritta, è un luogo solo, di tipo sede.
+  if (eLuogoTana(pulito)) { pulito = LUOGO_TANA; tipo = 'sede' }
   const { data } = await supabase.from('luoghi')
     .select('id, nome, creato_da').ilike('nome', pulito).limit(20)
   const trovato = mappaPerNome(data, profiloId).get(pulito.toLowerCase())

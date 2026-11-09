@@ -1,5 +1,5 @@
 // Primo Giocatore - il nome di un luogo per chi guarda
-// v1.0.0 - 202611011100
+// v1.1.0 - 202611091500 (luogo della Tana: un nome solo)
 //
 // Un luogo di tipo «casa» spesso si chiama solo «Casa»: il proprietario
 // lo vede col suo nome, gli altri con nome_per_altri («Casa di lucadir»),
@@ -28,3 +28,15 @@ export function luoghiPerChiGuarda(righe, mioId) {
 // Il luogo già scritto in una partita nuova: quasi tutte si giocano in
 // sede. Si salva come «sede», così lo vedono tutti e resta uno solo.
 export const LUOGO_TANA = 'Tana dei Goblin Roma'
+
+// I modi in cui la Tana si scrive a mano o arriva dagli import («Tana dei
+// Goblin di Roma», «TdG Roma», «tana», «Sede»…): finiscono tutti su
+// LUOGO_TANA. Le Tane di altre città («Tana dei Goblin Milano») no.
+// Stessa regola dello script luogo_tana_unico.sql.
+const TANA_SOLA = /^(la |presso (la )?)?(tana|tdg|goblins?|sede)( (dei|de) goblins?)?( (di |de )?(roma|rm))?( sede)?$/
+export function eLuogoTana(nome) {
+  const n = String(nome || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim()
+  if (!n) return false
+  return TANA_SOLA.test(n) || (/goblin|tdg/.test(n) && /\b(roma|rm)\b/.test(n))
+}
