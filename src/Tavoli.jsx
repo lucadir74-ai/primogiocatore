@@ -1,7 +1,7 @@
 // Primo Giocatore - Tavoli
 // v2.21.1 - 202611030700 (scheda del tavolo: Apri e Condividi in vista, il resto in «Gestisci»; Annulla chiede conferma)
 
-import { nomeLuogo } from './luoghiNome'
+import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -105,10 +105,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   /* ---------- Creazione e modifica ---------- */
 
   function apriNuovo() {
-    const fra2ore = new Date(Date.now() + 2 * 60 * 60 * 1000)
-    fra2ore.setMinutes(0, 0, 0)
-    const inizio = perCampo(fra2ore)
-    setModulo({ ...VUOTO, inizio })
+    // Di solito si gioca in sede alle 20:45: oggi, o domani se è già passata.
+    const sera = new Date()
+    sera.setHours(20, 45, 0, 0)
+    if (sera.getTime() <= Date.now()) sera.setDate(sera.getDate() + 1)
+    const inizio = perCampo(sera)
+    setModulo({ ...VUOTO, inizio, luogo: LUOGO_TANA })
     setLuogoNoto(null)
     caricaDisponibili(inizio)
     setMessaggio('')
