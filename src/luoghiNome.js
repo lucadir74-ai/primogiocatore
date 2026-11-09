@@ -24,3 +24,7 @@ export function luoghiPerChiGuarda(righe, mioId) {
   }
   return righe
 }
+
+// Il luogo già scritto in una partita nuova: quasi tutte si giocano in
+// sede. Si salva come «sede», così lo vedono tutti e resta uno solo.
+export const LUOGO_TANA = 'Tana dei Goblin Roma'

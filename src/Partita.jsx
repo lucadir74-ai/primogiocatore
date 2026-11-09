@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.24.0 - 202611091300 (elenchi salvati sul telefono: la pagina e la ricerca del gioco sono subito pronte)
+// v4.25.0 - 202611091400 (niente nomi suggeriti finché non si cerca, niente «Chi ha giocato», luogo già sulla Tana)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
@@ -11,6 +11,7 @@ import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
+import { LUOGO_TANA } from './luoghiNome'
 import { archivioInMemoria, leggiDalTelefono, salvaSulTelefono } from './archivio'
 
 // Gli elenchi dell'ultima apertura, per riaprire la pagina all'istante.
@@ -42,7 +43,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [gioco, setGioco] = useState(null)
   const [filtro, setFiltro] = useState('')
   const [righe, setRighe] = useState([])
-  const [luogo, setLuogo] = useState('')
+  const [luogo, setLuogo] = useState(LUOGO_TANA)
   const [note, setNote] = useState('')
   const [esitoCoop, setEsitoCoop] = useState('vinta')
   const [quando, setQuando] = useState(perCampo(new Date()))
@@ -680,7 +681,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       : inTesta.map((r) => r.chiave)
 
   function azzera() {
-    setGioco(null); setRighe([]); setNote(''); setLuogo('')
+    setGioco(null); setRighe([]); setNote(''); setLuogo(LUOGO_TANA)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setSegnapuntiAperto(false)
     setRipresa(false)
@@ -810,7 +811,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     ? tuttiDisponibili.filter((x) => x.nomi.some((n) => n.includes(filtroNomi)))
     : tuttiDisponibili
   const disponibili = filtroNomi ? trovatiNomi.slice(0, 30) : trovatiNomi.slice(0, LIMITE_NOMI)
-  const restanti = Math.max(0, tuttiDisponibili.length - LIMITE_NOMI)
   // Il tasto «aggiungi come ospite» compare solo se nessuno, fra chi è
   // già al tavolo e chi si può aggiungere, ha esattamente quel nome.
   const nomeEsatto = filtroNomi && (
@@ -1003,8 +1003,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             </datalist>
           )}
 
-          <h3 className="titolo-sezione">Chi ha giocato</h3>
-
           <div className="campo">
             <label htmlFor="cerca-giocatore">Aggiungi giocatori</label>
             <input
@@ -1027,7 +1025,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
                   + Tutti quelli dell&rsquo;ultima partita ({ultimiDaAggiungere.length})
                 </button>
               )}
-              {disponibili.map((x) => (
+              {filtroNomi && disponibili.map((x) => (
                 <button key={x.chiave}
                   className={`pastiglia-nome${x.tipo === 'ospite' ? ' ospite' : ''}${!filtroNomi && ultimaPartita.includes(x.chiave) ? ' ultima' : ''}`}
                   onClick={() => scegliNome(x)}>
@@ -1043,12 +1041,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             </div>
             {nuovoOspite?.per === 'aggiungi' && formOspite}
 
-            {!cercaGiocatore.trim() && restanti > 0 && (
-              <p className="aiuto">
-                {ultimiDaAggiungere.length > 0 ? 'In evidenza chi era all\u2019ultima partita. ' : ''}Poi quelli con cui giochi più spesso.
-                Gli altri {restanti} si trovano scrivendo il nome qui sopra.
-              </p>
-            )}
             {offriOspite && (
               <p className="aiuto">Se un ospite un giorno si iscrive, le sue partite lo seguono.</p>
             )}
