@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.21.1 - 202611030700 (scheda del tavolo: Apri e Condividi in vista, il resto in «Gestisci»; Annulla chiede conferma)
+// v2.23.0 - 202611091800 (tavolo nuovo con Tana e 20:45; tavoli passati senza Apri, Condividi e Locandina)
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
@@ -1094,6 +1094,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     const mio = proprietario || t.dimostratore_id === profilo.id
       || (t.iscrizioni_tavolo || []).some((i) =>
         i.ruolo === 'dimostratore' && i.utente_id === profilo.id && i.stato !== 'annullato')
+    const passato = new Date(t.inizio) < adesso
     return (
       <div className="tavolo-scheda" key={t.id}>
         <div className="tavolo-testa">
@@ -1118,12 +1119,20 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             </span>
           </div>
         </div>
+        {/* Un tavolo passato si guarda e basta: niente Apri, Condividi e
+            Locandina. Restano la partita e, per chi gestisce, Gestisci
+            (iscritti, registra partita). */}
+        {(!passato || t.partita_id || mio) && (
         <div className="tavolo-azioni">
-          <button className="tasto-piccolo primario" onClick={() => setAperto(t)}>
-            {t.stato === 'aperto' && new Date(t.inizio) >= adesso ? 'Apri e iscriviti' : 'Apri'}
-          </button>
-          <button className="tasto-piccolo" onClick={() => condividi(t)}>Condividi</button>
-          {!mio && <button className="tasto-piccolo" onClick={() => setLocandina(t)}>Locandina</button>}
+          {!passato && (
+            <>
+              <button className="tasto-piccolo primario" onClick={() => setAperto(t)}>
+                {t.stato === 'aperto' ? 'Apri e iscriviti' : 'Apri'}
+              </button>
+              <button className="tasto-piccolo" onClick={() => condividi(t)}>Condividi</button>
+              {!mio && <button className="tasto-piccolo" onClick={() => setLocandina(t)}>Locandina</button>}
+            </>
+          )}
           {t.partita_id && (
             <button className="tasto-piccolo" onClick={() => onRegistraPartita?.(t.partita_id)}>Vedi partita</button>
           )}
@@ -1135,6 +1144,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             </button>
           )}
         </div>
+        )}
         {/* Le azioni di chi gestisce: a parte, e quelle che non si annullano in fondo. */}
         {mio && gestione === t.id && (
           <div className="tavolo-gestione">
