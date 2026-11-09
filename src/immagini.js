@@ -1,5 +1,5 @@
 // Primo Giocatore - immagini generiche
-// v1.0.0 - 202609302230
+// v1.1.0 - 202611091600 (tavolo-libero.png ora è il logo della Tana dei Goblin Roma)
 //
 // Il tavolo libero non ha un gioco, quindi nemmeno una copertina: usa
 // questa. Per metterci il logo della Tana dei Goblin basta sostituire
