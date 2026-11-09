@@ -1,7 +1,7 @@
 // Primo Giocatore - Tavoli
-// v2.21.1 - 202611030700 (scheda del tavolo: Apri e Condividi in vista, il resto in «Gestisci»; Annulla chiede conferma)
+// v2.23.0 - 202611091800 (tavolo nuovo con Tana e 20:45; tavoli passati senza Apri, Condividi e Locandina)
 
-import { nomeLuogo } from './luoghiNome'
+import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, fetchBgg } from './supabase'
@@ -105,10 +105,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   /* ---------- Creazione e modifica ---------- */
 
   function apriNuovo() {
-    const fra2ore = new Date(Date.now() + 2 * 60 * 60 * 1000)
-    fra2ore.setMinutes(0, 0, 0)
-    const inizio = perCampo(fra2ore)
-    setModulo({ ...VUOTO, inizio })
+    // Di solito si gioca in sede alle 20:45: oggi, o domani se è già passata.
+    const sera = new Date()
+    sera.setHours(20, 45, 0, 0)
+    if (sera.getTime() <= Date.now()) sera.setDate(sera.getDate() + 1)
+    const inizio = perCampo(sera)
+    setModulo({ ...VUOTO, inizio, luogo: LUOGO_TANA })
     setLuogoNoto(null)
     caricaDisponibili(inizio)
     setMessaggio('')
@@ -1092,12 +1094,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     const mio = proprietario || t.dimostratore_id === profilo.id
       || (t.iscrizioni_tavolo || []).some((i) =>
         i.ruolo === 'dimostratore' && i.utente_id === profilo.id && i.stato !== 'annullato')
+    const passato = new Date(t.inizio) < adesso
     return (
       <div className="tavolo-scheda" key={t.id}>
         <div className="tavolo-testa">
           {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
           <div className="nome-giocatore">
-            <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+            <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
             <span className="anno block">{quando(t.inizio)}</span>
             <span className="anno block">
               {nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'}
@@ -1116,12 +1119,20 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             </span>
           </div>
         </div>
+        {/* Un tavolo passato si guarda e basta: niente Apri, Condividi e
+            Locandina. Restano la partita e, per chi gestisce, Gestisci
+            (iscritti, registra partita). */}
+        {(!passato || t.partita_id || mio) && (
         <div className="tavolo-azioni">
-          <button className="tasto-piccolo primario" onClick={() => setAperto(t)}>
-            {t.stato === 'aperto' && new Date(t.inizio) >= adesso ? 'Apri e iscriviti' : 'Apri'}
-          </button>
-          <button className="tasto-piccolo" onClick={() => condividi(t)}>Condividi</button>
-          {!mio && <button className="tasto-piccolo" onClick={() => setLocandina(t)}>Locandina</button>}
+          {!passato && (
+            <>
+              <button className="tasto-piccolo primario" onClick={() => setAperto(t)}>
+                {t.stato === 'aperto' ? 'Apri e iscriviti' : 'Apri'}
+              </button>
+              <button className="tasto-piccolo" onClick={() => condividi(t)}>Condividi</button>
+              {!mio && <button className="tasto-piccolo" onClick={() => setLocandina(t)}>Locandina</button>}
+            </>
+          )}
           {t.partita_id && (
             <button className="tasto-piccolo" onClick={() => onRegistraPartita?.(t.partita_id)}>Vedi partita</button>
           )}
@@ -1133,6 +1144,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             </button>
           )}
         </div>
+        )}
         {/* Le azioni di chi gestisce: a parte, e quelle che non si annullano in fondo. */}
         {mio && gestione === t.id && (
           <div className="tavolo-gestione">

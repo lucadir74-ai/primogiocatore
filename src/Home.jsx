@@ -70,7 +70,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     let finito = false
     supabase
       .from('tavoli')
-      .select(`id, titolo, inizio, posti_max, stato, pubblicato,
+      .select(`id, titolo, descrizione, inizio, posti_max, stato, pubblicato,
         giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
         host_id, dimostratore_id, su_approvazione,
         luoghi ( nome, creato_da, nome_per_altri ), iscrizioni_tavolo ( stato, utente_id, ruolo )`)
@@ -215,7 +215,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
                   </span>
                   {copertinaTavolo(t) && <img className="home-mini" src={copertinaTavolo(t)} alt="" />}
                   <span className="home-riga-testo">
-                    <strong>{nomeTavolo(t)}</strong>
+                    <span className="titolo-tavolo"><strong>{nomeTavolo(t)}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
                     <span>{ora(t.inizio)}{t.luoghi?.nome ? ` · ${nomeLuogo(t.luoghi, profilo.id)}` : ''}</span>
                     {liberi != null && (
                       <span>{liberi === 0 ? 'completo' : liberi === 1 ? '1 posto libero' : `${liberi} posti liberi`}</span>

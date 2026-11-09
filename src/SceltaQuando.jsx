@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta di giorno e ora
-// v1.0.0 - 202609301800
+// v1.1.0 - 202611091700 (anche le 20:45, l'orario solito in sede)
 //
 // Il selettore di data e ora del telefono non fa capire come si
 // conferma. Qui si tocca un giorno e un orario: la scelta vale subito e
@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import BarraScorrevole from './BarraScorrevole.jsx'
 
-const ORE = ['10:00', '15:00', '18:00', '20:30', '21:00', '21:30']
+const ORE = ['10:00', '15:00', '18:00', '20:30', '20:45', '21:00', '21:30']
 
 const p2 = (n) => String(n).padStart(2, '0')
 const iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`

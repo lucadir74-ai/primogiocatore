@@ -2766,3 +2766,16 @@ button.numerone:active { transform: scale(0.98); }
 .altri-dettagli[open] > summary::after { content: '▴'; }
 .altri-dettagli > summary .anno { font-family: var(--testo); font-weight: 400; }
 .altri-dettagli-corpo { padding: 0 0.9rem 0.9rem; }
+
+/* Le note del tavolo accanto al titolo: più chiare, al massimo due righe. */
+.titolo-tavolo {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.nota-tavolo { font-weight: normal; color: var(--inchiostro-tenue); }
+.home-riga-testo > .titolo-tavolo { font-size: 0.95rem; color: inherit; white-space: normal; }
+.home-riga-testo > .titolo-tavolo > strong { font-weight: 600; }
+.home-riga-testo > .titolo-tavolo > .nota-tavolo { font-size: 0.82rem; }

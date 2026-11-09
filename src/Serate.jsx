@@ -262,7 +262,7 @@ export default function Serate({ profilo }) {
       supabase
         .from('tavoli')
         .select(`
-          id, titolo, inizio, stato, posti_max, pubblicato, gioco_id,
+          id, titolo, descrizione, inizio, stato, posti_max, pubblicato, gioco_id,
           dimostratore_nome, dimostratore_id, dimostratore_ospite_id,
           giochi:tavoli_gioco_id_fkey ( nome, immagine_url ),
           iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id )
@@ -630,7 +630,7 @@ export default function Serate({ profilo }) {
                             <img src={copertinaTavolo(t)} alt="" className="copertina" />
                           )}
                           <div className="nome-giocatore">
-                            <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+                            <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
                             <span className="anno block">
                               {new Date(t.inizio).toLocaleTimeString('it-IT', {
                                 hour: '2-digit', minute: '2-digit',
@@ -898,7 +898,7 @@ export default function Serate({ profilo }) {
                                   <img src={copertinaTavolo(t)} alt="" className="copertina" />
                                 )}
                                 <div className="nome-giocatore">
-                                  <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+                                  <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
                                   <span className="anno block">
                                     {new Date(t.inizio).toLocaleTimeString('it-IT', {
                                       hour: '2-digit', minute: '2-digit',
