@@ -1099,7 +1099,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <div className="tavolo-testa">
           {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
           <div className="nome-giocatore">
-            <strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>
+            <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
             <span className="anno block">{quando(t.inizio)}</span>
             <span className="anno block">
               {nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'}
