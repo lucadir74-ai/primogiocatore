@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.3.0 - 202610260130 (i giochi salvati possono essere segnati come espansioni)
+// v2.5.0 - 202611091500 (la Tana scritta in modi diversi diventa un luogo solo)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -11,19 +11,31 @@
 // chi li crea: fra quelli visibili si preferiscono i propri.
 
 import { supabase, tutteLeRighe } from './supabase.js'
+import { LUOGO_TANA, eLuogoTana } from './luoghiNome.js'
 
+// Prima la lettura portava, per ogni partita giocata, l'intero gioco
+// (migliaia di copie degli stessi giochi). Ora: dalle partite solo l'id
+// del gioco, poi ogni gioco una volta sola, a blocchi in parallelo.
 export async function giochiMiei(profiloId, campi) {
   const [c, p, m] = await Promise.all([
     tutteLeRighe(() => supabase.from('collezioni')
       .select(`gioco_id, giochi ( ${campi} )`).eq('utente_id', profiloId), 1000, 'gioco_id'),
     tutteLeRighe(() => supabase.from('partecipazioni')
-      .select(`partite ( giochi ( ${campi} ) )`).eq('utente_id', profiloId)),
+      .select('partite ( gioco_id )').eq('utente_id', profiloId)),
     tutteLeRighe(() => supabase.from('giochi').select(campi).eq('creato_da', profiloId)),
   ])
   const mappa = new Map()
   for (const r of c) if (r.giochi) mappa.set(r.giochi.id, r.giochi)
-  for (const r of p) if (r.partite?.giochi) mappa.set(r.partite.giochi.id, r.partite.giochi)
   for (const g of m) mappa.set(g.id, g)
+  const mancanti = [...new Set(p.map((r) => r.partite?.gioco_id).filter((id) => id && !mappa.has(id)))]
+  const blocchi = []
+  for (let i = 0; i < mancanti.length; i += 150) blocchi.push(mancanti.slice(i, i + 150))
+  const letti = await Promise.all(blocchi.map(async (ids) => {
+    const { data, error } = await supabase.from('giochi').select(campi).in('id', ids)
+    if (error) throw error
+    return data || []
+  }))
+  for (const g of letti.flat()) mappa.set(g.id, g)
   return [...mappa.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
 }
 
@@ -67,8 +79,10 @@ export function mappaPerNome(righe, profiloId) {
 // Il luogo con quel nome fra quelli che vedi (prima il tuo); se non
 // c'è, lo crei tu.
 export async function trovaOCreaLuogo(nome, profiloId, tipo = 'altro') {
-  const pulito = (nome || '').trim()
+  let pulito = (nome || '').trim()
   if (!pulito) return null
+  // La Tana, comunque sia scritta, è un luogo solo, di tipo sede.
+  if (eLuogoTana(pulito)) { pulito = LUOGO_TANA; tipo = 'sede' }
   const { data } = await supabase.from('luoghi')
     .select('id, nome, creato_da').ilike('nome', pulito).limit(20)
   const trovato = mappaPerNome(data, profiloId).get(pulito.toLowerCase())
