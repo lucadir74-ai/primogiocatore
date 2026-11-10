@@ -186,6 +186,16 @@ function ricostruisci(copia) {
 
 const eInterruzione = (e) => e?.name === 'AbortError'
 
+// Lettura fallita e nessuna copia: le pagine mostrano il messaggio così
+// com'è (la libreria lo compone come «nome: messaggio»), quindi lo si
+// scrive in italiano al posto di «TypeError: Failed to fetch».
+const NON_SUL_TELEFONO = 'questi dati non sono ancora sul telefono. Apri l\u2019app con la linea: dopo qualche secondo si salvano da soli.'
+function maiVista() {
+  const e = new Error(NON_SUL_TELEFONO)
+  e.name = 'Senza rete'
+  return e
+}
+
 /* ---------- Il fetch che si dà a Supabase ---------- */
 
 export async function fetchConMemoria(indirizzo, opzioni) {
@@ -211,6 +221,13 @@ export async function fetchConMemoria(indirizzo, opzioni) {
   if (!inLinea()) {
     const c = await copia
     if (c) { segna(true); return ricostruisci(c) }
+    // Nessuna copia: si risponde subito di no. Lasciando fallire la
+    // richiesta, la libreria la ritenta tre volte e l'errore arriva dopo
+    // sette secondi di «Carico…».
+    avvisa()
+    return new Response(JSON.stringify({ code: 'SENZA_RETE', message: `Senza rete: ${NON_SUL_TELEFONO}` }), {
+      status: 504, statusText: 'Senza rete', headers: { 'content-type': 'application/json' },
+    })
   }
 
   const rete = fetch(indirizzo, opzioni).then(
@@ -239,7 +256,7 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     giuFino = Date.now() + PAUSA_DOPO_GUASTO
     const c = await copia
     if (c) { segna(true); return ricostruisci(c) }
-    throw esito.e
+    throw maiVista()
   }
 
   const r = esito.r

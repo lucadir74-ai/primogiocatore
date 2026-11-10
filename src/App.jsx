@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
+import Prepara from './Prepara.jsx'
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
@@ -33,6 +34,8 @@ const Classifiche = lazy(() => import('./Classifiche.jsx'))
 const Organizzatori = lazy(() => import('./Organizzatori.jsx'))
 const Soci = lazy(() => import('./Soci.jsx'))
 const ImportaBga = lazy(() => import('./ImportaBga.jsx'))
+// Le pagine che si preparano da sole per quando manca la rete (Prepara.jsx).
+const PAGINE_DA_PREPARARE = [['tavoli', Tavoli], ['giochi', Giochi], ['giocatori', Giocatori], ['classifiche', Classifiche]]
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
@@ -1188,6 +1191,7 @@ export default function App() {
           </nav>
 
           <StatoRete profilo={profilo} />
+          <Prepara profilo={profilo} aperta={scheda} pagine={PAGINE_DA_PREPARARE} />
 
           {daBgg && (
             <div className="scheda scheda-sottile">
@@ -1399,6 +1403,7 @@ function traduciErrore(e) {
   if (m.includes('email not confirmed')) return 'Devi prima confermare l\u2019indirizzo dal messaggio che ti è arrivato.'
   if (m.includes('duplicate key') && m.includes('nickname')) return 'Questo soprannome è già di qualcun altro. Scegline un altro.'
   if (m.includes('row-level security')) return 'Il database ha rifiutato la scrittura: manca una regola di accesso.'
+  if (m.startsWith('senza rete')) return e.message
   if (m.includes('failed to fetch') || m.includes('load failed') || m.includes('networkerror')) return 'Nessuna connessione al database. Controlla la rete.'
   return e?.message || 'Qualcosa non ha funzionato.'
 }
