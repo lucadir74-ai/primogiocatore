@@ -486,6 +486,8 @@ export default async function handler(req, res) {
         note: ripulisci(typeof p.comments === 'string' ? p.comments : (p.comments?.['#text'] ?? null)),
         incompleta: p.incomplete === 1 || p.incomplete === '1',
         senza_punteggi: p.nowinstats === 1 || p.nowinstats === '1',
+        // Una riga di BGG può valere più partite (quantity).
+        quante: Math.max(1, Number(p.quantity) || 1),
         gioco: p.item
           ? { bgg_id: Number(p.item.objectid), nome: ripulisci(p.item.name) ?? null }
           : null,
