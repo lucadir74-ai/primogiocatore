@@ -8,6 +8,7 @@ import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './su
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
 import Prepara from './Prepara.jsx'
+import { salvaOAccoda, profiloConModifiche, EVENTO_MODIFICHE_INVIATE } from './modifiche'
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
@@ -539,9 +540,9 @@ function Profilo({ sessione, profilo, setProfilo }) {
       return
     }
     setSalvataggio(true)
-    const { error } = await supabase
-      .from('profili')
-      .update({
+    try {
+      // Senza rete resta sul telefono e parte da solo (modifiche.js).
+      const { inAttesa } = await salvaOAccoda(sessione.user.id, 'profilo', sessione.user.id, {
         nome: profilo.nome.trim(),
         cognome: profilo.cognome.trim(),
         nickname: profilo.nickname?.trim() || null,
@@ -551,11 +552,13 @@ function Profilo({ sessione, profilo, setProfilo }) {
         bga_username: profilo.bga_username?.trim() || null,
         collezione_condivisa: profilo.collezione_condivisa !== false,
       })
-      .eq('id', sessione.user.id)
-
+      setOk(inAttesa
+        ? 'Niente rete: il profilo è salvato sul telefono e partirà da solo quando torna la linea.'
+        : 'Profilo salvato.')
+    } catch (e) {
+      setErrore(traduciErrore(e))
+    }
     setSalvataggio(false)
-    if (error) setErrore(traduciErrore(error))
-    else setOk('Profilo salvato.')
   }
 
   const coloreAttivo = COLORI.find((c) => c.id === profilo.colore)
@@ -1017,12 +1020,19 @@ export default function App() {
           if (nick && !data.nickname) {
             setProfilo({ ...data, nickname: nick })
             supabase.from('profili').update({ nickname: nick }).eq('id', data.id).then(() => {})
-          } else setProfilo(data)
+          } else setProfilo(profiloConModifiche(data))   // con le modifiche fatte senza rete, se aspettano
         }
         else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
       })
     return () => { vivo = false }
   }, [sessione, riprova])
+
+  // Modifiche fatte senza rete appena partite (o rifiutate): il profilo si rilegge.
+  useEffect(() => {
+    const f = () => setRiprova((n) => n + 1)
+    window.addEventListener(EVENTO_MODIFICHE_INVIATE, f)
+    return () => window.removeEventListener(EVENTO_MODIFICHE_INVIATE, f)
+  }, [])
 
   // Profilo non letto per mancanza di rete: si riprova appena torna.
   useEffect(() => {

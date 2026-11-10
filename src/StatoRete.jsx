@@ -4,7 +4,8 @@
 // Sta in cima all'app, sotto la testata. Dice tre cose, solo quando servono:
 // - manca la rete (o non risponde): quello che vedi è dell'ultima volta;
 // - ci sono partite registrate senza rete che aspettano di partire;
-// - le partite in attesa sono appena state salvate.
+// - le partite in attesa sono appena state salvate;
+// - lo stesso per le piccole modifiche fatte senza rete (modifiche.js).
 // È anche chi le fa partire: all'apertura e appena la rete torna, da
 // qualunque pagina (prima succedeva solo aprendo la pagina Partita).
 
@@ -13,21 +14,41 @@ import { supabase } from './supabase'
 import { statoRete, seguiRete } from './memoriaRete'
 import { leggiCoda, inviaCoda, EVENTO_CODA } from './coda'
 import { leggiArchivio } from './archivio'
+import { leggiModifiche, inviaModifiche, EVENTO_MODIFICHE } from './modifiche'
 import { inviaABggSeServe } from './invioBgg'
 
 export default function StatoRete({ profilo }) {
   const [rete, setRete] = useState(statoRete)
   const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
   const [esito, setEsito] = useState(null)   // { salvate } | { rifiutate, motivo }
+  const [modifiche, setModifiche] = useState(() => leggiModifiche(profilo?.id).length)
+  const [esitoModifiche, setEsitoModifiche] = useState(null)   // { salvate } | { cosa, motivo }
 
   useEffect(() => seguiRete(setRete), [])
 
   useEffect(() => {
     if (!profilo?.id) return
     let vivo = true
-    const conta = () => { if (vivo) setInCoda(leggiCoda(profilo.id).length) }
+    const conta = () => {
+      if (!vivo) return
+      setInCoda(leggiCoda(profilo.id).length)
+      setModifiche(leggiModifiche(profilo.id).length)
+    }
+
+    // Le piccole modifiche fatte senza rete (profilo, «è mio», nome di un luogo).
+    async function svuotaModifiche() {
+      if (!navigator.onLine || leggiModifiche(profilo.id).length === 0) return
+      try {
+        const r = await inviaModifiche(profilo.id)
+        if (!vivo) return
+        conta()
+        if (r.scartate.length) setEsitoModifiche(r.scartate[0])
+        else if (r.inviate > 0) setEsitoModifiche({ salvate: r.inviate })
+      } catch { /* si riprova al prossimo ritorno della rete */ }
+    }
 
     async function svuota() {
+      svuotaModifiche()
       if (!navigator.onLine || leggiCoda(profilo.id).length === 0) return
       try {
         const r = await inviaCoda(supabase, profilo)
@@ -55,17 +76,19 @@ export default function StatoRete({ profilo }) {
     svuota()
     window.addEventListener('online', reteTornata)
     window.addEventListener(EVENTO_CODA, conta)
+    window.addEventListener(EVENTO_MODIFICHE, conta)
     document.addEventListener('visibilitychange', tornataVisibile)
     return () => {
       vivo = false
       window.removeEventListener('online', reteTornata)
       window.removeEventListener(EVENTO_CODA, conta)
+      window.removeEventListener(EVENTO_MODIFICHE, conta)
       document.removeEventListener('visibilitychange', tornataVisibile)
     }
   }, [profilo?.id])
 
   const fuori = rete.senzaRete || rete.datiVecchi
-  if (!fuori && !inCoda && !esito) return null
+  if (!fuori && !inCoda && !esito && !modifiche && !esitoModifiche) return null
 
   return (
     <div className="stato-rete" role="status">
@@ -83,6 +106,25 @@ export default function StatoRete({ profilo }) {
           {inCoda === 1
             ? 'Una partita aspetta la rete per essere salvata: resta su questo telefono.'
             : `${inCoda} partite aspettano la rete per essere salvate: restano su questo telefono.`}
+        </p>
+      )}
+      {modifiche > 0 && (
+        <p className="stato-rete-riga">
+          {modifiche === 1
+            ? 'Una modifica aspetta la rete: resta su questo telefono.'
+            : `${modifiche} modifiche aspettano la rete: restano su questo telefono.`}
+        </p>
+      )}
+      {esitoModifiche?.salvate > 0 && (
+        <p className="stato-rete-riga">
+          {esitoModifiche.salvate === 1 ? 'La modifica in attesa è stata salvata.' : `${esitoModifiche.salvate} modifiche in attesa sono state salvate.`}{' '}
+          <button type="button" className="bottone-piatto" onClick={() => setEsitoModifiche(null)}>ok</button>
+        </p>
+      )}
+      {esitoModifiche?.motivo && (
+        <p className="stato-rete-riga">
+          Non sono riuscito a salvare {esitoModifiche.cosa}, modificato senza rete: {esitoModifiche.motivo}{' '}
+          <button type="button" className="bottone-piatto" onClick={() => setEsitoModifiche(null)}>ok</button>
         </p>
       )}
       {esito?.salvate > 0 && (
