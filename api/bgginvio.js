@@ -1,5 +1,5 @@
 // Primo Giocatore - invio delle partite a BoardGameGeek
-// v1.1.0 - 202610311300 (l'invio si può chiamare anche dalla sincronizzazione programmata, api/sincro.js)
+// v1.2.0 - 202611110900 (richiedi: manda a BGG anche partite vecchie scelte dal confronto; data giusta per le partite arrivate da BG Stats)
 //
 // Come fa BG Stats: si entra su BGG con nome utente e password dell'iscritto
 // e si registra la partita dalla pagina interna del sito (geekplay.php).
@@ -17,6 +17,8 @@
 //   scollega                    -> cancella la sessione BGG
 //   opzioni   { invia_bga }     -> invia anche le partite importate da BGA
 //   riprova                     -> rimette in coda le partite andate in errore
+//   richiedi  { ids }           -> mette in coda partite vecchie scelte da chi
+//                                  gioca (confronto con BGG, bgg_mancanti.sql)
 //   invia                       -> manda a BGG le partite in attesa e toglie
 //                                  quelle cancellate qui; { continua } se ne
 //                                  restano
@@ -127,7 +129,7 @@ const dataRoma = (istante) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Euro
 
 async function corpoPartita(db, partitaId, io) {
   const { data: p, error } = await db.from('partite')
-    .select('id, registrata_da, gioco_id, luogo_id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, bgg_play_id')
+    .select('id, registrata_da, gioco_id, luogo_id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, bgg_play_id, chiave_esterna')
     .eq('id', partitaId).maybeSingle()
   if (error) throw error
   if (!p || p.registrata_da !== io.utente_id) return { salta: true }
@@ -185,7 +187,9 @@ async function corpoPartita(db, partitaId, io) {
       action: 'save',
       objecttype: 'thing',
       objectid: gioco.bgg_id,
-      playdate: dataRoma(p.giocata_il),
+      // Gli import (BG Stats, BGG) salvano l'ora così com'è scritta: il
+      // giorno è quello, senza spostarlo sul fuso di Roma.
+      playdate: /^(bgstats|bgg):/.test(p.chiave_esterna || '') ? String(p.giocata_il).slice(0, 10) : dataRoma(p.giocata_il),
       length: p.durata_minuti || 0,
       location: luogo?.nome || '',
       comments: p.note || '',
@@ -352,11 +356,28 @@ export default async function handler(req, res) {
         if (error) throw error
         return rispondi(await stato(db, utenteId))
       }
+      case 'richiedi': {
+        const ids = (Array.isArray(corpo.ids) ? corpo.ids : []).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 5000)
+        const ora = new Date().toISOString()
+        let messe = 0
+        for (let i = 0; i < ids.length; i += 100) {
+          const { data: fatte, error } = await db.from('partite')
+            .update({ bgg_richiesta_il: ora, bgg_errore: null })
+            .eq('registrata_da', utenteId).is('bgg_play_id', null).is('bgg_inviata_il', null)
+            .in('id', ids.slice(i, i + 100)).select('id')
+          if (error) throw error
+          messe += (fatte || []).length
+        }
+        return rispondi({ ...(await stato(db, utenteId)), messe })
+      }
       case 'invia': return rispondi(await invia(db, utenteId))
       default: return res.status(400).json({ errore: 'Azione sconosciuta' })
     }
   } catch (e) {
     const msg = String(e?.message || e)
+    if (/bgg_richiesta_il/.test(msg)) {
+      return rispondi({ errore: 'Al database manca lo script SQL bgg_mancanti.sql: va lanciato una volta in Supabase.' })
+    }
     if (/bgg_sessioni|bgg_da_inviare|bgg_play_id|bgg_da_eliminare/.test(msg)) {
       return rispondi({ errore: 'Al database manca lo script SQL per l\u2019invio a BGG (invio_bgg.sql).' })
     }

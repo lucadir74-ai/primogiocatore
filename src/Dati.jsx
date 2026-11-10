@@ -651,7 +651,7 @@ export default function Dati({ profilo }) {
           <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
             Rileggi tutto da BGG
           </button>
-          <InvioBggAzioni invio={invio} />
+          <InvioBggAzioni invio={invio} profilo={profilo} />
         </details>
       </Sezione>
 
