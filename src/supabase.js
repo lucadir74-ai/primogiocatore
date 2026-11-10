@@ -2,6 +2,7 @@
 // v1.1.0 - 202610311300 (usabile anche dal server: la sincronizzazione BGA programmata usa lo stesso codice dell'app)
 
 import { createClient } from '@supabase/supabase-js'
+import { fetchConMemoria, reteGiu } from './memoriaRete'
 
 // Questi due valori arrivano dalle variabili d'ambiente (vedi README, passo 4).
 // Sul server (api/sincro.js) import.meta.env non esiste: lì il client lo
@@ -12,9 +13,38 @@ const chiave = env.VITE_SUPABASE_ANON_KEY
 
 export const configurato = Boolean(url && chiave)
 
+// Nel browser le letture passano da memoriaRete.js: senza rete si vede
+// la copia dell'ultima volta. Sul server no (lì non c'è un telefono).
+const nelBrowser = typeof window !== 'undefined'
+
 export let supabase = configurato
-  ? createClient(url, chiave)
+  ? createClient(url, chiave, nelBrowser ? { global: { fetch: fetchConMemoria } } : undefined)
   : null
+
+// L'accesso com'è salvato sul telefono, anche se scaduto.
+export function sessioneSalvata() {
+  try {
+    const s = JSON.parse(localStorage.getItem(supabase.auth.storageKey) || 'null')
+    return s?.access_token && s?.user?.id ? s : null
+  } catch { return null }
+}
+
+// L'accesso dura un'ora, poi va rinnovato in rete. Senza rete la
+// libreria ritenta per quasi mezzo minuto prima di arrendersi, e lo fa
+// prima di OGNI lettura: l'app aperta in un seminterrato restava ferma.
+// Quando la rete è giù si usa quindi l'accesso salvato così com'è: per
+// rileggere le copie sul telefono basta sapere chi sei. Appena la rete
+// torna si ripassa dalla strada normale, che lo rinnova.
+if (supabase && nelBrowser) {
+  const normale = supabase.auth.getSession.bind(supabase.auth)
+  supabase.auth.getSession = async () => {
+    if (reteGiu()) {
+      const s = sessioneSalvata()
+      if (s && (s.expires_at || 0) * 1000 < Date.now() + 60000) return { data: { session: s }, error: null }
+    }
+    return normale()
+  }
+}
 
 // Solo per il server: tutti i moduli che importano «supabase» usano da
 // qui in poi questo client (gli import ES seguono il valore aggiornato).

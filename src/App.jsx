@@ -1,10 +1,14 @@
-// Primo Giocatore v4.25.1 - 202611030900 (dalla Home si va a Dati e import per il primo import)
+// Primo Giocatore v4.26.0 - 202611101200 (si apre e si consulta anche senza rete; guida per metterla sull'iPhone)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { supabase, configurato, COLORI, daMostrare } from './supabase'
+import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
+import { svuotaMemoriaRete } from './memoriaRete'
+import StatoRete from './StatoRete.jsx'
+import { preparaElenchiPartita } from './elenchiPartita'
+import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
 import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
@@ -841,6 +845,7 @@ export default function App() {
   // Tavolo da aprire subito arrivando dalla Home: { id, quando }.
   const [apriTavolo, setApriTavolo] = useState(null)
   const [erroreProfilo, setErroreProfilo] = useState('')
+  const [riprova, setRiprova] = useState(0)
   const [partitaId, setPartitaId] = useState(() => leggiPercorso()?.partitaId || null)
   const [mira, setMira] = useState(null)
   const [ritorno, setRitorno] = useState(null)
@@ -880,6 +885,13 @@ export default function App() {
         .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
         .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
     }, 4000)
+  }, [profilo?.id])
+
+  // Giochi e giocatori per la pagina Partita: sul telefono fin da subito,
+  // così si registra senza rete anche senza averla mai aperta prima.
+  useEffect(() => {
+    if (!profilo?.id || daBga) return
+    return quandoLibero(() => { if (navigator.onLine) preparaElenchiPartita(profilo.id) }, 2500)
   }, [profilo?.id])
 
   // Board Game Arena, per chi l'ha collegato con la password.
@@ -946,18 +958,35 @@ export default function App() {
   useEffect(() => {
     if (!configurato) { setPronto(true); return }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSessione(data.session)
+    // Senza rete l'accesso scaduto non si può rinnovare: si entra lo
+    // stesso con quello salvato sul telefono (i dati li protegge il
+    // database, e senza rete si vedono solo le copie di questo account).
+    let deciso = false
+    function parti(s) {
+      if (deciso) return
+      deciso = true
+      setSessione(s)
       setPronto(true)
-    })
+    }
+    supabase.auth.getSession().then(({ data }) => parti(data.session || sessioneSalvata()), () => parti(sessioneSalvata()))
+    // Rete che c'è ma non risponde: dopo qualche secondo non si aspetta più.
+    const fretta = setTimeout(() => { const s = sessioneSalvata(); if (s) parti(s) }, 4000)
 
     const { data: iscrizione } = supabase.auth.onAuthStateChange((evento, s) => {
+      // Un rinnovo fallito per mancanza di rete arriva qui come «nessun
+      // accesso», ma non è un'uscita: si resta dentro.
+      if (!s && evento !== 'SIGNED_OUT') return
+      deciso = true
       setSessione(s)
-      if (!s) setProfilo(null)
+      setPronto(true)
+      if (!s) {
+        setProfilo(null)
+        svuotaMemoriaRete()   // le copie sul telefono erano di chi è uscito
+      }
       // Rientro dal collegamento di recupero: prima la password nuova.
       if (evento === 'PASSWORD_RECOVERY') setCambioPassword(true)
     })
-    return () => iscrizione.subscription.unsubscribe()
+    return () => { clearTimeout(fretta); iscrizione.subscription.unsubscribe() }
   }, [])
 
   useEffect(() => {
@@ -972,6 +1001,7 @@ export default function App() {
         if (!vivo) return
         if (error) setErroreProfilo(traduciErrore(error))
         else if (data) {
+          setErroreProfilo('')
           // Il nickname scelto all'iscrizione arriva con l'account: al
           // primo accesso finisce nel profilo, se non ce n'è già uno.
           const nick = sessione.user.user_metadata?.nickname?.trim()
@@ -983,7 +1013,15 @@ export default function App() {
         else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
       })
     return () => { vivo = false }
-  }, [sessione])
+  }, [sessione, riprova])
+
+  // Profilo non letto per mancanza di rete: si riprova appena torna.
+  useEffect(() => {
+    if (profilo) return
+    const f = () => setRiprova((n) => n + 1)
+    window.addEventListener('online', f)
+    return () => window.removeEventListener('online', f)
+  }, [profilo])
 
   // Socio, eccezione o organizzatore? Senza lo script SQL dei soci
   // (funzione mancante) si entra come sempre.
@@ -1149,6 +1187,8 @@ export default function App() {
             ))}
           </nav>
 
+          <StatoRete profilo={profilo} />
+
           {daBgg && (
             <div className="scheda scheda-sottile">
               <p className="aiuto" style={{ margin: 0 }}>
@@ -1213,6 +1253,8 @@ export default function App() {
               </p>
             </div>
           )}
+
+          {scheda === 'home' && <Installa variante="avviso" />}
 
           {scheda === 'home' ? (
             <Home
@@ -1316,6 +1358,7 @@ export default function App() {
                   {attiva === 'profilo' ? (
                     <>
                       <Profilo sessione={sessione} profilo={profilo} setProfilo={setProfilo} />
+                      <Installa variante="scheda" />
                       <SeiTu profilo={profilo} />
                     </>
                   ) : attiva === 'dati' ? (
@@ -1356,6 +1399,6 @@ function traduciErrore(e) {
   if (m.includes('email not confirmed')) return 'Devi prima confermare l\u2019indirizzo dal messaggio che ti è arrivato.'
   if (m.includes('duplicate key') && m.includes('nickname')) return 'Questo soprannome è già di qualcun altro. Scegline un altro.'
   if (m.includes('row-level security')) return 'Il database ha rifiutato la scrittura: manca una regola di accesso.'
-  if (m.includes('failed to fetch')) return 'Nessuna connessione al database. Controlla la rete.'
+  if (m.includes('failed to fetch') || m.includes('load failed') || m.includes('networkerror')) return 'Nessuna connessione al database. Controlla la rete.'
   return e?.message || 'Qualcosa non ha funzionato.'
 }

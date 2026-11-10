@@ -6,6 +6,7 @@
 // entrato una volta salta direttamente all'accesso.
 
 import Condividi from './Condividi.jsx'
+import Installa from './Installa.jsx'
 
 const PUNTI = [
   {
@@ -58,12 +59,7 @@ export default function Benvenuto({ onIscriviti, onEntra, linkNonSocio }) {
         ))}
       </ul>
 
-      <section className="scheda benvenuto-installa">
-        <h3>Mettila sul telefono</h3>
-        <p>Non serve lo store: aprila dal browser e aggiungila alla schermata Home.</p>
-        <p><strong>iPhone</strong> (Safari): tasto Condividi, poi &laquo;Aggiungi alla schermata Home&raquo;.</p>
-        <p><strong>Android</strong> (Chrome): menu &#8942;, poi &laquo;Installa app&raquo; o &laquo;Aggiungi a schermata Home&raquo;.</p>
-      </section>
+      <Installa variante="scheda" sempre />
 
       <div className="benvenuto-condividi">
         <Condividi variante="bottone" />

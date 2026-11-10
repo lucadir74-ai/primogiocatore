@@ -2,20 +2,17 @@
 // v4.25.0 - 202611091400 (niente nomi suggeriti finché non si cerca, niente «Chi ha giocato», luogo già sulla Tana)
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
+import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
 import { impronta } from './impronta'
-import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
+import { assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
-import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
+import { accodaPartita, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
-import { archivioInMemoria, leggiDalTelefono, salvaSulTelefono } from './archivio'
-
-// Gli elenchi dell'ultima apertura, per riaprire la pagina all'istante.
-let elenchiInMemoria = null
+import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
 
 const LIMITE_NOMI = 12
 
@@ -64,8 +61,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [caricamento, setCaricamento] = useState(modifica)
-  const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
-  const [inviando, setInviando] = useState(false)
   const [ripresa, setRipresa] = useState(false)
   // Partita appena registrata: se è a punti si mostrano i record.
   const [riepilogo, setRiepilogo] = useState(null)
@@ -73,35 +68,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const montata = useRef(true)
   useEffect(() => { montata.current = true; caricaElenchi(); return () => { montata.current = false } }, [])
 
-  // Appena la rete torna, le partite in attesa partono da sole.
-  useEffect(() => {
-    async function svuota() {
-      if (leggiCoda(profilo?.id).length === 0 || inviando) return
-      setInviando(true)
-      try {
-        const esito = await inviaCoda(supabase, profilo)
-        setInCoda(esito.rimaste)
-        if (esito.inviate > 0) inviaABggSeServe(profilo)
-        if (esito.inviate > 0) {
-          setMessaggio(
-            esito.inviate === 1
-              ? 'La partita in attesa è stata salvata.'
-              : `${esito.inviate} partite in attesa sono state salvate.`
-          )
-        }
-        if (esito.scartate.length) {
-          setErrore(`${esito.scartate.length} partite in attesa sono state rifiutate: ${esito.scartate[0].motivo}`)
-        }
-      } catch (e) {
-        setErrore(e.message)
-      } finally {
-        setInviando(false)
-      }
-    }
-    svuota()
-    window.addEventListener('online', svuota)
-    return () => window.removeEventListener('online', svuota)
-  }, [])
+  // Le partite in attesa le fa partire e le mostra StatoRete.jsx, da
+  // qualunque pagina: qui resta solo il salvataggio.
   useEffect(() => { if (partitaId) caricaPartita(partitaId) }, [partitaId])
 
   // Al primo avvio: se c'è una partita lasciata a metà, la rimetto com'era.
@@ -193,68 +161,20 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   async function caricaElenchi() {
-    const chiave = `elenchi-partita:${profilo.id}`
-    const vecchi = elenchiInMemoria?.chiave === chiave ? elenchiInMemoria
-      : (await leggiDalTelefono(chiave))?.dati
-    if (vecchi?.chiave === chiave) applicaElenchi(vecchi)
-
-    // Le partecipazioni per contare chi gioca di più: se l'archivio è già
-    // in memoria (Storico, Statistiche, Home) non si rileggono.
-    const archivio = archivioInMemoria(profilo.id)
-    const partecipazioni = archivio
-      ? Promise.resolve(archivio.flatMap((x) => x.partecipazioni || []))
-      : tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id'))
-
-    const giochi = giochiMiei(profilo.id, '*')
-    // Senza elenchi salvati il catalogo si mostra appena arriva, senza aspettare il resto.
-    if (!vecchi) giochi.then((g) => setCatalogo((prima) => (prima.length ? prima : g))).catch(() => {})
-
-    const ultima = (async () => {
-      const { data: u } = await supabase
-        .from('partite')
-        .select('id, giocata_il, partecipazioni!inner ( utente_id )')
-        .eq('partecipazioni.utente_id', profilo.id)
-        .order('giocata_il', { ascending: false })
-        .limit(1)
-      if (!u?.[0]) return []
-      const { data: chi } = await supabase
-        .from('partecipazioni')
-        .select('utente_id, ospite_id, ordine_turno')
-        .eq('partita_id', u[0].id)
-      return (chi || []).map((x) => (x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`))
-    })()
-
+    const vecchi = await elenchiSalvati(profilo.id)
+    if (vecchi) applicaElenchi(vecchi)
     try {
-      const [g, p, o, f, l, c, nc, up] = await Promise.all([
-        giochi,
-        tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
-        tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato, unito_in').order('nome')),
-        partecipazioni,
-        tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
-        tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
-        supabase.from('nomi_collegati').select('utente_id, nome, cognome').then(({ data }) => data || []),
-        ultima,
-      ])
-      const nomi = new Map()
-      for (const r of nc) {
-        if (!nomi.has(r.utente_id)) nomi.set(r.utente_id, [])
-        nomi.get(r.utente_id).push([r.nome, r.cognome].filter(Boolean).join(' '))
-      }
-      const conta = new Map()
-      for (const r of f) {
-        const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
-        conta.set(k, (conta.get(k) || 0) + 1)
-      }
-      const nuovi = {
-        chiave, giochi: g, persone: p, ospiti: o, luoghi: l.map((x) => x.nome),
-        collezione: c.map((x) => x.gioco_id), nomiCollegati: [...nomi], frequenza: [...conta], ultimaPartita: up,
-      }
-      elenchiInMemoria = nuovi
+      const nuovi = await leggiElenchiPartita(profilo.id, {
+        // Senza elenchi salvati il catalogo si mostra appena arriva, senza aspettare il resto.
+        suCatalogo: vecchi ? null : (g) => setCatalogo((prima) => (prima.length ? prima : g)),
+      })
       if (montata.current) applicaElenchi(nuovi)
-      salvaSulTelefono(chiave, nuovi)
     } catch (e) {
       // Con gli elenchi dell'ultima volta si va avanti lo stesso (es. senza rete).
-      if (!vecchi && montata.current) setErrore(e.message)
+      if (vecchi || !montata.current) return
+      setErrore(eProblemaDiRete(e)
+        ? 'Senza rete non trovo i tuoi giochi e i giocatori: su questo telefono non sono ancora stati salvati. Apri l\u2019app una volta con la rete e poi funziona anche senza.'
+        : e.message)
     }
   }
 
@@ -754,7 +674,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         // rifarla a mano su dati vecchi creerebbe più danni.
         if (!eProblemaDiRete(e) || modifica) throw e
         const quante = accodaPartita(profilo.id, dati)
-        setInCoda(quante)
         setMessaggio(
           quante === 1
             ? 'Niente rete: la partita è salvata sul telefono e partirà da sola.'
@@ -843,15 +762,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
-
-      {inCoda > 0 && (
-        <div className="avviso errore">
-          {inCoda === 1
-            ? 'Una partita è in attesa di rete.'
-            : `${inCoda} partite sono in attesa di rete.`}{' '}
-          {inviando ? 'Le sto inviando…' : 'Partiranno da sole appena torna la linea.'}
-        </div>
-      )}
 
       {ripresa && !modifica && (
         <div className="avviso ok">
