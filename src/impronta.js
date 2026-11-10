@@ -1,5 +1,5 @@
 // Primo Giocatore - impronta della partita
-// v3.3.0 - 202609201400
+// v3.4.0 - 202611101800 (giorno vicino: la stessa partita finita dopo mezzanotte)
 //
 // Riconosce la stessa partita arrivata da fonti diverse. Non usa i
 // nomi dei giocatori, che cambiano da una fonte all'altra, ma i
@@ -54,7 +54,12 @@ export async function improntePresenti(supabase, profiloId) {
 // c'è si ripiega su gioco, giorno e numero di giocatori: serve quando
 // una delle due fonti non ha i punteggi, come capita spesso fra BGG
 // e BG Stats per la stessa serata.
-export function giaPresente(conteggi, imp) {
+//
+// vicino: guarda anche il giorno prima e quello dopo, ma solo con gli
+// stessi punteggi e solo se poco comuni (un 82-75-61, non un 1-0). Una
+// serata finita dopo mezzanotte cade su due date diverse a seconda di
+// chi la registra. Si usa dove poi decide la persona (lettura da BGG).
+export function giaPresente(conteggi, imp, { vicino = false } = {}) {
   if (!imp) return { presente: false, modo: null }
 
   const quante = conteggi.piene.get(imp) || 0
@@ -70,6 +75,27 @@ export function giaPresente(conteggi, imp) {
   if (quanteDeboli > 0) {
     conteggi.deboli.set(debole, quanteDeboli - 1)
     return { presente: true, modo: 'debole' }
+  }
+
+  if (vicino) {
+    const [gioco, giorno, quanti, punti] = imp.split('|')
+    const numeri = (punti || '').split(',').map(Number)
+    const distintivi = punti && punti !== 'np' && numeri.length >= 2
+      && numeri.reduce((t, v) => t + Math.abs(v), 0) >= 20
+    const base = Date.parse(`${giorno}T00:00:00Z`)
+    if (distintivi && !Number.isNaN(base)) {
+      for (const d of [-1, 1]) {
+        const altro = new Date(base + d * 86400000).toISOString().slice(0, 10)
+        const k = `${gioco}|${altro}|${quanti}|${punti}`
+        const n = conteggi.piene.get(k) || 0
+        if (n > 0) {
+          conteggi.piene.set(k, n - 1)
+          const kd = `${gioco}|${altro}|${quanti}`
+          conteggi.deboli.set(kd, Math.max(0, (conteggi.deboli.get(kd) || 0) - 1))
+          return { presente: true, modo: 'vicino' }
+        }
+      }
+    }
   }
 
   return { presente: false, modo: null }

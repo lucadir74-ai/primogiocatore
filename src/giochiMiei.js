@@ -1,5 +1,5 @@
 // Primo Giocatore - ciò che una persona può vedere, e come aggiungerlo
-// v2.5.0 - 202611091500 (la Tana scritta in modi diversi diventa un luogo solo)
+// v2.6.0 - 202611101800 (ospiti: «Mario Rossi» scritto intero o diviso in nome e cognome è la stessa scheda)
 //
 // Regola unica (decisa nel database, v4.6): ognuno vede i giochi, i
 // luoghi e i nomi che sono suoi o che ha condiviso giocando. Il resto
@@ -105,26 +105,55 @@ export async function trovaOCreaLuogo(nome, profiloId, tipo = 'altro') {
 // collegati a chi importa: a lui pensa il riconoscimento «sono io»
 // dell'import, e non deve comparire due volte nella stessa partita.
 // righe: { id, nome, creato_da, utente_collegato }
+//
+// Il nome può stare tutto in «nome» (così arriva dagli import) oppure
+// diviso in nome e cognome (così nasce dalla pagina Partita): «Mario
+// Rossi» deve trovare la stessa scheda in tutti e due i casi, altrimenti
+// ogni import ne crea un'altra. Il nome scritto per intero vince; il
+// solo nome di chi ha anche un cognome resta come ultima scelta.
+// righe: { id, nome, cognome (facoltativo), creato_da, utente_collegato }
+const chiaveNome = (t) => (t || '').trim().toLowerCase()
+
+function ospitiPerChiave(righe, profiloId) {
+  const ordinate = [...(righe || [])].sort(
+    (a, b) => (a.creato_da === profiloId ? 1 : 0) - (b.creato_da === profiloId ? 1 : 0))
+  const conCognome = (r) => Boolean(r.cognome && r.cognome.trim())
+  const m = new Map()
+  for (const r of ordinate) if (conCognome(r)) m.set(chiaveNome(r.nome), r.id)
+  for (const r of ordinate) if (!conCognome(r)) m.set(chiaveNome(r.nome), r.id)
+  for (const r of ordinate) if (conCognome(r)) m.set(chiaveNome(`${(r.nome || '').trim()} ${r.cognome}`), r.id)
+  m.delete('')
+  return m
+}
+
 export function mappaOspitiPerNome(righe, profiloId) {
   const liberi = (righe || []).filter((r) => !r.utente_collegato)
   const collegati = (righe || []).filter((r) => r.utente_collegato && r.utente_collegato !== profiloId)
-  const m = mappaPerNome(liberi, profiloId)
-  for (const [k, id] of mappaPerNome(collegati, profiloId)) m.set(k, id)
+  const m = ospitiPerChiave(liberi, profiloId)
+  for (const [k, id] of ospitiPerChiave(collegati, profiloId)) m.set(k, id)
   return m
 }
 
 // Tutti gli ospiti visibili, già pronti per mappaOspitiPerNome.
 export async function ospitiPerImport() {
   return tutteLeRighe(() => supabase.from('ospiti')
-    .select('id, nome, creato_da, utente_collegato'))
+    .select('id, nome, cognome, creato_da, utente_collegato'))
 }
 
 // Lo stesso per gli ospiti.
 export async function trovaOCreaOspite(nome, profiloId) {
   const pulito = (nome || '').trim() || 'Sconosciuto'
-  const { data } = await supabase.from('ospiti')
-    .select('id, nome, creato_da, utente_collegato').ilike('nome', pulito).limit(20)
-  const trovato = mappaOspitiPerNome(data, profiloId).get(pulito.toLowerCase())
+  // Anche chi ha il cognome a parte: si cerca pure dalla prima parola.
+  const prima = pulito.split(/\s+/)[0]
+  const cerca = (testo) => supabase.from('ospiti')
+    .select('id, nome, cognome, creato_da, utente_collegato').ilike('nome', testo).limit(200)
+  const [{ data: interi }, { data: divisi }] = await Promise.all([
+    cerca(pulito), prima !== pulito ? cerca(prima) : Promise.resolve({ data: [] }),
+  ])
+  const data = [...(interi || []), ...(divisi || [])]
+  const adatti = (data || []).filter((r) =>
+    chiaveNome(r.nome) === chiaveNome(pulito) || chiaveNome(`${(r.nome || '').trim()} ${r.cognome || ''}`) === chiaveNome(pulito))
+  const trovato = mappaOspitiPerNome(adatti, profiloId).get(chiaveNome(pulito))
   if (trovato) return trovato
   const { data: creato, error } = await supabase.from('ospiti')
     .insert({ nome: pulito, creato_da: profiloId }).select('id').single()

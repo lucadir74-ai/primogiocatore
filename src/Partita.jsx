@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.25.0 - 202611091400 (niente nomi suggeriti finché non si cerca, niente «Chi ha giocato», luogo già sulla Tana)
+// v4.26.0 - 202611101800 (avviso se la partita sembra già registrata, da te o da un altro del tavolo; ospite già presente riconosciuto anche col nome scritto intero)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -10,6 +10,7 @@ import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
+import { cercaGiaRegistrata, origineDi } from './giaRegistrata'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
 import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
@@ -358,7 +359,10 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     const per = nuovoOspite.per
 
     // Un ospite con lo stesso nome e cognome c'è già: si usa quello.
-    let o = ospiti.find((x) => minuscolo(x.nome) === minuscolo(nome) && minuscolo(x.cognome) === minuscolo(cognome))
+    // Vale anche per chi è arrivato da un import con tutto nel nome («Mario Rossi»).
+    const intero = minuscolo(`${nome} ${cognome}`)
+    let o = ospiti.find((x) => !x.unito_in && minuscolo(nomeOspite(x)) === intero)
+      || ospiti.find((x) => minuscolo(nomeOspite(x)) === intero)
     if (!o) {
       const { data, error } = await supabase
         .from('ospiti').insert({ nome, cognome, creato_da: profilo.id }).select().single()
@@ -644,6 +648,26 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
           primo_giocatore: r.ordine === 1,
           parziali: tipo === 'punti' || tipo === 'categorie' ? (r.parziali || null) : null,
         })),
+      }
+
+      // Una partita nuova che sembra già esserci (arrivata da BGA o BGG, o
+      // registrata da un altro del tavolo): si chiede prima di farne un'altra.
+      if (!partitaId && navigator.onLine) {
+        const gia = await cercaGiaRegistrata({ giocoId: gioco.id, giocataIl: dati.giocata_il, giocatori: dati.giocatori })
+        if (gia) {
+          const mia = gia.registrata_da === profilo.id
+          const altro = persone.find((x) => x.id === gia.registrata_da)
+          const origine = origineDi(gia)
+          const chi = mia
+            ? (origine ? `è già nel tuo archivio, arrivata da ${origine}` : 'l\u2019hai già registrata tu')
+            : `l\u2019ha già registrata ${altro ? daMostrare(altro) : 'un altro giocatore'}`
+          const giorno = new Date(gia.giocata_il).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })
+          const ok = window.confirm(
+            `Questa partita sembra esserci già: ${gioco.nome} del ${giorno}, ${chi}.\n\n`
+            + 'Se è la stessa non serve registrarla di nuovo: la trovi nello Storico.\n\n'
+            + 'OK per registrarla lo stesso (è un\u2019altra partita), Annulla per non registrarla.')
+          if (!ok) { setMessaggio('Partita non registrata: c\u2019era già.'); return }
+        }
       }
 
       try {
