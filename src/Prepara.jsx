@@ -4,8 +4,9 @@
 // Senza rete una pagina mostra la copia dell'ultima volta che è stata
 // aperta (memoriaRete.js). Chi non l'aveva mai aperta trovava solo un
 // errore. Qui, poco dopo l'apertura dell'app e con la rete, le pagine
-// principali si aprono una alla volta di nascosto: fanno le loro
-// letture, e le risposte restano sul telefono.
+// (Tavoli, Giochi, Giocatori, Classifiche e le sezioni del Profilo che
+// l'iscritto può vedere) si aprono una alla volta di nascosto: fanno le
+// loro letture, e le risposte restano sul telefono.
 // Si aprono le pagine vere, non una copia delle loro domande al
 // database: così, se una pagina cambia, la preparazione resta giusta.
 //
@@ -16,10 +17,10 @@
 
 import { Component, Suspense, useEffect, useState } from 'react'
 
-const CHIAVE = 'primo-giocatore:preparato'
+const CHIAVE = 'primo-giocatore:preparato-2'   // 2: anche le sezioni del Profilo
 const OGNI = 12 * 3600000
 const PRIMA_ATTESA = 6000    // l'app si apre in pace, poi si comincia
-const PER_PAGINA = 2500      // basta che la pagina parta: le letture proseguono da sole
+const PER_PAGINA = 2000      // basta che la pagina parta: le letture proseguono da sole
 
 function ultimaVolta(profiloId) {
   try {
@@ -69,7 +70,7 @@ export default function Prepara({ profilo, pagine, aperta }) {
     <div hidden aria-hidden="true">
       <Protetta key={id}>
         <Suspense fallback={null}>
-          <Pagina profilo={profilo} onRichieste={niente} onRegistraPartita={niente}
+          <Pagina profilo={profilo} compatto={false} onRichieste={niente} onRegistraPartita={niente}
             onStatistiche={niente} onIndietro={niente} />
         </Suspense>
       </Protetta>

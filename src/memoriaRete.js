@@ -19,7 +19,7 @@ const FUNZIONI_DI_LETTURA = new Set([
   'ammesso', 'suggerisci_giochi', 'suggerisci_giochi_bga', 'posizioni_tavoli',
   'richieste_da_decidere', 'richieste_tavolo_mie', 'ospiti_simili', 'elenco_unioni',
   'chi_ha', 'chi_ha_gioco', 'ludoteca_cerca', 'ludoteca_dove', 'ludoteca_elenco',
-  'puo_gestire_ludoteca', 'tavolo_pubblico',
+  'puo_gestire_ludoteca', 'tavolo_pubblico', 'non_nell_elenco', 'soci_con_account', 'scheda_iscritto',
 ])
 
 const ATTESA = 8000                 // oltre, se c'è una copia si mostra quella
