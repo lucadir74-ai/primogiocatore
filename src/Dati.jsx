@@ -354,10 +354,13 @@ export default function Dati({ profilo }) {
         if (error) throw error
 
         const righe = []
+        let ioMesso = false
         for (const g of p.giocatori || []) {
           // Chi importa è l'unico riconosciuto come utente vero: gli altri
           // diventano ospiti, e si collegheranno quando si iscriveranno.
-          const sonoIo = g.nome === profilo.nickname || g.nome === profilo.nome
+          // Una volta sola per partita: un ospite col tuo stesso nome resta ospite.
+          const sonoIo = !ioMesso && Boolean(g.nome) && (g.nome === profilo.nickname || g.nome === profilo.nome)
+          if (sonoIo) ioMesso = true
           righe.push({
             partita_id: partita.id,
             utente_id: sonoIo ? profilo.id : null,
@@ -373,7 +376,12 @@ export default function Dati({ profilo }) {
         }
         if (righe.length) {
           const { error: e2 } = await supabase.from('partecipazioni').insert(righe)
-          if (e2) throw e2
+          if (e2) {
+            // Senza giocatori resterebbe a metà e al prossimo import verrebbe
+            // saltata: si toglie, così rientra intera.
+            await supabase.from('partite').delete().eq('id', partita.id)
+            throw e2
+          }
         }
         aggiunte++
       }

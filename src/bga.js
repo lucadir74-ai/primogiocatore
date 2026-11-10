@@ -382,7 +382,7 @@ export async function importaBga({ profilo, analisi, classi, incerteNuove = fals
   // I giocatori: prima il numero BGA, poi il nome.
   avanzamento({ fase: 'Giocatori', fatto: 0, totale: 1 })
   const ospiti = await tutteLeRighe(() => supabase.from('ospiti')
-    .select('id, nome, creato_da, utente_collegato, bga_id'))
+    .select('id, nome, cognome, creato_da, utente_collegato, bga_id'))
   const perBga = new Map()
   for (const o of ospiti) {
     if (o.bga_id == null || o.utente_collegato === profilo.id) continue

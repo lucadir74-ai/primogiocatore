@@ -173,7 +173,8 @@ export async function leggiPartiteBgg({ utente, profiloId, dal = null, avanzamen
     const imp = giocoId
       ? impronta({ giocoId, giocataIl: p.data, punteggi: p.giocatori.map((g) => g.punteggio) })
       : null
-    const esito = giaPresente(presenti, imp)
+    // Anche il giorno accanto: qui la partita resta solo «da guardare».
+    const esito = giaPresente(presenti, imp, { vicino: true })
     return { ...p, impronta: imp, sospetta: esito.presente, debole: esito.modo === 'debole' }
   })
 

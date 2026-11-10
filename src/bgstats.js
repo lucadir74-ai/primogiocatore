@@ -1,5 +1,5 @@
 // Primo Giocatore - importazione da BG Stats
-// v3.3.1 - 202610181300 (ospiti collegati riusati: niente «sono io» ripetuti)
+// v3.4.0 - 202611101800 (oltre mille partite già importate: riconosciute tutte; niente partite rimaste senza giocatori)
 //
 // Il file di BG Stats contiene array separati di games, players,
 // locations e plays, collegati fra loro dagli "id" interni al file.
@@ -195,10 +195,12 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
 
   /* ---------- 4. Partite già importate ---------- */
   // Prima rete: l'identificativo che BG Stats assegna a ogni partita.
-  const { data: gia } = await supabase
+  // Tutte, non solo le prime mille: oltre quel numero le altre non si
+  // riconoscevano e reimportando lo stesso file l'import si fermava.
+  const gia = await tutteLeRighe(() => supabase
     .from('partite').select('chiave_esterna')
-    .eq('registrata_da', profilo.id).not('chiave_esterna', 'is', null)
-  const chiaviPresenti = new Set((gia || []).map((r) => r.chiave_esterna))
+    .eq('registrata_da', profilo.id).not('chiave_esterna', 'is', null))
+  const chiaviPresenti = new Set(gia.map((r) => r.chiave_esterna))
 
   // Seconda rete: l'impronta. Serve se gli identificativi sono cambiati,
   // cosa che succede quando l'app viene reinstallata.
@@ -309,7 +311,13 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
 
     for (const bloccoPart of aBlocchi(partecipazioni, 400)) {
       const { error: e2 } = await supabase.from('partecipazioni').insert(bloccoPart)
-      if (e2) throw e2
+      if (e2) {
+        // Senza giocatori le partite resterebbero a metà, e al prossimo
+        // import verrebbero saltate perché «già presenti»: si tolgono,
+        // così rientrano intere.
+        await supabase.from('partite').delete().in('id', inserite.map((x) => x.id))
+        throw e2
+      }
     }
 
     fatte += inserite.length

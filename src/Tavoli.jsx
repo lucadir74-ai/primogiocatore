@@ -1,10 +1,10 @@
 // Primo Giocatore - Tavoli
-// v2.23.0 - 202611091800 (tavolo nuovo con Tana e 20:45; tavoli passati senza Apri, Condividi e Locandina)
+// v2.24.0 - 202611101800 (un tavolo, una partita sola: niente doppione con due tocchi o due organizzatori)
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useState } from 'react'
-import { supabase, daMostrare, fetchBgg } from './supabase'
+import { supabase, daMostrare, fetchBgg, tutteLeRighe } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import { cercaIndirizzo } from './indirizzo'
@@ -14,7 +14,7 @@ import TavoloPubblico from './TavoloPubblico.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import CercaDimostratore from './CercaDimostratore.jsx'
 import SceltaQuando from './SceltaQuando.jsx'
-import { trovaOCreaLuogo, mappaPerNome } from './giochiMiei'
+import { trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 import BarraScorrevole from './BarraScorrevole.jsx'
 
@@ -487,6 +487,23 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     if (!confirm(`Creare la partita con ${partecipanti.length} giocatori? Poi inserisci i punteggi.`)) return
 
     try {
+      // Un tavolo, una partita: se nel frattempo l'ha già creata qualcun
+      // altro (o un secondo tocco), si apre quella invece di farne un'altra.
+      const [{ data: ora }, { data: gia }] = await Promise.all([
+        supabase.from('tavoli').select('partita_id').eq('id', t.id).maybeSingle(),
+        supabase.from('partite').select('id').eq('tavolo_id', t.id).limit(1),
+      ])
+      const esistente = ora?.partita_id || gia?.[0]?.id
+      if (esistente) {
+        if (!ora?.partita_id) {
+          await supabase.from('tavoli').update({ partita_id: esistente, stato: 'giocato' }).eq('id', t.id)
+        }
+        setGestito(null)
+        carica()
+        onRegistraPartita?.(esistente)
+        return
+      }
+
       const { data: gioco } = await supabase
         .from('giochi').select('tipo_punteggio').eq('id', t.gioco_id).maybeSingle()
 
@@ -501,13 +518,22 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           registrata_da: profilo.id,
         })
         .select('id').single()
+      // Il database ammette una sola partita per tavolo (niente_doppioni.sql):
+      // se un altro l'ha creata in questo istante, si apre la sua.
+      if (e1?.code === '23505') {
+        const { data: sua } = await supabase.from('partite').select('id').eq('tavolo_id', t.id).limit(1)
+        if (sua?.[0]?.id) { setGestito(null); carica(); onRegistraPartita?.(sua[0].id); return }
+        throw new Error('La partita di questo tavolo è già stata creata da un altro organizzatore.')
+      }
       if (e1) throw e1
 
       // Gli iscritti senza account diventano ospiti, riusando quelli
       // già esistenti quando il nome coincide.
-      const { data: ospitiEsistenti } = await supabase
-        .from('ospiti').select('id, nome, creato_da').is('utente_collegato', null)
-      const mappa = mappaPerNome(ospitiEsistenti, profilo.id)
+      // Tutti, non solo i primi mille: oltre quel numero un nome già
+      // presente non si trovava e nasceva un doppione.
+      const ospitiEsistenti = await tutteLeRighe(() => supabase
+        .from('ospiti').select('id, nome, cognome, creato_da, utente_collegato').is('utente_collegato', null))
+      const mappa = mappaOspitiPerNome(ospitiEsistenti, profilo.id)
 
       const righe = []
       for (const i of partecipanti) {
