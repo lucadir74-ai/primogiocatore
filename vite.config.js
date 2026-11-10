@@ -41,9 +41,13 @@ export default defineConfig({
       manifest: false,
       includeAssets: ['apple-touch-icon.png', 'icona-192.png', 'icona-512.png'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,webmanifest}'],
-        // I dati non si mettono in cache: una statistica vecchia è
-        // peggio di una statistica assente.
+        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
+        // Le immagini per l'anteprima dei link servono a WhatsApp, non all'app.
+        globIgnores: ['anteprima-*.png', 'anteprima_logo.png', 'prova.png'],
+        cleanupOutdatedCaches: true,
+        // I dati non passano da qui: le letture le tiene da parte l'app
+        // (src/memoriaRete.js), divise per account, e le usa solo quando
+        // la rete manca, dicendolo.
         navigateFallback: '/index.html',
         // Gli indirizzi /api sono del server, non dell'app: aperti nel
         // browser devono arrivare a Vercel, non finire sulla pagina dell'app.
@@ -56,6 +60,7 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'caratteri',
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
@@ -65,6 +70,9 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'copertine',
+              // Le immagini di un altro sito arrivano «opache» (stato 0):
+              // senza questa riga non venivano tenute affatto.
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60 },
             },
           },

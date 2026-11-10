@@ -85,7 +85,6 @@ async function cacheOp(modo, fn) {
 }
 const leggiCache = (utente) => cacheOp('readonly', (st) => st.get(utente))
 const scriviCache = (record) => cacheOp('readwrite', (st) => st.put(record))
-const cancellaCache = (utente) => cacheOp('readwrite', (st) => st.delete(utente))
 
 // Lo stesso posto sul telefono per altre cose da tenere (catalogo dei
 // giochi, elenchi della pagina Partita): la chiave è una stringa qualunque
@@ -188,19 +187,27 @@ function pubblica(utente, righe) {
 
 async function leggiConMemoria(utente, forzaTutto) {
   if (!archivioLocaleAttivo()) return luoghiPerChiGuarda(await leggiTutto(), utente)
-  if (forzaTutto) { stato.cache = null; await cancellaCache(utente) }
+  // forzaTutto: si rilegge tutto dal database. La copia sul telefono si
+  // sostituisce solo a lettura riuscita: senza rete resta quella di prima.
   if (stato.cache === undefined) stato.cache = await leggiCache(utente)
   const cache = stato.cache
-  const valida = cache && cache.versione === VERSIONE_CACHE && cache.utente === utente
-    && Array.isArray(cache.righe) && Date.now() - cache.completo_il < RILETTURA_COMPLETA
-  if (!valida) return leggiTuttoESalva(utente)
+  // Usabile: è la mia, nel formato di adesso. Valida: in più è fresca.
+  const usabile = cache && cache.versione === VERSIONE_CACHE && cache.utente === utente && Array.isArray(cache.righe)
+  const valida = usabile && !forzaTutto && Date.now() - cache.completo_il < RILETTURA_COMPLETA
   // Si vede subito quello che c'era; le novità arrivano subito dopo.
-  if (!stato.righe) pubblica(utente, cache.righe)
+  if (usabile && !stato.righe) pubblica(utente, cache.righe)
   try {
-    return await aggiorna(utente, cache)
-  } catch {
-    // Qualcosa non va con le novità: si rilegge tutto, come prima.
-    return leggiTuttoESalva(utente)
+    if (valida) {
+      try {
+        return await aggiorna(utente, cache)
+      } catch { /* qualcosa non va con le novità: si rilegge tutto, come prima */ }
+    }
+    return await leggiTuttoESalva(utente)
+  } catch (e) {
+    // Senza rete resta l'archivio del telefono, anche se ha più di una
+    // settimana: meglio le partite dell'ultima volta che una pagina vuota.
+    if (usabile) return (stato.cache?.righe) || cache.righe
+    throw e
   }
 }
 

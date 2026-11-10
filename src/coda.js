@@ -38,8 +38,12 @@ export function leggiCoda(profiloId) {
   }
 }
 
+// Chi mostra quante partite aspettano (StatoRete.jsx) ascolta questo.
+export const EVENTO_CODA = 'primo-giocatore:coda-cambiata'
+
 function scriviCoda(profiloId, righe) {
   try { localStorage.setItem(chiave(profiloId), JSON.stringify(righe)) } catch { /* spazio pieno */ }
+  try { window.dispatchEvent(new Event(EVENTO_CODA)) } catch { /* sul server non c'è nessuno ad ascoltare */ }
 }
 
 export function accodaPartita(profiloId, dati) {

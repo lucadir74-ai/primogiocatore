@@ -8,7 +8,7 @@ import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
-import { accodaPartita, leggiCoda, inviaCoda, eProblemaDiRete, scriviPartita } from './coda'
+import { accodaPartita, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
@@ -64,8 +64,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [messaggio, setMessaggio] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [caricamento, setCaricamento] = useState(modifica)
-  const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
-  const [inviando, setInviando] = useState(false)
   const [ripresa, setRipresa] = useState(false)
   // Partita appena registrata: se è a punti si mostrano i record.
   const [riepilogo, setRiepilogo] = useState(null)
@@ -73,35 +71,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const montata = useRef(true)
   useEffect(() => { montata.current = true; caricaElenchi(); return () => { montata.current = false } }, [])
 
-  // Appena la rete torna, le partite in attesa partono da sole.
-  useEffect(() => {
-    async function svuota() {
-      if (leggiCoda(profilo?.id).length === 0 || inviando) return
-      setInviando(true)
-      try {
-        const esito = await inviaCoda(supabase, profilo)
-        setInCoda(esito.rimaste)
-        if (esito.inviate > 0) inviaABggSeServe(profilo)
-        if (esito.inviate > 0) {
-          setMessaggio(
-            esito.inviate === 1
-              ? 'La partita in attesa è stata salvata.'
-              : `${esito.inviate} partite in attesa sono state salvate.`
-          )
-        }
-        if (esito.scartate.length) {
-          setErrore(`${esito.scartate.length} partite in attesa sono state rifiutate: ${esito.scartate[0].motivo}`)
-        }
-      } catch (e) {
-        setErrore(e.message)
-      } finally {
-        setInviando(false)
-      }
-    }
-    svuota()
-    window.addEventListener('online', svuota)
-    return () => window.removeEventListener('online', svuota)
-  }, [])
+  // Le partite in attesa le fa partire e le mostra StatoRete.jsx, da
+  // qualunque pagina: qui resta solo il salvataggio.
   useEffect(() => { if (partitaId) caricaPartita(partitaId) }, [partitaId])
 
   // Al primo avvio: se c'è una partita lasciata a metà, la rimetto com'era.
@@ -754,7 +725,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         // rifarla a mano su dati vecchi creerebbe più danni.
         if (!eProblemaDiRete(e) || modifica) throw e
         const quante = accodaPartita(profilo.id, dati)
-        setInCoda(quante)
         setMessaggio(
           quante === 1
             ? 'Niente rete: la partita è salvata sul telefono e partirà da sola.'
@@ -843,15 +813,6 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
-
-      {inCoda > 0 && (
-        <div className="avviso errore">
-          {inCoda === 1
-            ? 'Una partita è in attesa di rete.'
-            : `${inCoda} partite sono in attesa di rete.`}{' '}
-          {inviando ? 'Le sto inviando…' : 'Partiranno da sole appena torna la linea.'}
-        </div>
-      )}
 
       {ripresa && !modifica && (
         <div className="avviso ok">

@@ -2779,3 +2779,52 @@ button.numerone:active { transform: scale(0.98); }
 .home-riga-testo > .titolo-tavolo { font-size: 0.95rem; color: inherit; white-space: normal; }
 .home-riga-testo > .titolo-tavolo > strong { font-weight: 600; }
 .home-riga-testo > .titolo-tavolo > .nota-tavolo { font-size: 0.82rem; }
+
+/* ---------- Senza rete e partite in attesa (StatoRete.jsx) ---------- */
+.stato-rete {
+  margin: 0.75rem 0.85rem 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--bordo-forte);
+  border-radius: 12px;
+  background: var(--carta);
+  font-size: 0.9rem;
+}
+.stato-rete-riga { margin: 0; }
+.stato-rete-riga + .stato-rete-riga { margin-top: 0.4rem; }
+.stato-rete-fuori { display: flex; gap: 0.55rem; align-items: baseline; }
+.stato-rete-pallino {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--giallo);
+  transform: translateY(-0.05rem);
+}
+
+/* ---------- Mettere l'app sul telefono (Installa.jsx) ---------- */
+.installa-testa { display: flex; gap: 0.7rem; align-items: center; margin-bottom: 0.6rem; }
+.installa-testa img { border-radius: 9px; flex: none; }
+.installa-testa p { margin: 0; flex: 1; font-size: 0.92rem; }
+.installa-chiudi {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.5rem -0.6rem -0.5rem 0;
+  border: 0;
+  background: none;
+  color: var(--inchiostro-tenue);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.installa-avviso { margin-bottom: 0; }
+.installa-avviso > p { margin: 0.35rem 0 0; font-size: 0.92rem; }
+.installa-passi { margin: 0.5rem 0 0; padding-left: 1.3rem; font-size: 0.92rem; }
+.installa-passi li { margin-top: 0.4rem; }
+.installa-icona { vertical-align: -0.2rem; color: var(--blu); }
+
+/* iPhone di traverso: il contenuto non finisce sotto la tacca. */
+.guscio {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
