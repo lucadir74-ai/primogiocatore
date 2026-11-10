@@ -64,6 +64,7 @@ export function eProblemaDiRete(errore) {
   if (!navigator.onLine) return true
   const m = (errore?.message || '').toLowerCase()
   return m.includes('failed to fetch')
+    || m.startsWith('senza rete')
     || m.includes('networkerror')
     || m.includes('load failed')
     || m.includes('timeout')

@@ -3,10 +3,11 @@
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
+import Prepara from './Prepara.jsx'
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
@@ -33,6 +34,14 @@ const Classifiche = lazy(() => import('./Classifiche.jsx'))
 const Organizzatori = lazy(() => import('./Organizzatori.jsx'))
 const Soci = lazy(() => import('./Soci.jsx'))
 const ImportaBga = lazy(() => import('./ImportaBga.jsx'))
+// Le pagine che si preparano da sole per quando manca la rete (Prepara.jsx):
+// quelle del menu in basso e le sezioni del Profilo. Il terzo valore dice
+// a chi tocca: 'org' agli organizzatori, 'soci' anche a chi organizza una Tana.
+const PAGINE_DA_PREPARARE = [
+  ['tavoli', Tavoli], ['giochi', Giochi], ['giocatori', Giocatori], ['classifiche', Classifiche],
+  ['profilo:profilo', SeiTu], ['profilo:dati', Dati], ['profilo:ospiti', UnisciOspiti], ['profilo:luoghi', Luoghi],
+  ['profilo:giochi', GiochiDoppi, 'org'], ['profilo:ruoli', Organizzatori, 'org'], ['profilo:soci', Soci, 'soci'],
+]
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
@@ -1086,6 +1095,10 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
+  // Solo le sezioni che l'iscritto può aprire: le altre il database le rifiuterebbe.
+  const pagineDaPreparare = useMemo(() => PAGINE_DA_PREPARARE.filter(([, , chi]) =>
+    !chi || profilo?.organizzatore || (chi === 'soci' && orgTana)), [profilo?.organizzatore, orgTana])
+
   return (
     <div className="guscio">
       <header className="testata">
@@ -1188,6 +1201,8 @@ export default function App() {
           </nav>
 
           <StatoRete profilo={profilo} />
+          <Prepara profilo={profilo} aperta={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
+            pagine={pagineDaPreparare} />
 
           {daBgg && (
             <div className="scheda scheda-sottile">
@@ -1399,6 +1414,7 @@ function traduciErrore(e) {
   if (m.includes('email not confirmed')) return 'Devi prima confermare l\u2019indirizzo dal messaggio che ti è arrivato.'
   if (m.includes('duplicate key') && m.includes('nickname')) return 'Questo soprannome è già di qualcun altro. Scegline un altro.'
   if (m.includes('row-level security')) return 'Il database ha rifiutato la scrittura: manca una regola di accesso.'
+  if (m.startsWith('senza rete')) return e.message
   if (m.includes('failed to fetch') || m.includes('load failed') || m.includes('networkerror')) return 'Nessuna connessione al database. Controlla la rete.'
   return e?.message || 'Qualcosa non ha funzionato.'
 }
