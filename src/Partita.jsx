@@ -2,9 +2,9 @@
 // v4.25.0 - 202611091400 (niente nomi suggeriti finché non si cerca, niente «Chi ha giocato», luogo già sulla Tana)
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe, fetchBgg } from './supabase'
+import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
 import { impronta } from './impronta'
-import { giochiMiei, assicuraGiocoBgg } from './giochiMiei'
+import { assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
 import Segnapunti from './Segnapunti.jsx'
@@ -12,10 +12,7 @@ import { accodaPartita, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
-import { archivioInMemoria, leggiDalTelefono, salvaSulTelefono } from './archivio'
-
-// Gli elenchi dell'ultima apertura, per riaprire la pagina all'istante.
-let elenchiInMemoria = null
+import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
 
 const LIMITE_NOMI = 12
 
@@ -164,68 +161,20 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   }
 
   async function caricaElenchi() {
-    const chiave = `elenchi-partita:${profilo.id}`
-    const vecchi = elenchiInMemoria?.chiave === chiave ? elenchiInMemoria
-      : (await leggiDalTelefono(chiave))?.dati
-    if (vecchi?.chiave === chiave) applicaElenchi(vecchi)
-
-    // Le partecipazioni per contare chi gioca di più: se l'archivio è già
-    // in memoria (Storico, Statistiche, Home) non si rileggono.
-    const archivio = archivioInMemoria(profilo.id)
-    const partecipazioni = archivio
-      ? Promise.resolve(archivio.flatMap((x) => x.partecipazioni || []))
-      : tutteLeRighe(() => supabase.from('partecipazioni').select('utente_id, ospite_id'))
-
-    const giochi = giochiMiei(profilo.id, '*')
-    // Senza elenchi salvati il catalogo si mostra appena arriva, senza aspettare il resto.
-    if (!vecchi) giochi.then((g) => setCatalogo((prima) => (prima.length ? prima : g))).catch(() => {})
-
-    const ultima = (async () => {
-      const { data: u } = await supabase
-        .from('partite')
-        .select('id, giocata_il, partecipazioni!inner ( utente_id )')
-        .eq('partecipazioni.utente_id', profilo.id)
-        .order('giocata_il', { ascending: false })
-        .limit(1)
-      if (!u?.[0]) return []
-      const { data: chi } = await supabase
-        .from('partecipazioni')
-        .select('utente_id, ospite_id, ordine_turno')
-        .eq('partita_id', u[0].id)
-      return (chi || []).map((x) => (x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`))
-    })()
-
+    const vecchi = await elenchiSalvati(profilo.id)
+    if (vecchi) applicaElenchi(vecchi)
     try {
-      const [g, p, o, f, l, c, nc, up] = await Promise.all([
-        giochi,
-        tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, colore').order('nome')),
-        tutteLeRighe(() => supabase.from('ospiti').select('id, nome, cognome, utente_collegato, unito_in').order('nome')),
-        partecipazioni,
-        tutteLeRighe(() => supabase.from('luoghi').select('nome').order('nome')),
-        tutteLeRighe(() => supabase.from('collezioni').select('gioco_id').eq('utente_id', profilo.id), 1000, 'gioco_id'),
-        supabase.from('nomi_collegati').select('utente_id, nome, cognome').then(({ data }) => data || []),
-        ultima,
-      ])
-      const nomi = new Map()
-      for (const r of nc) {
-        if (!nomi.has(r.utente_id)) nomi.set(r.utente_id, [])
-        nomi.get(r.utente_id).push([r.nome, r.cognome].filter(Boolean).join(' '))
-      }
-      const conta = new Map()
-      for (const r of f) {
-        const k = r.utente_id ? `u-${r.utente_id}` : `o-${r.ospite_id}`
-        conta.set(k, (conta.get(k) || 0) + 1)
-      }
-      const nuovi = {
-        chiave, giochi: g, persone: p, ospiti: o, luoghi: l.map((x) => x.nome),
-        collezione: c.map((x) => x.gioco_id), nomiCollegati: [...nomi], frequenza: [...conta], ultimaPartita: up,
-      }
-      elenchiInMemoria = nuovi
+      const nuovi = await leggiElenchiPartita(profilo.id, {
+        // Senza elenchi salvati il catalogo si mostra appena arriva, senza aspettare il resto.
+        suCatalogo: vecchi ? null : (g) => setCatalogo((prima) => (prima.length ? prima : g)),
+      })
       if (montata.current) applicaElenchi(nuovi)
-      salvaSulTelefono(chiave, nuovi)
     } catch (e) {
       // Con gli elenchi dell'ultima volta si va avanti lo stesso (es. senza rete).
-      if (!vecchi && montata.current) setErrore(e.message)
+      if (vecchi || !montata.current) return
+      setErrore(eProblemaDiRete(e)
+        ? 'Senza rete non trovo i tuoi giochi e i giocatori: su questo telefono non sono ancora stati salvati. Apri l\u2019app una volta con la rete e poi funziona anche senza.'
+        : e.message)
     }
   }
 

@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
+import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
 import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
@@ -884,6 +885,13 @@ export default function App() {
         .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
         .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
     }, 4000)
+  }, [profilo?.id])
+
+  // Giochi e giocatori per la pagina Partita: sul telefono fin da subito,
+  // così si registra senza rete anche senza averla mai aperta prima.
+  useEffect(() => {
+    if (!profilo?.id || daBga) return
+    return quandoLibero(() => { if (navigator.onLine) preparaElenchiPartita(profilo.id) }, 2500)
   }, [profilo?.id])
 
   // Board Game Arena, per chi l'ha collegato con la password.
