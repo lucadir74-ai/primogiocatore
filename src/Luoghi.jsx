@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
+import { salvaOAccoda, luoghiConModifiche } from './modifiche'
 import { chiediPosizione } from './posizione'
 import CercaScegli from './CercaScegli.jsx'
 import CampoIndirizzo from './CampoIndirizzo.jsx'
@@ -43,7 +44,8 @@ export default function Luoghi({ profilo }) {
       const posizioni = new Map((po.data || []).map((x) => [String(x.luogo_id), x]))
       const conta = new Map()
       for (const r of [...p, ...t]) conta.set(r.luogo_id, (conta.get(r.luogo_id) || 0) + 1)
-      setLuoghi(l.map((x) => {
+      // I nomi cambiati senza rete si vedono già, anche se aspettano.
+      setLuoghi(luoghiConModifiche(profilo.id, l).map((x) => {
         const pos = posizioni.get(String(x.id))
         return {
           ...x, usi: conta.get(x.id) || 0, posizione: pos || null,
@@ -131,10 +133,17 @@ export default function Luoghi({ profilo }) {
   async function salvaNome() {
     setErrore(''); setMessaggio('')
     if (!rinomina.nome.trim()) { setErrore('Il nome non può restare vuoto.'); return }
-    const { error } = await supabase
-      .from('luoghi').update({ nome: rinomina.nome.trim() }).eq('id', rinomina.id)
-    if (error) setErrore(error.message)
-    else { setMessaggio('Luogo rinominato.'); setRinomina(null); carica() }
+    try {
+      // Senza rete resta sul telefono e parte da solo (modifiche.js).
+      const { inAttesa } = await salvaOAccoda(profilo.id, 'luogo-nome', rinomina.id, { nome: rinomina.nome.trim() })
+      setMessaggio(inAttesa
+        ? 'Niente rete: il nuovo nome è salvato sul telefono e partirà da solo quando torna la linea.'
+        : 'Luogo rinominato.')
+      setRinomina(null)
+      carica()
+    } catch (e) {
+      setErrore(e.message)
+    }
   }
 
   async function unisci() {

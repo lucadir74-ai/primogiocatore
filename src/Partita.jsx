@@ -13,6 +13,7 @@ import { inviaABggSeServe } from './invioBgg'
 import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
 import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
+import { salvaOAccoda, collezioneConModifiche } from './modifiche'
 
 const LIMITE_NOMI = 12
 
@@ -151,7 +152,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     // («kaihla», «gess»...): scrivendoli si trova l'account giusto.
     setNomiCollegati(new Map(d.nomiCollegati))
     setLuoghiNoti(d.luoghi)
-    setMiaCollezione(new Set(d.collezione))
+    setMiaCollezione(collezioneConModifiche(profilo.id, d.collezione))   // con gli «è mio» segnati senza rete
     // Quante partite ha ciascuno: i soliti compagni vanno davanti,
     // altrimenti con qualche centinaio di nomi l'elenco è inservibile.
     setFrequenza(new Map(d.frequenza))
@@ -261,17 +262,11 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   // Posseduto o no: si segna da qui, senza passare dal catalogo.
   async function cambiaPossesso(giocoId, posseduto) {
     setErrore('')
-    if (posseduto) {
-      const { error } = await supabase.from('collezioni')
-        .upsert({ utente_id: profilo.id, gioco_id: giocoId, origine: 'manuale' })
-      if (error) { setErrore(error.message); return }
-      setMiaCollezione((s) => new Set([...s, giocoId]))
-    } else {
-      const { error } = await supabase.from('collezioni').delete()
-        .eq('utente_id', profilo.id).eq('gioco_id', giocoId)
-      if (error) { setErrore(error.message); return }
-      setMiaCollezione((s) => new Set([...s].filter((x) => x !== giocoId)))
-    }
+    try {
+      // Senza rete resta sul telefono e parte da solo (modifiche.js).
+      await salvaOAccoda(profilo.id, 'possesso', giocoId, { posseduto, id: giocoId })
+    } catch (e) { setErrore(e.message); return }
+    setMiaCollezione((s) => (posseduto ? new Set([...s, giocoId]) : new Set([...s].filter((x) => x !== giocoId))))
   }
 
   // Le fazioni si attivano anche da qui, senza passare dalla scheda Giochi.
