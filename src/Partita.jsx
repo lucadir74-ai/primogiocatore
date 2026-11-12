@@ -291,6 +291,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     if (qualcosa && !window.confirm('Annullare questa partita? Quello che hai inserito andrà perso.')) return
     azzera()
     window.scrollTo?.({ top: 0 })
+    finitaModifica?.()   // si torna alla pagina Partite
   }
 
   function scegliGioco(g) {

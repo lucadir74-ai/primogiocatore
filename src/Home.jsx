@@ -41,7 +41,7 @@ function Icona({ d }) {
   )
 }
 
-export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati }) {
+export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati, onContatti }) {
   const [tavoli, setTavoli] = useState(null)
   // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
   // importata (la lettura automatica parte solo dopo il primo import), o
@@ -261,6 +261,12 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       )}
 
       <DallaTana />
+
+      {onContatti && (
+        <button type="button" className="bottone-piatto contatti-link" onClick={onContatti}>
+          Contatti della Tana: telefono, email e social
+        </button>
+      )}
     </div>
   )
 }

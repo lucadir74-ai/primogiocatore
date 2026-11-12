@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v3.12.0 - 202610311000 (partita cancellata: la cancellazione parte subito anche verso BGG)
+// v4.0.0 - 202611121000 (pagina «Partite»: in cima «Nuova partita», sotto lo storico)
 
 import { unisciCondivise } from './condivise'
 import { useEffect, useState } from 'react'
@@ -7,6 +7,7 @@ import { supabase, COLORI, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import { leggiBozza } from './bozza'
 
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
@@ -33,7 +34,9 @@ const giaOrdinate = new WeakMap()
 
 const PER_PAGINA = 50
 
-export default function Storico({ profilo, onModifica, onApri, ripristina }) {
+export default function Storico({ profilo, onModifica, onApri, onNuova, ripristina }) {
+  // Una partita lasciata a metà sul telefono: si riprende quella.
+  const [inCorso] = useState(() => Boolean(leggiBozza()))
   const [sezione, setSezione] = useState('partite')
   // Dalla più recente; unite le copie della stessa partita (vince la tua).
   const ordina = (righe) => {
@@ -184,7 +187,15 @@ export default function Storico({ profilo, onModifica, onApri, ripristina }) {
 
   return (
     <div className="scheda">
-      <h2>Storico</h2>
+      <h2>Partite</h2>
+
+      {onNuova && (
+        <button type="button" className="bottone nuova-partita" onClick={onNuova}>
+          {inCorso ? 'Riprendi la partita in corso' : '+ Nuova partita'}
+        </button>
+      )}
+
+      <h3 className="titolo-sezione">Storico</h3>
 
       {errore && <div className="avviso errore">{errore}</div>}
 

@@ -1,4 +1,4 @@
-// Primo Giocatore v4.26.0 - 202611101200 (si apre e si consulta anche senza rete; guida per metterla sull'iPhone)
+// Primo Giocatore v4.27.0 - 202611121000 (pagina «Partite»: nuova partita e storico insieme; contatti della Tana)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -35,6 +35,7 @@ const Classifiche = lazy(() => import('./Classifiche.jsx'))
 const Organizzatori = lazy(() => import('./Organizzatori.jsx'))
 const Soci = lazy(() => import('./Soci.jsx'))
 const ImportaBga = lazy(() => import('./ImportaBga.jsx'))
+const Contatti = lazy(() => import('./Contatti.jsx'))
 // Le pagine che si preparano da sole per quando manca la rete (Prepara.jsx):
 // quelle del menu in basso e le sezioni del Profilo. Il terzo valore dice
 // a chi tocca: 'org' agli organizzatori, 'soci' anche a chi organizza una Tana.
@@ -95,6 +96,7 @@ const ICONE = {
   giocatori: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7z M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6 M16 4.5a3.2 3.2 0 010 6.3 M18 14.3c2.2.6 3.5 2.6 3.5 5.7',
   tavoli: 'M3 10h18 M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3 M6 10v9 M18 10v9',
   home: 'M3 11l9-7 9 7 M5 9.5V20h5v-6h4v6h5V9.5',
+  contatti: 'M4 6h16v12H4z M4 7l8 6 8-6',
 }
 
 function Icona({ nome }) {
@@ -778,7 +780,7 @@ function InAttesa({ profilo, onRicontrolla }) {
 // Ogni pagina ha il suo indirizzo (/tavoli, /storico, /profilo/dati...):
 // il tasto indietro del telefono torna alla pagina di prima invece di
 // chiudere l'app, e un indirizzo si può salvare o riaprire.
-const PAGINE = ['home', 'partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'profilo']
+const PAGINE = ['home', 'partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'contatti', 'profilo']
 
 function percorsoDi(scheda, partitaId, sezione) {
   if (scheda === 'home') return '/'
@@ -1184,16 +1186,16 @@ export default function App() {
           <nav className="barra-basso">
             {[
               ['home', 'Home'],
-              ['partita', 'Partita'],
+              ['storico', 'Partite'],
               ['tavoli', 'Tavoli'],
-              ['storico', 'Storico'],
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
               ['giocatori', 'Giocatori'],
+              ['contatti', 'Contatti'],
             ].map(([id, etichetta]) => (
               <button
                 key={id}
-                className={scheda === id || (id === 'statistiche' && scheda === 'classifiche') ? 'attiva' : ''}
+                className={scheda === id || (id === 'statistiche' && scheda === 'classifiche') || (id === 'storico' && scheda === 'partita') ? 'attiva' : ''}
                 onClick={() => {
                   if (id === 'partita') setPartitaId(null)
                   // Dal menu in basso si riparte da capo: il ritorno alla
@@ -1290,6 +1292,7 @@ export default function App() {
               onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
               onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
               onDati={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}
+              onContatti={() => { setScheda('contatti'); window.scrollTo({ top: 0 }) }}
             />
           ) : scheda === 'partita' ? (
             <Partita
@@ -1333,6 +1336,7 @@ export default function App() {
             <Storico
               profilo={profilo}
               ripristina={ritornoStorico}
+              onNuova={() => { setPartitaId(null); setScheda('partita'); window.scrollTo({ top: 0 }) }}
               onModifica={(id, posizione) => {
                 setRitorno(null)
                 setRitornoStorico(posizione || null)
@@ -1359,6 +1363,8 @@ export default function App() {
               if (da === '/statistiche' || da === '/') window.history.back()
               else setScheda('statistiche')
             }} />
+          ) : scheda === 'contatti' ? (
+            <Contatti profilo={profilo} />
           ) : scheda === 'giochi' ? (
             <Giochi profilo={profilo} />
           ) : scheda === 'giocatori' ? (
