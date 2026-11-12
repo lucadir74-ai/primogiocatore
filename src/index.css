@@ -2835,11 +2835,14 @@ button.numerone:active { transform: scale(0.98); }
 /* ---------- Contatti della Tana ---------- */
 .contatti-elenco { list-style: none; padding: 0; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .contatto {
-  display: flex; flex-direction: column; gap: 0.1rem;
+  display: flex; align-items: center; gap: 0.85rem;
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--bordo); border-radius: 14px;
   background: var(--superficie); color: var(--inchiostro); text-decoration: none;
 }
+.contatto-icona { flex: none; color: var(--inchiostro-tenue); }
+a.contatto .contatto-icona { color: var(--blu); }
+.contatto-testo { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 a.contatto:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
 .contatto-tipo { font-size: 0.82rem; color: var(--inchiostro-tenue); }
 .contatto-valore { font-weight: 600; font-size: 1.05rem; overflow-wrap: anywhere; }
