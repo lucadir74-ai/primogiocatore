@@ -32,6 +32,8 @@ function chiHaVinto(p) {
   return `vinta da ${v.map(nomeDi).join(', ')}`
 }
 
+const giaOrdinate = new WeakMap()
+
 function Icona({ d }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -58,8 +60,15 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     profilo.bga_username?.trim() && !profilo.bga_id ? 'BGA' : null,
   ].filter(Boolean)
   const [ipg, setIpg] = useState(null)
-  const ordina = (righe) => unisciCondivise([...righe].reverse(), [profilo.id])
-    .filter((p) => giocataDa(p, profilo.id))
+  // Unire le copie su tutto l'archivio costa: se arriva di nuovo lo stesso
+  // elenco (apertura, poi rilettura senza novità), il risultato si riusa.
+  const ordina = (righe) => {
+    const prima = giaOrdinate.get(righe)
+    if (prima && prima.id === profilo.id) return prima.valore
+    const valore = unisciCondivise([...righe].reverse(), [profilo.id]).filter((p) => giocataDa(p, profilo.id))
+    giaOrdinate.set(righe, { id: profilo.id, valore })
+    return valore
+  }
   const inMemoria = archivioInMemoria(profilo.id)
   const [partite, setPartite] = useState(() => (inMemoria ? ordina(inMemoria) : null))
   const [bozza] = useState(() => leggiBozza())

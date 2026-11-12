@@ -1,5 +1,5 @@
 // Primo Giocatore - l'archivio delle partite, uno solo per tutta l'app
-// v1.4.0 - 202611091300 (archivio sul telefono per tutti; posto per altri elenchi)
+// v1.5.0 - 202611132100 (sul telefono una riga per partita: a ogni novità si scrivono solo le partite cambiate, non tutto l'archivio)
 //
 // Storico e Statistiche leggevano ognuno, a ogni apertura, tutte le
 // partite (migliaia, con giocatori e punteggi). Ora le legge una volta
@@ -59,23 +59,39 @@ export function impostaArchivioLocale(si) {
   try { if (si) localStorage.setItem(CHIAVE_PROVA, '1'); else localStorage.removeItem(CHIAVE_PROVA) } catch { /* niente */ }
 }
 
+// Il deposito ha due scaffali:
+// - «archivio»: una scheda per persona (fin dove si è letto, quando,
+//   quante partite) e gli altri elenchi tenuti da parte (leggiDalTelefono);
+// - «partite»: una riga per partita. Prima l'archivio intero stava in un
+//   blocco solo dentro la scheda, e a ogni partita cambiata si riscriveva
+//   tutto (migliaia di partite, a schermo fermo): ora si scrivono solo le
+//   partite cambiate e si tolgono quelle cancellate.
 function apriDb() {
   return new Promise((ok, ko) => {
     if (typeof indexedDB === 'undefined') { ko(new Error('niente IndexedDB')); return }
-    const r = indexedDB.open('primo-giocatore', 1)
-    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('archivio')) r.result.createObjectStore('archivio', { keyPath: 'utente' }) }
+    const r = indexedDB.open('primo-giocatore', 2)
+    r.onupgradeneeded = () => {
+      const db = r.result
+      if (!db.objectStoreNames.contains('archivio')) db.createObjectStore('archivio', { keyPath: 'utente' })
+      if (!db.objectStoreNames.contains('partite')) db.createObjectStore('partite', { keyPath: ['utente', 'id'] })
+    }
     r.onsuccess = () => ok(r.result)
     r.onerror = () => ko(r.error)
+    // Un'altra scheda aperta con la versione vecchia: si fa senza memoria.
+    r.onblocked = () => ko(new Error('deposito occupato'))
   })
 }
 
-async function cacheOp(modo, fn) {
+// Un'operazione su uno o più scaffali, tutta o niente.
+async function depositoOp(scaffali, modo, fn) {
   try {
     const db = await apriDb()
+    // Se un'altra scheda vuole aggiornare il deposito, non la si blocca.
+    db.onversionchange = () => db.close()
     try {
       return await new Promise((ok, ko) => {
-        const tx = db.transaction('archivio', modo)
-        const r = fn(tx.objectStore('archivio'))
+        const tx = db.transaction(scaffali, modo)
+        const r = fn(tx)
         tx.oncomplete = () => ok(r?.result ?? null)
         tx.onerror = () => ko(tx.error)
         tx.onabort = () => ko(tx.error)
@@ -83,8 +99,46 @@ async function cacheOp(modo, fn) {
     } finally { db.close() }
   } catch { return null }   // memoria non disponibile: si legge tutto dal database
 }
+const cacheOp = (modo, fn) => depositoOp(['archivio'], modo, (tx) => fn(tx.objectStore('archivio')))
 const leggiCache = (utente) => cacheOp('readonly', (st) => st.get(utente))
 const scriviCache = (record) => cacheOp('readwrite', (st) => st.put(record))
+
+// Tutte le partite di una persona: le chiavi sono [utente, id].
+const fasciaDi = (utente) => IDBKeyRange.bound([utente], [utente, []])
+// La scheda senza le partite, con il loro numero: se alla rilettura non
+// torna (scrittura interrotta, memoria ripulita a metà) si rilegge tutto.
+const schedaDi = (record) => {
+  const { righe, ...scheda } = record
+  return { ...scheda, quante: righe.length }
+}
+
+// L'archivio com'è sul telefono: la scheda con dentro «righe», o null.
+async function leggiArchivioSalvato(utente) {
+  const scheda = await leggiCache(utente)
+  if (!scheda) return null
+  // Il formato di prima, tutto in un blocco: si usa così com'è, e alla
+  // prossima scrittura passa a quello nuovo.
+  if (Array.isArray(scheda.righe)) return scheda
+  const salvate = await depositoOp(['partite'], 'readonly', (tx) => tx.objectStore('partite').getAll(fasciaDi(utente)))
+  if (!Array.isArray(salvate) || salvate.length !== scheda.quante) return null
+  return { ...scheda, righe: ordina(salvate.map((x) => x.riga)) }
+}
+
+// Dopo una lettura completa: via le partite di prima, dentro quelle nuove.
+const salvaArchivioIntero = (record) => depositoOp(['archivio', 'partite'], 'readwrite', (tx) => {
+  const st = tx.objectStore('partite')
+  st.delete(fasciaDi(record.utente))
+  for (const riga of record.righe) st.put({ utente: record.utente, id: riga.id, riga })
+  return tx.objectStore('archivio').put(schedaDi(record))
+})
+
+// Dopo le sole novità: si scrivono le cambiate e si tolgono le cancellate.
+const salvaNovita = (record, cambiate, cancellate) => depositoOp(['archivio', 'partite'], 'readwrite', (tx) => {
+  const st = tx.objectStore('partite')
+  for (const id of cancellate) st.delete([record.utente, id])
+  for (const riga of cambiate) st.put({ utente: record.utente, id: riga.id, riga })
+  return tx.objectStore('archivio').put(schedaDi(record))
+})
 
 // Lo stesso posto sul telefono per altre cose da tenere (catalogo dei
 // giochi, elenchi della pagina Partita): la chiave è una stringa qualunque
@@ -151,9 +205,9 @@ async function leggiTuttoESalva(utente) {
   try { lettoFino = await oraDatabase() } catch { /* senza archivio_locale.sql: niente memoria */ }
   const righe = luoghiPerChiGuarda(await leggiTutto(), utente)
   if (lettoFino) {
-    const record = { utente, versione: VERSIONE_CACHE, letto_fino: lettoFino, completo_il: Date.now(), righe }
+    const record = { utente, versione: VERSIONE_CACHE, letto_fino: lettoFino, completo_il: Date.now(), quante: righe.length, righe }
     stato.cache = record
-    await scriviCache(record)
+    await salvaArchivioIntero(record)
   }
   return righe
 }
@@ -173,9 +227,11 @@ async function aggiorna(utente, cache) {
   for (const id of cancellate) perId.delete(id)
   for (const r of cambiate) perId.set(r.id, r)
   const righe = ordina([...perId.values()])
-  const record = { ...cache, letto_fino: lettoFino, righe }
+  const record = { ...cache, letto_fino: lettoFino, quante: righe.length, righe }
   stato.cache = record
-  await scriviCache(record)
+  // La copia era ancora nel formato di prima (un blocco solo): si riscrive tutta.
+  if (cache.quante == null) await salvaArchivioIntero(record)
+  else await salvaNovita(record, cambiate, cancellate)
   return righe
 }
 
@@ -189,7 +245,7 @@ async function leggiConMemoria(utente, forzaTutto) {
   if (!archivioLocaleAttivo()) return luoghiPerChiGuarda(await leggiTutto(), utente)
   // forzaTutto: si rilegge tutto dal database. La copia sul telefono si
   // sostituisce solo a lettura riuscita: senza rete resta quella di prima.
-  if (stato.cache === undefined) stato.cache = await leggiCache(utente)
+  if (stato.cache === undefined) stato.cache = await leggiArchivioSalvato(utente)
   const cache = stato.cache
   // Usabile: è la mia, nel formato di adesso. Valida: in più è fresca.
   const usabile = cache && cache.versione === VERSIONE_CACHE && cache.utente === utente && Array.isArray(cache.righe)

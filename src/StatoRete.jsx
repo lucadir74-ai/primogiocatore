@@ -11,13 +11,15 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { statoRete, seguiRete } from './memoriaRete'
+import { statoRete, seguiRete, vistiINuovi } from './memoriaRete'
 import { leggiCoda, inviaCoda, EVENTO_CODA } from './coda'
 import { leggiArchivio } from './archivio'
 import { leggiModifiche, inviaModifiche, EVENTO_MODIFICHE } from './modifiche'
 import { inviaABggSeServe } from './invioBgg'
 
-export default function StatoRete({ profilo }) {
+// pagina: quella aperta; onAggiorna: la ridisegna con i dati appena arrivati
+// (assente dove ridisegnare farebbe perdere quello che si sta scrivendo).
+export default function StatoRete({ profilo, pagina, onAggiorna }) {
   const [rete, setRete] = useState(statoRete)
   const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
   const [esito, setEsito] = useState(null)   // { salvate } | { rifiutate, motivo }
@@ -25,6 +27,8 @@ export default function StatoRete({ profilo }) {
   const [esitoModifiche, setEsitoModifiche] = useState(null)   // { salvate } | { cosa, motivo }
 
   useEffect(() => seguiRete(setRete), [])
+  // Cambiata pagina: quella nuova ha già letto per conto suo.
+  useEffect(() => { vistiINuovi() }, [pagina])
 
   useEffect(() => {
     if (!profilo?.id) return
@@ -88,7 +92,8 @@ export default function StatoRete({ profilo }) {
   }, [profilo?.id])
 
   const fuori = rete.senzaRete || rete.datiVecchi
-  if (!fuori && !inCoda && !esito && !modifiche && !esitoModifiche) return null
+  const nuovi = rete.nuoviArrivati && !fuori && Boolean(onAggiorna)
+  if (!fuori && !nuovi && !inCoda && !esito && !modifiche && !esitoModifiche) return null
 
   return (
     <div className="stato-rete" role="status">
@@ -99,6 +104,12 @@ export default function StatoRete({ profilo }) {
             <strong>{rete.senzaRete ? 'Sei senza rete.' : 'La rete non risponde.'}</strong>{' '}
             Vedi i dati dell&rsquo;ultima volta. Puoi registrare partite: partono da sole quando torna la linea.
           </span>
+        </p>
+      )}
+      {nuovi && (
+        <p className="stato-rete-riga">
+          La rete era lenta e vedi i dati dell&rsquo;ultima volta: ora sono arrivati quelli nuovi.{' '}
+          <button type="button" className="bottone-piatto" onClick={() => { vistiINuovi(); onAggiorna() }}>Aggiorna la pagina</button>
         </p>
       )}
       {inCoda > 0 && (

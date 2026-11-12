@@ -1,9 +1,9 @@
-// Primo Giocatore v4.28.1 - 202611121800 (avvisi di richieste riletti al massimo una volta al minuto, non a ogni cambio di scheda)
+// Primo Giocatore v4.30.0 - 202611132100 (versione nuova: si propone invece di ricaricare da soli; rete lenta: copia dopo 4 secondi e poi «Aggiorna la pagina»)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
@@ -11,6 +11,7 @@ import Prepara from './Prepara.jsx'
 import { salvaOAccoda, profiloConModifiche, EVENTO_MODIFICHE_INVIATE } from './modifiche'
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
+import Aggiornamento from './Aggiornamento.jsx'
 import NomeBga from './NomeBga.jsx'
 import SeiTu, { contaRichiesteDaApprovare, riconoscimi } from './SeiTu.jsx'
 import { contaOspitiDaRiconoscere } from './ChiSono.jsx'
@@ -887,6 +888,8 @@ export default function App() {
   const [tavoliChiesti, setTavoliChiesti] = useState(() => leggiAvvisi().tavoliChiesti || 0)   // richieste di tavolo per me
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
   const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
+  // Ridisegna la pagina aperta: dopo una rete lenta, con i dati appena arrivati.
+  const [giroPagina, setGiroPagina] = useState(0)
 
   // Partite nuove su BGG (anche quelle che BG Stats ci pubblica, comprese
   // quelle di Board Game Arena): arrivano da sole all'apertura.
@@ -1052,7 +1055,10 @@ export default function App() {
         else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
       })
     return () => { vivo = false }
-  }, [sessione, riprova])
+    // Solo quando cambia la persona: tornando all'app la libreria rimanda
+    // «accesso fatto» con una sessione nuova ma uguale, e rileggere il
+    // profilo cancellava quello che si stava scrivendo senza aver salvato.
+  }, [sessione?.user?.id, riprova])
 
   // Modifiche fatte senza rete appena partite (o rifiutate): il profilo si rilegge.
   useEffect(() => {
@@ -1160,6 +1166,8 @@ export default function App() {
         </div>
       </header>
 
+      <Aggiornamento />
+
       <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
       {tavoloPubblico ? (
         <>
@@ -1237,7 +1245,9 @@ export default function App() {
             ))}
           </nav>
 
-          <StatoRete profilo={profilo} />
+          {/* Nella pagina Partita non si offre di ridisegnare: si perderebbe la modifica in corso. */}
+          <StatoRete profilo={profilo} pagina={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
+            onAggiorna={scheda === 'partita' ? null : () => setGiroPagina((n) => n + 1)} />
           <Prepara profilo={profilo} aperta={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
             pagine={pagineDaPreparare} />
 
@@ -1319,6 +1329,7 @@ export default function App() {
 
           {scheda === 'home' && <Installa variante="avviso" />}
 
+          <Fragment key={giroPagina}>
           {scheda === 'home' ? (
             <Home
               profilo={profilo}
@@ -1444,6 +1455,7 @@ export default function App() {
               )
             })()
           )}
+          </Fragment>
 
         </>
       )}

@@ -1,5 +1,5 @@
 // Primo Giocatore - Giocatori
-// v1.1.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
+// v1.2.0 - 202611131900 (le partite dall'archivio comune, non più rilette tutte a ogni apertura)
 //
 // Le persone con cui hai giocato: chi ha un account e chi è ospite.
 // Un ospite collegato a un account ("sono io") è la stessa persona e
@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
+import { leggiArchivio, seguiArchivio } from './archivio'
 import BarraScorrevole from './BarraScorrevole.jsx'
 
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
@@ -32,27 +33,18 @@ export default function Giocatori({ profilo, onStatistiche }) {
   const [cerca, setCerca] = useState('')
   const [filtro, setFiltro] = useState('tutti')   // tutti | account | ospiti
 
-  useEffect(() => { carica() }, [])
-  // Cambiando filtro o ricerca si riparte dalla prima pagina.
-  useEffect(() => { setQuanti(PER_PAGINA) }, [filtro, cerca])
+  // Le partite arrivano dall'archivio comune (archivio.js), lo stesso di
+  // Storico e Statistiche: prima questa pagina rileggeva da sola tutte le
+  // partite a ogni apertura, con la lettura più lenta che c'è.
+  useEffect(() => {
+    let vivo = true
+    let giro = 0
 
-  async function carica() {
-    try {
-      const [righe, ospiti] = await Promise.all([
-        tutteLeRighe(() => supabase.from('partite').select(`
-          id, giocata_il, registrata_da,
-          giochi ( id ),
-          partecipazioni (
-            utente_id, ospite_id, punteggio_totale,
-            ospiti:ospite_id ( id, nome, utente_collegato )
-          )
-        `)),
-        tutteLeRighe(() => supabase.from('ospiti')
-          .select('id, nome, utente_collegato').eq('creato_da', profilo.id).is('unito_in', null)),
-      ])
-
-      // Gli account collegati agli ospiti non arrivano dalla partita:
-      // si leggono a parte, per avere nome e soprannome veri.
+    async function applica(righe, ospiti) {
+      const mio = ++giro
+      // Gli account non arrivano interi dalla partita (manca «dimostratore»,
+      // e quelli collegati a un ospite): si leggono a parte, una volta sola.
+      const profili = new Map(memoria?.utente === profilo.id ? memoria.account : [])
       const idAccount = new Set()
       for (const p of righe) {
         for (const x of p.partecipazioni || []) {
@@ -61,25 +53,54 @@ export default function Giocatori({ profilo, onStatistiche }) {
         }
       }
       for (const o of ospiti) if (o.utente_collegato) idAccount.add(o.utente_collegato)
-      const ids = [...idAccount]
-      const profili = new Map()
+      const ids = [...idAccount].filter((id) => !giaLetti.has(id))
       const blocchi = []
       for (let i = 0; i < ids.length; i += 200) blocchi.push(ids.slice(i, i + 200))
       const risposte = await Promise.all(blocchi.map((b) => supabase.from('profili')
         .select('id, nome, nickname, colore, dimostratore').in('id', b)))
-      for (const { data } of risposte) for (const r of data || []) profili.set(r.id, r)
+      for (const { data } of risposte) for (const r of data || []) { profili.set(r.id, r); giaLetti.add(r.id) }
+      if (!vivo || mio !== giro) return
 
       const unite = unisciCondivise(righe, [profilo.id])
       memoria = { utente: profilo.id, partite: unite, mieiOspiti: ospiti, account: profili }
       setPartite(unite)
       setMieiOspiti(ospiti)
       setAccount(profili)
-    } catch (e) {
-      setErrore(e.message)
-    } finally {
-      setCaricamento(false)
     }
-  }
+
+    // I profili già riletti in questa visita: gli altri (ricordati dalla
+    // visita di prima) si rileggono, così un nome cambiato si aggiorna.
+    const giaLetti = new Set()
+    let ospiti = ricordo?.mieiOspiti || []
+    let ultime = null
+
+    ;(async () => {
+      try {
+        const [righe, o] = await Promise.all([
+          leggiArchivio(profilo.id),
+          tutteLeRighe(() => supabase.from('ospiti')
+            .select('id, nome, utente_collegato').eq('creato_da', profilo.id).is('unito_in', null)),
+        ])
+        ospiti = o
+        ultime = righe
+        await applica(righe, ospiti)
+      } catch (e) {
+        if (vivo) setErrore(e.message)
+      } finally {
+        if (vivo) setCaricamento(false)
+      }
+    })()
+
+    // L'archivio riletto altrove (una partita salvata, la rete tornata).
+    const smetti = seguiArchivio((righe) => {
+      if (righe === ultime) return
+      ultime = righe
+      applica(righe, ospiti).catch(() => {})
+    })
+    return () => { vivo = false; smetti() }
+  }, [profilo.id])
+  // Cambiando filtro o ricerca si riparte dalla prima pagina.
+  useEffect(() => { setQuanti(PER_PAGINA) }, [filtro, cerca])
 
   const persone = useMemo(() => {
     const mappa = new Map()

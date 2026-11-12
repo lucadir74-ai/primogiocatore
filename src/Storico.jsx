@@ -1,8 +1,8 @@
 // Primo Giocatore - Storico
-// v4.0.0 - 202611121000 (pagina «Partite»: in cima «Nuova partita», sotto lo storico)
+// v4.1.0 - 202611132100 (ricerca che non rallenta la scrittura: il testo di ogni partita si prepara una volta sola)
 
 import { unisciCondivise } from './condivise'
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
@@ -33,6 +33,24 @@ const data = (d) => {
 const giaOrdinate = new WeakMap()
 
 const PER_PAGINA = 50
+
+// «Dario a», «dario-a» e «DarioA» trovano tutti «DarioAggioli»:
+// spazi, maiuscole, accenti e segni non contano.
+const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+// Il testo in cui cercare, una volta per partita: prima si ricostruiva per
+// tutto l'archivio a ogni lettera scritta. I pezzi restano separati da un
+// segno che nella ricerca non può esserci.
+const testiPartite = new WeakMap()
+function testoDi(p) {
+  let t = testiPartite.get(p)
+  if (t === undefined) {
+    t = [p.giochi?.nome, p.luoghi?.nome, p.note,
+      ...(p.partecipazioni || []).map((x) => (x.profili ? daMostrare(x.profili) : (x.ospiti?.nome || 'Sconosciuto')))]
+      .filter(Boolean).map(piatto).join('|')
+    testiPartite.set(p, t)
+  }
+  return t
+}
 
 export default function Storico({ profilo, onModifica, onApri, onNuova, ripristina }) {
   // Una partita lasciata a metà sul telefono: si riprende quella.
@@ -166,22 +184,16 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
     : dove === 'online' ? partite.filter((p) => p.luoghi?.tipo === 'online')
     : partite.filter((p) => p.luoghi?.tipo !== 'online')
 
-  // «Dario a», «dario-a» e «DarioA» trovano tutti «DarioAggioli»:
-  // spazi, maiuscole, accenti e segni non contano.
-  const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
-  const q = piatto(cerca)
+  // La ricerca segue la scrittura senza bloccarla: l'elenco si aggiorna
+  // un attimo dopo l'ultima lettera.
+  const q = piatto(useDeferredValue(cerca))
   const contiene = (t) => piatto(t).includes(q)
-  const filtrate = !q ? scelte : scelte.filter((p) => {
-    const pezzi = [
-      p.giochi?.nome,
-      p.luoghi?.nome,
-      p.note,
-      ...(p.partecipazioni || []).map((x) => chi(x).nome),
-    ]
-    return pezzi.filter(Boolean).some(contiene)
-  })
+  const filtrate = useMemo(() => (!q ? scelte : scelte.filter((p) => testoDi(p).includes(q))), [partite, dove, q])
 
   const filtraNome = (righe) => (!q ? righe : righe.filter((r) => contiene(r.nome)))
+
+  // Una volta sola per disegno (prima due), e solo se la sezione è aperta.
+  const giocatoriInsieme = sezione === 'giocatori' ? perGiocatore() : []
 
   if (caricamento) return <div className="scheda"><p>Carico lo storico&hellip;</p></div>
 
@@ -394,7 +406,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
       {/* --- Giocatori --- */}
       {sezione === 'giocatori' && (
         <ul className="elenco">
-          {filtraNome(perGiocatore()).map((g, i) => (
+          {filtraNome(giocatoriInsieme).map((g, i) => (
             <li key={`${g.chiave ?? g.id ?? g.nome}|${i}`}>
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
@@ -413,7 +425,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
               </div>
             </li>
           ))}
-          {perGiocatore().length === 0 && (
+          {giocatoriInsieme.length === 0 && (
             <p className="aiuto">Per ora hai giocato solo da solo.</p>
           )}
         </ul>
