@@ -2833,7 +2833,6 @@ button.numerone:active { transform: scale(0.98); }
 .nuova-partita { margin: 0.2rem 0 0.2rem; }
 
 /* ---------- Contatti della Tana ---------- */
-.contatti-link { display: block; margin: 1.2rem auto 0; }
 .contatti-elenco { list-style: none; padding: 0; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .contatto {
   display: flex; flex-direction: column; gap: 0.1rem;
@@ -2897,3 +2896,24 @@ a.contatto .contatto-valore { color: var(--blu); }
   font-family: var(--display); font-size: 0.98rem; font-weight: 700;
   display: flex; align-items: baseline; gap: 0.5rem;
 }
+
+/* ---------- Tavoli: scheda compatta, che si apre al tocco ---------- */
+.tavolo-scheda.compatta { padding: 0; margin-bottom: 0.45rem; }
+.tavolo-riga {
+  display: flex; align-items: center; gap: 0.65rem; width: 100%;
+  padding: 0.55rem 0.7rem; background: none; border: 0; border-radius: 12px;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.tavolo-riga:disabled { cursor: default; }
+.tavolo-riga:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+.tavolo-ora { flex: none; width: 2.9rem; font-family: var(--display); font-weight: 700; font-size: 0.95rem; }
+.tavolo-riga .copertina { width: 2.3rem; height: 2.3rem; }
+.tavolo-riga-testo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.05rem; }
+.tavolo-riga-testo > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tavolo-riga-testo .anno { font-size: 0.82rem; }
+.tavolo-posti { flex: none; font-size: 0.8rem; font-weight: 600; color: var(--verde); text-align: right; }
+.tavolo-posti.pieno { color: var(--inchiostro-tenue); font-weight: 400; }
+.tavolo-freccia { flex: none; color: var(--inchiostro-tenue); font-size: 0.8rem; line-height: 1; }
+.tavolo-scheda.compatta .tavolo-dettagli { padding: 0 0.7rem 0.7rem; }
+.tavolo-scheda.compatta .tavolo-dettagli > .anno { display: block; font-size: 0.85rem; }
+.tavolo-scheda.compatta .tavolo-azioni { margin-top: 0.5rem; }

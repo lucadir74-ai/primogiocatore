@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.5.0 - 202611130900 (riquadro «Prossimi tavoli», con quanti hanno ancora posto)
+// v1.5.1 - 202611131500 (tolto il collegamento ai contatti in fondo: c'è la voce nella barra in basso)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -41,7 +41,7 @@ function Icona({ d }) {
   )
 }
 
-export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati, onContatti }) {
+export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati }) {
   const [tavoli, setTavoli] = useState(null)
   // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
   // importata (la lettura automatica parte solo dopo il primo import), o
@@ -271,12 +271,6 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       )}
 
       <DallaTana />
-
-      {onContatti && (
-        <button type="button" className="bottone-piatto contatti-link" onClick={onContatti}>
-          Contatti della Tana: telefono, email e social
-        </button>
-      )}
     </div>
   )
 }
