@@ -10,6 +10,9 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { eProblemaDiRete } from './coda'
+
+const SENZA_RETE = 'Senza rete non si può decidere: riprova quando torna la linea.'
 
 const giorno = (d) => new Date(d + 'T12:00').toLocaleDateString('it-IT', {
   day: 'numeric', month: 'short', year: 'numeric',
@@ -104,7 +107,7 @@ export default function ChiSono({ onCambio }) {
     setErrore(''); setMessaggio(''); setLavorando(true)
     const { error } = await supabase.rpc('riconosci_ospite', { p_ospite: o.ospite_id, p_utente: c.id })
     setLavorando(false)
-    if (error) { setErrore(error.message); return }
+    if (error) { setErrore(eProblemaDiRete(error) ? SENZA_RETE : error.message); return }
     setMessaggio(`«${nomeIntero(o.nome, o.cognome)}» ora è ${c.chi}.`)
     setOspiti((l) => l.filter((x) => x.ospite_id !== o.ospite_id))
     onCambio?.()
@@ -114,7 +117,7 @@ export default function ChiSono({ onCambio }) {
     setErrore(''); setMessaggio(''); setLavorando(true)
     const { error } = await supabase.rpc('ospite_non_e', { p_ospite: o.ospite_id, p_utenti: o.candidati.map((c) => c.id) })
     setLavorando(false)
-    if (error) { setErrore(error.message); return }
+    if (error) { setErrore(eProblemaDiRete(error) ? SENZA_RETE : error.message); return }
     setOspiti((l) => l.filter((x) => x.ospite_id !== o.ospite_id))
     onCambio?.()
   }
