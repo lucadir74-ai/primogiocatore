@@ -1,5 +1,5 @@
 -- Primo Giocatore - riconoscimento delle persone, fase 4 (regola unica)
--- v1.0.0 - 202611121500
+-- v1.1.0 - 202611121800 (gli ospiti arrivati da Board Game Arena restano fuori dai dubbi, salvo nome proprio uguale)
 -- Va eseguito DOPO riconoscimento_fase1/2/3.sql, niente_doppioni.sql e
 -- ospiti_doppi.sql. Si può rilanciare senza danni. Non cancella partite,
 -- ospiti né account.
@@ -19,12 +19,17 @@
 --    parziali, omonimi) li decide chi ha inserito l'ospite, che sa con
 --    chi ha giocato, oppure un organizzatore: «Il tuo "Gess" è Gessica
 --    Bianchi?». Un «no» si ricorda e non viene più riproposto.
+--    Gli ospiti arrivati da Board Game Arena (hanno il numero BGA) sono
+--    quasi tutti avversari sconosciuti: fra i dubbi entrano solo se il
+--    nome è proprio uguale a quello di un iscritto, non per somiglianza.
 -- 4. Ogni nome confermato resta legato alla persona (nomi_collegati),
 --    come prima.
 
 -- 1. Un nome scritto sempre allo stesso modo --------------------------------
+-- (Senza «set search_path»: usa solo funzioni di sistema, e così il
+-- database la svolge sul posto invece di chiamarla riga per riga.)
 create or replace function public.nome_piatto(p text)
- returns text language sql immutable set search_path to 'public'
+ returns text language sql immutable
 as $f$
   select lower(regexp_replace(trim(coalesce(p, '')), '\s+', ' ', 'g'))
 $f$;
@@ -144,8 +149,8 @@ create function public.ospiti_da_riconoscere()
                mio boolean, utente_id uuid, chi text, forza int)
  language sql stable security definer set search_path to 'public'
 as $function$
-  with g as (
-    select o.id, o.nome, o.cognome, o.creato_da,
+  with g as materialized (
+    select o.id, o.nome, o.cognome, o.creato_da, o.bga_id is not null as da_bga,
            nome_piatto(o.nome) as n, nome_piatto(o.cognome) as c,
            split_part(nome_piatto(o.nome), ' ', 1) as primo
     from ospiti o
@@ -155,17 +160,29 @@ as $function$
       and nome_piatto(o.nome) <> ''
       and ((select public.e_organizzatore()) or o.creato_da = auth.uid())
   ),
-  p as (
+  p as materialized (
     select pr.id, pr.nome, pr.cognome, pr.nickname,
            nome_piatto(pr.nome) as pn, nome_piatto(pr.nickname) as pk, nome_piatto(pr.cognome) as pc,
            split_part(nome_piatto(pr.nome), ' ', 1) as pprimo
     from profili pr
   ),
+  -- I nomi interi di ogni iscritto: nick, «nome cognome», «cognome nome».
+  interi as materialized (
+    select distinct p.id, v as intero
+    from p, unnest(array[p.pk, trim(p.pn || ' ' || p.pc), trim(p.pc || ' ' || p.pn)]) as v
+    where v <> ''
+  ),
   coppie as (
-    select g.*, p.id as utente, p.nome as u_nome, p.cognome as u_cognome, p.nickname as u_nick,
+    -- Nome proprio uguale (vale anche per gli ospiti arrivati da BGA).
+    select g.id, g.nome, g.cognome, g.creato_da, i.id as utente, 3 as forza
+    from g join interi i on g.c = '' and i.intero = g.n
+    union
+    select g.id, g.nome, g.cognome, g.creato_da, p.id, 3
+    from g join p on g.c <> '' and p.pn = g.n and p.pc = g.c
+    union all
+    -- Somiglianze: solo per gli ospiti inseriti a mano o da un file.
+    select g.id, g.nome, g.cognome, g.creato_da, p.id,
       case
-        when g.c = '' and g.n in (nullif(p.pk, ''), nullif(trim(p.pn || ' ' || p.pc), ''), nullif(trim(p.pc || ' ' || p.pn), '')) then 3
-        when g.c <> '' and g.n = p.pn and g.c = p.pc then 3
         when length(g.primo) >= 3 and g.primo in (p.pprimo, p.pk, p.pc) then 2
         when g.c <> '' and g.c = p.pc then 2
         when length(g.primo) >= 3 and length(p.pprimo) >= 3
@@ -173,9 +190,16 @@ as $function$
         when length(g.primo) >= 3 and length(p.pk) >= 3
              and (left(p.pk, length(g.primo)) = g.primo or left(g.primo, length(p.pk)) = p.pk) then 1
         else 0
-      end as forza
+      end
     from g cross join p
-    where p.id is distinct from g.creato_da
+    where not g.da_bga
+      and not (g.c = '' and exists (select 1 from interi i where i.id = p.id and i.intero = g.n))
+      and not (g.c <> '' and p.pn = g.n and p.pc = g.c)
+  ),
+  scelte as (
+    select c.*, u.nome as u_nome, u.cognome as u_cognome, u.nickname as u_nick
+    from coppie c join p u on u.id = c.utente
+    where c.forza > 0 and c.utente is distinct from c.creato_da
   )
   select c.id, c.nome, c.cognome,
     (select count(*)::int from partecipazioni pa where pa.ospite_id = c.id),
@@ -188,9 +212,8 @@ as $function$
     trim(coalesce(c.u_nome, '') || ' ' || coalesce(c.u_cognome, ''))
       || case when coalesce(trim(c.u_nick), '') <> '' then ' (' || trim(c.u_nick) || ')' else '' end,
     c.forza
-  from coppie c
-  where c.forza > 0
-    and not exists (select 1 from richieste_collegamento r
+  from scelte c
+  where not exists (select 1 from richieste_collegamento r
                     where r.ospite_id = c.id and r.utente_id = c.utente)
   order by 7 desc, 4 desc, c.nome, c.id, c.forza desc
   limit 400;
