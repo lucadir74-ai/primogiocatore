@@ -1,5 +1,5 @@
 -- Primo Giocatore - riconoscimento delle persone, fase 4 (regola unica)
--- v1.1.0 - 202611121800 (ospiti di Board Game Arena fuori dai dubbi, salvo nome proprio uguale; veloce anche con migliaia di ospiti)
+-- v1.2.0 - 202611122000 (fra i dubbi mai per il solo nome di battesimo: serve lo stesso cognome, o il nome intero uguale)
 -- Va eseguito DOPO riconoscimento_fase1/2/3.sql, niente_doppioni.sql e
 -- ospiti_doppi.sql. Si può rilanciare senza danni. Non cancella partite,
 -- ospiti né account.
@@ -15,10 +15,12 @@
 --    battesimo di un iscritto («Luca») non collega nessuno da sola,
 --    nemmeno se è il nick di qualcuno o un nome confermato in passato:
 --    di Luca ce n'è più d'uno.
--- 3. Tutti i casi dubbi (solo nome, solo cognome, soprannomi, nomi
---    parziali, omonimi) li decide chi ha inserito l'ospite, che sa con
---    chi ha giocato, oppure un organizzatore: «Il tuo "Gess" è Gessica
---    Bianchi?». Un «no» si ricorda e non viene più riproposto.
+-- 3. I casi dubbi li decide chi ha inserito l'ospite, che sa con chi ha
+--    giocato, oppure un organizzatore. Sono dubbi solo: gli omonimi, il
+--    nick che è anche un nome di battesimo, e lo stesso cognome con il
+--    nome mancante o abbreviato («Salvi», «V. Salvi»). Il solo nome di
+--    battesimo non propone nessuno: quegli ospiti si collegano a mano
+--    dalla sezione Ospiti. Un «no» si ricorda e non viene più riproposto.
 --    Gli ospiti arrivati da Board Game Arena (hanno il numero BGA) sono
 --    quasi tutti avversari sconosciuti: fra i dubbi entrano solo se il
 --    nome è proprio uguale a quello di un iscritto, non per somiglianza.
@@ -149,8 +151,9 @@ $function$;
 -- 4. I dubbi: per chi ha inserito l'ospite (o per chi organizza) ------------
 -- Una riga per coppia ospite / iscritto che gli somiglia.
 -- forza 3 = nome intero o nick uguale, ma non collegato da solo (omonimi,
---           nome comune); 2 = stessa prima parola o stesso cognome;
---           1 = nome parziale (gess / gessica).
+--           nick che è anche un nome di battesimo);
+--       2 = stesso cognome, e il nome non lo contraddice.
+-- Il nome di battesimo da solo non propone nessuno.
 drop function if exists public.ospiti_da_riconoscere();
 create function public.ospiti_da_riconoscere()
  returns table(ospite_id uuid, nome text, cognome text, partite int, ultima date, creato_da text,
@@ -188,21 +191,31 @@ as $function$
     select g.id, g.nome, g.cognome, g.creato_da, p.id, 3
     from g join p on g.c <> '' and p.pn = g.n and p.pc = g.c
     union all
-    -- Somiglianze: solo per gli ospiti inseriti a mano o da un file.
-    select g.id, g.nome, g.cognome, g.creato_da, p.id,
-      case
-        when length(g.primo) >= 3 and g.primo in (p.pprimo, p.pk, p.pc) then 2
-        when g.c <> '' and g.c = p.pc then 2
-        when length(g.primo) >= 3 and length(p.pprimo) >= 3
-             and (left(p.pprimo, length(g.primo)) = g.primo or left(g.primo, length(p.pprimo)) = p.pprimo) then 1
-        when length(g.primo) >= 3 and length(p.pk) >= 3
-             and (left(p.pk, length(g.primo)) = g.primo or left(g.primo, length(p.pk)) = p.pk) then 1
-        else 0
-      end
-    from g cross join p
-    where not g.da_bga
-      and not (g.c = '' and exists (select 1 from interi i where i.id = p.id and i.intero = g.n))
-      and not (g.c <> '' and p.pn = g.n and p.pc = g.c)
+    -- Stesso cognome (solo per gli ospiti inseriti a mano o da un file).
+    -- Il nome da solo non basta mai: «Francesco Vitolo» non è Francesco
+    -- Ciabatta, e di Valerio ce n'è più d'uno. Si propone un iscritto solo
+    -- se il cognome è lo stesso e quello che resta del nome non lo
+    -- contraddice: niente («Salvi»), un'iniziale («V. Salvi»), un pezzo
+    -- («Vale Salvi»).
+    select x.id, x.nome, x.cognome, x.creato_da, x.utente, 2
+    from (
+      select g.id, g.nome, g.cognome, g.creato_da, p.id as utente, p.pn,
+        rtrim(case
+          when g.c <> '' and g.c = p.pc then g.n
+          when g.c <> '' then null
+          when g.n = p.pc then ''
+          when right(g.n, length(p.pc) + 1) = ' ' || p.pc then left(g.n, length(g.n) - length(p.pc) - 1)
+          when left(g.n, length(p.pc) + 1) = p.pc || ' ' then substr(g.n, length(p.pc) + 2)
+        end, '. ') as resto
+      from g cross join p
+      where not g.da_bga and p.pc <> ''
+        and not (g.c = '' and exists (select 1 from interi i where i.id = p.id and i.intero = g.n))
+        and not (g.c <> '' and p.pn = g.n and p.pc = g.c)
+    ) x
+    where x.resto is not null
+      and (x.resto = ''
+           or left(x.pn, length(x.resto)) = x.resto
+           or (x.pn <> '' and left(x.resto, length(x.pn)) = x.pn))
   ),
   scelte as (
     select c.*, u.nome as u_nome, u.cognome as u_cognome, u.nickname as u_nick
