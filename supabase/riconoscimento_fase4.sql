@@ -1,5 +1,5 @@
 -- Primo Giocatore - riconoscimento delle persone, fase 4 (regola unica)
--- v1.1.0 - 202611121800 (gli ospiti arrivati da Board Game Arena restano fuori dai dubbi, salvo nome proprio uguale)
+-- v1.1.0 - 202611121800 (ospiti di Board Game Arena fuori dai dubbi, salvo nome proprio uguale; veloce anche con migliaia di ospiti)
 -- Va eseguito DOPO riconoscimento_fase1/2/3.sql, niente_doppioni.sql e
 -- ospiti_doppi.sql. Si può rilanciare senza danni. Non cancella partite,
 -- ospiti né account.
@@ -94,20 +94,28 @@ begin
   select * into io from profili where id = auth.uid();
   if not found then return 0; end if;
 
+  -- Prima i pochi ospiti con un nome che può essere il mio (controllo
+  -- leggero su tutti), poi la regola vera solo su quelli.
   for r in
-    select o.id from ospiti o
-    where o.utente_collegato is null
-      and (to_jsonb(o) ->> 'unito_in') is null
-      and o.creato_da is distinct from auth.uid()
-      and nome_piatto(o.nome) <> ''
-      and (
-        nome_piatto(o.nome) in (
-          nome_piatto(io.nickname), nome_piatto(io.nome),
-          nome_piatto(io.nome) || ' ' || nome_piatto(io.cognome),
-          nome_piatto(io.cognome) || ' ' || nome_piatto(io.nome))
-        or exists (select 1 from nomi_collegati nc
-                   where nc.utente_id = auth.uid() and nome_piatto(nc.nome) = nome_piatto(o.nome)))
-      and utente_per_nome(o.nome, o.cognome, o.creato_da) = auth.uid()
+    with miei as materialized (
+      select v from unnest(array[
+        nome_piatto(io.nickname), nome_piatto(io.nome),
+        nome_piatto(io.nome) || ' ' || nome_piatto(io.cognome),
+        nome_piatto(io.cognome) || ' ' || nome_piatto(io.nome)]) as v
+      where v <> ''
+      union
+      select nome_piatto(nc.nome) from nomi_collegati nc where nc.utente_id = auth.uid()
+    ),
+    possibili as materialized (
+      select o.id, o.nome, o.cognome, o.creato_da
+      from ospiti o
+      where o.utente_collegato is null
+        and (to_jsonb(o) ->> 'unito_in') is null
+        and o.creato_da is distinct from auth.uid()
+        and nome_piatto(o.nome) in (select v from miei)
+    )
+    select x.id from possibili x
+    where utente_per_nome(x.nome, x.cognome, x.creato_da) = auth.uid()
   loop
     update richieste_collegamento
     set stato = case when utente_id = auth.uid() then 'approvata' else 'rifiutata' end,
@@ -292,9 +300,20 @@ declare
   v uuid;
   n int := 0;
 begin
-  for r in select o.id, o.nome, o.cognome, o.creato_da from ospiti o
-           where o.utente_collegato is null and o.creato_da is not null
-             and (to_jsonb(o) ->> 'unito_in') is null
+  -- Solo gli ospiti il cui nome è il nick, il nome intero o un nome
+  -- confermato di qualcuno: gli altri non li riconoscerebbe comunque.
+  for r in
+    with noti as materialized (
+      select nome_piatto(nickname) as k from profili
+      union select nome_piatto(nome) from profili
+      union select nome_piatto(nome) || ' ' || nome_piatto(cognome) from profili
+      union select nome_piatto(cognome) || ' ' || nome_piatto(nome) from profili
+      union select nome_piatto(nome) from nomi_collegati
+    )
+    select o.id, o.nome, o.cognome, o.creato_da from ospiti o
+    where o.utente_collegato is null and o.creato_da is not null
+      and (to_jsonb(o) ->> 'unito_in') is null
+      and nome_piatto(o.nome) in (select k from noti where k <> '')
   loop
     v := utente_per_nome(r.nome, r.cognome, r.creato_da);
     if v is not null then
