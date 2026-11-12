@@ -1,4 +1,4 @@
-// Primo Giocatore v4.27.0 - 202611121000 (pagina «Partite»: nuova partita e storico insieme; contatti della Tana)
+// Primo Giocatore v4.28.0 - 202611121500 (ospiti riconosciuti da soli con nick o nome e cognome; i dubbi li conferma chi li ha inseriti)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -12,7 +12,8 @@ import { salvaOAccoda, profiloConModifiche, EVENTO_MODIFICHE_INVIATE } from './m
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import NomeBga from './NomeBga.jsx'
-import SeiTu, { contaRichiesteDaApprovare } from './SeiTu.jsx'
+import SeiTu, { contaRichiesteDaApprovare, riconoscimi } from './SeiTu.jsx'
+import { contaOspitiDaRiconoscere } from './ChiSono.jsx'
 import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
@@ -66,7 +67,6 @@ const CHIAVE_GIA_ENTRATO = 'primo-giocatore:gia-entrato'
 
 // Il riquadro "Sei tu?" serve a chi si è appena registrato: dopo due
 // mesi, o per chi organizza, resta solo nel profilo.
-const GIORNI_SEI_TU = 60
 
 // Menu orizzontale che non sta nello schermo: frecce, rotella e
 // trascinamento li gestisce BarraScorrevole, come per tutte le barre.
@@ -950,6 +950,25 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
+  // Gli ospiti che sono sicuramente questa persona (nick, o nome e
+  // cognome insieme) passano al suo account da soli, senza chiederglielo.
+  const [riconosciute, setRiconosciute] = useState(0)
+  useEffect(() => {
+    if (!profilo?.id) return
+    riconoscimi(profilo).then((n) => { if (n > 0) setRiconosciute(n) })
+  }, [profilo?.id])
+
+  // Quanti ospiti aspettano che qualcuno dica chi sono: i dubbi sui nomi
+  // (per chi li ha inseriti e per chi organizza) e le vecchie richieste.
+  // I dubbi si contano una volta per apertura: guardano tutti gli ospiti.
+  const dubbi = useRef(null)   // { id, n }: di chi sono e quanti
+  async function contaDaGuardare(rileggi = false) {
+    if (rileggi || dubbi.current?.id !== profilo.id) {
+      dubbi.current = { id: profilo.id, n: await contaOspitiDaRiconoscere() }
+    }
+    return dubbi.current.n + await contaRichiesteDaApprovare()
+  }
+
   // Chi organizza vede quante richieste "sono io" aspettano.
   useEffect(() => {
     if (!profilo) return
@@ -958,7 +977,7 @@ export default function App() {
       setDaApprovare(0); setTavoliChiesti(0); setSospeseBga(0)
       salvaAvvisi(profilo.id, { daApprovare: 0, tavoliChiesti: 0, sospeseBga: 0 })
     }
-    contaRichiesteDaApprovare(profilo.id).then((n) => { setDaApprovare(n); salvaAvvisi(profilo.id, { daApprovare: n }) })
+    contaDaGuardare().then((n) => { setDaApprovare(n); salvaAvvisi(profilo.id, { daApprovare: n }) })
     contaRichiesteTavolo().then((n) => { setTavoliChiesti(n); salvaAvvisi(profilo.id, { tavoliChiesti: n }) })
   }, [profilo?.id, scheda])
 
@@ -1257,12 +1276,23 @@ export default function App() {
 
           <NomeBga profilo={profilo} quando={controlloBga} />
 
+          {riconosciute > 0 && (
+            <div className="scheda scheda-sottile">
+              <p className="aiuto" style={{ margin: 0 }}>
+                {riconosciute === 1
+                  ? 'Abbiamo trovato 1 scheda ospite con il tuo nome: quelle partite ora sono tue.'
+                  : `Abbiamo trovato ${riconosciute} schede ospite con il tuo nome: quelle partite ora sono tue.`}{' '}
+                <button className="bottone-piatto" onClick={() => setRiconosciute(0)}>ok</button>
+              </p>
+            </div>
+          )}
+
           {scheda !== 'profilo' && daApprovare > 0 && (
             <div className="scheda scheda-sottile">
               <p className="aiuto" style={{ margin: 0 }}>
                 {daApprovare === 1
-                  ? 'C\u2019è una richiesta «sono io» da guardare.'
-                  : `Ci sono ${daApprovare} richieste «sono io» da guardare.`}{' '}
+                  ? 'C\u2019è un ospite da riconoscere: sai chi è?'
+                  : `Ci sono ${daApprovare} ospiti da riconoscere: sai chi sono?`}{' '}
                 <button className="bottone-piatto"
                   onClick={() => { apriSezione('ospiti'); setScheda('profilo') }}>Guarda</button>
               </p>
@@ -1395,7 +1425,7 @@ export default function App() {
                   ) : attiva === 'dati' ? (
                     <Dati profilo={profilo} />
                   ) : attiva === 'ospiti' ? (
-                    <UnisciOspiti profilo={profilo} onRichieste={() => contaRichiesteDaApprovare(profilo.id).then(setDaApprovare)} />
+                    <UnisciOspiti profilo={profilo} onRichieste={() => contaDaGuardare(true).then(setDaApprovare)} />
                   ) : attiva === 'luoghi' ? (
                     <Luoghi profilo={profilo} />
                   ) : attiva === 'giochi' ? (
@@ -1410,10 +1440,6 @@ export default function App() {
             })()
           )}
 
-          {scheda !== 'profilo' && !profilo.organizzatore && profilo.creato_il
-            && Date.now() - new Date(profilo.creato_il) < GIORNI_SEI_TU * 86400000 && (
-            <SeiTu profilo={profilo} compatto />
-          )}
         </>
       )}
       </Suspense>
