@@ -1,7 +1,7 @@
 // Primo Giocatore - Esporta e importa
-// v4.4.0 - 202611030900 (import da BGG: schermo acceso e messaggio chiaro se la connessione cade)
+// v5.0.0 - 202611121200 (procedura guidata in quattro passi: giochi da BGG, partite da BGG, BGA, file; l'utente BGG si scrive una volta)
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
 import { impronta, improntePresenti, giaPresente } from './impronta'
@@ -10,6 +10,7 @@ import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMie
 import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
+import { importaCollezioneBgg, contaCollezioneBgg, fraseCollezione } from './collezioneBgg'
 import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -61,6 +62,28 @@ function ArchivioTelefono({ profilo }) {
   )
 }
 
+// Un passo della procedura: numero, titolo e a che punto è.
+// apri: è il prossimo da fare, quindi si apre da solo. Gli altri restano
+// chiusi con l'esito accanto al titolo; un passo appena finito resta
+// aperto, così se ne legge il risultato.
+function Passo({ numero, titolo, fatto, stato, facoltativo, apri, children }) {
+  const [aperto, setAperto] = useState(Boolean(apri))
+  useEffect(() => { if (apri) setAperto(true) }, [apri])
+  return (
+    <details className={'passo' + (fatto ? ' fatto' : '')} open={aperto}
+      onToggle={(e) => setAperto(e.currentTarget.open)}>
+      <summary>
+        <span className="passo-numero" aria-hidden="true">{fatto ? '✓' : numero}</span>
+        <span className="passo-testa">
+          <span className="sezione-titolo">{titolo}</span>
+          <span className="sezione-nota">{stato || (facoltativo ? 'facoltativo' : 'da fare')}</span>
+        </span>
+      </summary>
+      <div className="sezione-corpo">{children}</div>
+    </details>
+  )
+}
+
 export default function Dati({ profilo }) {
   const [errore, setErrore] = useState('')
   const invio = useInvioBgg(profilo)
@@ -77,6 +100,48 @@ export default function Dati({ profilo }) {
   const [ultimaSincro, setUltimaSincro] = useState(
     () => { try { return localStorage.getItem('primo-giocatore:ultima-sincro-bgg') } catch { return null } }
   )
+
+  // A che punto è la procedura: giochi arrivati da BGG e partite arrivate da BGG.
+  const [collezione, setCollezione] = useState(null)       // quanti giochi; null = non ancora letto
+  const [partiteBgg, setPartiteBgg] = useState(null)       // true / false; null = non ancora letto
+  const [esitoCollezione, setEsitoCollezione] = useState('')
+  const [importandoCollezione, setImportandoCollezione] = useState(false)
+  async function leggiStato() {
+    const [n, dal] = await Promise.all([contaCollezioneBgg(profilo.id), dataDiPartenza(profilo.id)])
+    setCollezione(n)
+    setPartiteBgg(Boolean(dal))
+  }
+  useEffect(() => { leggiStato() }, [profilo.id])
+
+  // Il nome utente BGG si scrive una volta: vale per i giochi, per le
+  // partite e per l'aggiornamento automatico.
+  async function salvaUtenteBgg() {
+    const utente = utenteBgg.trim()
+    if (!utente) { setErrore('Scrivi il tuo nome utente BoardGameGeek nel passo 1.'); return null }
+    if (utente !== (profilo.bgg_username || '')) {
+      const { error } = await supabase.from('profili').update({ bgg_username: utente }).eq('id', profilo.id)
+      if (error) { setErrore(error.message); return null }
+    }
+    return utente
+  }
+
+  async function importaCollezione() {
+    setErrore(''); setMessaggio(''); setEsitoCollezione('')
+    const utente = await salvaUtenteBgg()
+    if (!utente) return
+    setImportandoCollezione(true)
+    tieniAcceso(true)
+    try {
+      const esito = await importaCollezioneBgg({ utente, profiloId: profilo.id })
+      setEsitoCollezione(fraseCollezione(esito))
+      setCollezione(esito.giochi + esito.espansioni)
+    } catch (e) {
+      setErrore(e.message)
+    } finally {
+      setImportandoCollezione(false)
+      tieniAcceso(false)
+    }
+  }
 
   async function leggiTutto() {
     return tutteLeRighe(() => supabase
@@ -194,17 +259,12 @@ export default function Dati({ profilo }) {
 
   async function leggiDaBgg(opzioni = {}) {
     setErrore(''); setMessaggio('')
-    const utente = utenteBgg.trim()
-    if (!utente) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
+    const utente = await salvaUtenteBgg()
+    if (!utente) return
 
     setLavorando(true)
     tieniAcceso(true)
     try {
-      // Il nome utente serve anche all'aggiornamento automatico: si
-      // salva con qualunque dei due tasti, non solo con «Aggiorna».
-      if (utente !== (profilo.bgg_username || '')) {
-        await supabase.from('profili').update({ bgg_username: utente }).eq('id', profilo.id)
-      }
       // Rapido: solo le partite recenti. Completo: tutto l'archivio.
       const dal = opzioni.automatico ? await dataDiPartenza(profilo.id) : null
       const anteprima = await leggiPartiteBgg({ utente, profiloId: profilo.id, dal, avanzamento: setAvanzamento })
@@ -229,7 +289,6 @@ export default function Dati({ profilo }) {
   // Aggiornamento rapido: legge da BGG e mostra solo cosa c'è di nuovo.
   async function sincronizzaBgg() {
     setErrore(''); setMessaggio('')
-    if (!utenteBgg.trim()) { setErrore('Scrivi il tuo nome utente BoardGameGeek.'); return }
     await leggiDaBgg({ automatico: true })
   }
 
@@ -248,6 +307,7 @@ export default function Dati({ profilo }) {
         (saltate ? `, ${saltate} saltate perché già presenti` : '') + '.'
       )
       setAnteprimaBgg(null)
+      leggiStato()
     } catch (e) {
       setErrore(/failed to fetch|load failed|networkerror/i.test(e.message || '')
         ? 'La connessione si è interrotta: tocca di nuovo «Importa». Le partite già entrate vengono saltate, si riprende da dove si era arrivati.'
@@ -400,6 +460,7 @@ export default function Dati({ profilo }) {
 
   async function confermaBgstats() {
     setErrore(''); setMessaggio(''); setLavorando(true)
+    tieniAcceso(true)
     try {
       const esito = await importaBgstats(anteprima.doc, profilo, miei, setAvanzamento)
       setMessaggio(
@@ -414,6 +475,7 @@ export default function Dati({ profilo }) {
     } finally {
       setLavorando(false)
       setAvanzamento(null)
+      tieniAcceso(false)
     }
   }
 
@@ -597,12 +659,17 @@ export default function Dati({ profilo }) {
         </button>
 
         <p className="aiuto">
-          Può volerci qualche minuto. Non chiudere la pagina: se si interrompe, i giochi e
+          Può volerci qualche minuto. Non chiudere la pagina e non cambiare app: se si interrompe, i giochi e
           le partite già scritti restano, e ricaricando lo stesso file riprende da dove era.
         </p>
       </div>
     )
   }
+
+  // Il prossimo passo da fare: si apre da solo. Finché lo stato non è
+  // arrivato dal database non se ne apre nessuno.
+  const fatti = [collezione == null ? null : collezione > 0, partiteBgg, Boolean(profilo.bga_id)]
+  const prossimo = fatti.slice(0, 2).includes(null) ? 0 : fatti.indexOf(false) + 1
 
   const barra = avanzamento && (
     <div className="avanzamento">
@@ -623,27 +690,58 @@ export default function Dati({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <Sezione id="bga" titolo="Board Game Arena" nota={profilo.bga_id ? 'collegato' : null}>
-        <ImportaBga profilo={profilo} incorporata />
-      </Sezione>
+      <h2>Porta qui giochi e partite</h2>
+      <p className="aiuto">
+        La prima volta fai i passi in ordine, dall&rsquo;alto in basso: prima i giochi, poi le partite.
+        Salta quelli che non ti servono. Dopo, giochi e partite nuove si aggiornano da soli.
+      </p>
+      <p className="aiuto nota-aperta">
+        <strong>I passi 1, 2 e 4 lavorano sul telefono:</strong> mentre importano tieni questa pagina aperta
+        e in primo piano, senza passare ad altre app. Lo schermo resta acceso da solo. Solo Board Game Arena
+        (passo 3), una volta collegato, va avanti sul server anche a telefono spento.
+      </p>
 
-      <Sezione id="bgg" titolo="BoardGameGeek"
-        nota={profilo.bgg_username ? `${profilo.bgg_username}${invio.stato?.collegato ? ' · invio attivo' : ''}` : null}>
+      <Passo numero={1} titolo="Giochi da BoardGameGeek"
+        fatto={fatti[0]} apri={prossimo === 1}
+        stato={collezione == null ? '…' : collezione > 0 ? `fatto · ${collezione} in collezione` : null}>
+        <p className="aiuto">
+          Porta qui i giochi che su BGG hai segnato come posseduti, espansioni comprese.
+          Non hai un account BGG? Salta al passo 3 o al 4.
+        </p>
         <div className="campo">
           <label htmlFor="d-bgg">Il tuo nome utente BGG</label>
           <input id="d-bgg" value={utenteBgg} onChange={(e) => setUtenteBgg(e.target.value)}
-            placeholder="Come compare sul tuo profilo BGG" />
+            placeholder="Come compare sul tuo profilo BGG" autoCapitalize="none" autoCorrect="off" />
         </div>
-        <button className="bottone" onClick={sincronizzaBgg} disabled={lavorando}>
-          {lavorando ? 'Aggiorno…' : 'Aggiorna da BGG'}
+        <button className="bottone" onClick={importaCollezione} disabled={importandoCollezione || lavorando}>
+          {importandoCollezione ? 'Chiedo a BGG…' : collezione > 0 ? 'Aggiorna i miei giochi' : 'Importa i miei giochi'}
+        </button>
+        {importandoCollezione && <div className="avviso">Non chiudere e non cambiare app: la prima volta BGG può metterci fino a un minuto.</div>}
+        {esitoCollezione && <div className="avviso ok">{esitoCollezione}</div>}
+        <p className="aiuto">Quando compri un gioco nuovo e lo segni su BGG, ripassa di qui o usa il tasto nella pagina Giochi.</p>
+      </Passo>
+
+      <Passo numero={2} titolo="Partite da BoardGameGeek"
+        fatto={partiteBgg} apri={prossimo === 2}
+        stato={partiteBgg == null ? '…' : partiteBgg
+          ? `fatto${invio.stato?.collegato ? ' · invio attivo' : ''}` : null}>
+        <p className="aiuto">
+          {utenteBgg.trim()
+            ? <>Legge le partite che «{utenteBgg.trim()}» ha registrato su BGG e ti mostra cosa c&rsquo;è di nuovo prima di importare.</>
+            : 'Prima scrivi il tuo nome utente BGG nel passo 1.'}
+          {!partiteBgg && ' La prima volta legge tutto l’archivio: con molte partite ci vogliono alcuni minuti.'}
+        </p>
+        {lavorando && <div className="avviso">Non chiudere e non cambiare app finché non finisce. Se si interrompe, tocca di nuovo il tasto: riprende da dove era.</div>}
+        <button className="bottone" onClick={sincronizzaBgg} disabled={lavorando || importandoCollezione}>
+          {lavorando ? 'Leggo da BGG…' : partiteBgg ? 'Aggiorna le partite da BGG' : 'Importa le partite da BGG'}
         </button>
         <p className="aiuto">
-          Le partite nuove arrivano anche da sole, quando apri l&rsquo;app.
+          Dopo la prima volta le partite nuove arrivano da sole, quando apri l&rsquo;app.
           {ultimaSincro && ` Ultimo aggiornamento: ${new Date(ultimaSincro).toLocaleString('it-IT', {
             day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
           })}.`}
         </p>
-        {!anteprimaBgg && barra}
+        {barra}
         <InvioBggStato invio={invio} profilo={profilo} />
         <details className="dettagli-piccoli">
           <summary>Altre azioni</summary>
@@ -653,24 +751,49 @@ export default function Dati({ profilo }) {
           </button>
           <InvioBggAzioni invio={invio} profilo={profilo} />
         </details>
-      </Sezione>
+      </Passo>
 
-      <Sezione id="file" titolo="Importa da un file" nota="BG Stats o copia di Primo Giocatore">
+      <Passo numero={3} titolo="Partite da Board Game Arena"
+        fatto={Boolean(profilo.bga_id)} apri={prossimo === 3} stato={profilo.bga_id ? 'fatto · collegato' : null}>
         <p className="aiuto">
-          Il backup di BG Stats (Impostazioni → Esportazione) o un file esportato da qui. Le partite già
-          presenti vengono saltate. Gli altri giocatori entrano come ospiti.
+          Una volta collegato l&rsquo;account, le partite arrivano da sole dal server, circa ogni ora, anche a
+          telefono spento: non serve tenere aperta la pagina. Lo storico vecchio entra a pezzi nelle ore successive.
+          Solo se avvii una lettura a mano qui sotto, aspetta che finisca prima di uscire.
         </p>
+        <ImportaBga profilo={profilo} incorporata />
+      </Passo>
+
+      <Passo numero={4} titolo="Da BG Stats o da un file" facoltativo>
+        <p className="aiuto">
+          Serve solo se hai partite in BG Stats che non sono su BGG, o una copia esportata da Primo Giocatore.
+          Se BG Stats pubblica già su BGG, le hai prese col passo 2 e questo non ti serve.
+        </p>
+        <ol className="passi-file">
+          <li>Apri <strong>BG Stats</strong> sul telefono.</li>
+          <li>Vai in <strong>Impostazioni</strong> e apri la voce di <strong>esportazione dei dati</strong>.</li>
+          <li>Scegli l&rsquo;esportazione completa (il backup): crea un file che si chiama <strong>BGStatsExport.json</strong>.</li>
+          <li>Quando chiede dove metterlo, scegli <strong>Salva su File</strong> (o «Download»), non una chat.</li>
+          <li>Torna qui e tocca <strong>Scegli il file</strong> qui sotto: lo trovi fra i file recenti.</li>
+          <li>L&rsquo;app ti chiede quale dei giocatori sei tu, poi importa. Le partite già presenti vengono saltate.</li>
+        </ol>
+        <label className="bottone bottone-secondario scegli-file">
+          {lavorando ? 'Importo…' : 'Scegli il file'}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={importa}
+            disabled={lavorando}
+            className="visivamente-nascosto"
+          />
+        </label>
         {barra}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          onChange={importa}
-          disabled={lavorando}
-          className="campo-file"
-          aria-label="Scegli il file da importare"
-        />
-      </Sezione>
+        <p className="aiuto">
+          Dopo aver scelto il file tieni la pagina aperta finché non compare l&rsquo;esito.
+          Gli altri giocatori entrano come ospiti. Altre app: va bene qualunque file nel formato di BG Stats;
+          se la tua app non lo esporta, pubblica le partite su BGG e usa il passo 2.
+        </p>
+      </Passo>
 
       <ArchivioTelefono profilo={profilo} />
 

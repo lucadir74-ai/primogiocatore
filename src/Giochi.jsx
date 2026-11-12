@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.24.0 - 202611011600 (sottoscheda «Ludoteca» della Tana: dove sta ogni gioco)
+// v4.25.0 - 202611121200 (l'import della collezione BGG sta in collezioneBgg.js: lo usa anche la procedura in Dati e import)
 
 import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
@@ -9,6 +9,7 @@ import Ludoteca from './Ludoteca.jsx'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import { importaCollezioneBgg, fraseCollezione } from './collezioneBgg'
 
 const TIPI_PUNTEGGIO = [
   { id: 'punti', etichetta: 'Punti' },
@@ -129,67 +130,8 @@ export default function Giochi({ profilo }) {
     setMessaggio('Chiedo la collezione a BGG. La prima volta può volerci qualche secondo.')
     setImportando(true)
     try {
-      const r = await fetchBgg(
-        `/api/bgg?azione=collezione&utente=${encodeURIComponent(profilo.bgg_username)}`
-      )
-      const dati = await r.json()
-      if (r.status === 202) throw new Error('BGG sta ancora preparando la collezione. Riprova fra poco.')
-      if (!r.ok) throw new Error(dati.errore || 'Import non riuscito.')
-
-      // Salva i giochi nel catalogo (solo nome e anno: i dettagli si
-      // completano quando servono) e segna quali possiedi.
-      // Quelli già presenti nell'app (anche aggiunti da altri) si
-      // riusano senza toccarli; gli altri si creano.
-      // BGG elenca lo stesso gioco più volte se ne hai più copie o più
-      // edizioni: una riga ripetuta nello stesso invio fa fallire tutto
-      // ("cannot affect row a second time"). Si tiene una riga per gioco.
-      const unici = [...new Map(dati.giochi.map((g) => [g.bgg_id, g])).values()]
-      const salvati = await assicuraGiochi(unici.map((g) => ({
-        bgg_id: g.bgg_id, nome: g.nome, anno: g.anno, espansione: Boolean(g.espansione),
-      })))
-
-      const possedute = [...new Map(salvati.filter(Boolean).map((g) => [g.id, {
-        utente_id: profilo.id,
-        gioco_id: g.id,
-        origine: 'bgg',
-      }])).values()]
-      for (let i = 0; i < possedute.length; i += 200) {
-        const { error } = await supabase
-          .from('collezioni')
-          .upsert(possedute.slice(i, i + 200), { onConflict: 'utente_id,gioco_id' })
-        if (error) throw error
-      }
-
-      // Quello che hai tolto dalla collezione su BGG si toglie anche qui.
-      // Solo le righe arrivate da BGG: i giochi segnati «è mio» a mano dalla
-      // partita restano. Per prudenza non si toglie niente se BGG ha
-      // restituito una collezione vuota o se qualche gioco non è stato
-      // salvato: meglio un gioco in più che una collezione cancellata.
-      let tolti = 0
-      const completo = possedute.length > 0 && salvati.length === unici.length && salvati.every(Boolean)
-      if (completo) {
-        const oraSuBgg = new Set(possedute.map((x) => x.gioco_id))
-        const mie = await tutteLeRighe(() => supabase.from('collezioni')
-          .select('gioco_id, origine').eq('utente_id', profilo.id), 1000, 'gioco_id')
-        const daTogliere = mie
-          .filter((x) => x.origine === 'bgg' && !oraSuBgg.has(x.gioco_id))
-          .map((x) => x.gioco_id)
-        for (let i = 0; i < daTogliere.length; i += 100) {
-          const { error } = await supabase.from('collezioni').delete()
-            .eq('utente_id', profilo.id).in('gioco_id', daTogliere.slice(i, i + 100))
-          if (error) throw error
-        }
-        tolti = daTogliere.length
-      }
-
-      const nEsp = salvati.filter((g) => g?.espansione).length
-      const quanti = nEsp
-        ? `${possedute.length - nEsp} giochi e ${nEsp} espansioni`
-        : `${possedute.length} giochi`
-      setMessaggio(`Collezione aggiornata: ${quanti}.`
-        + (tolti === 1 ? ' Tolto 1 gioco che su BGG non è più nella tua collezione.' : '')
-        + (tolti > 1 ? ` Tolti ${tolti} giochi che su BGG non sono più nella tua collezione.` : '')
-        + (completo ? '' : ' Non ho tolto niente: BGG ha risposto in modo incompleto, riprova più tardi.'))
+      const esito = await importaCollezioneBgg({ utente: profilo.bgg_username, profiloId: profilo.id })
+      setMessaggio(fraseCollezione(esito))
       caricaCatalogo()
       caricaMiei()
     } catch (e) {
