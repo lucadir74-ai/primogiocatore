@@ -2828,3 +2828,26 @@ button.numerone:active { transform: scale(0.98); }
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
+
+/* ---------- Partite: nuova partita sopra lo storico ---------- */
+.nuova-partita { margin: 0.2rem 0 0.2rem; }
+
+/* ---------- Contatti della Tana ---------- */
+.contatti-link { display: block; margin: 1.2rem auto 0; }
+.contatti-elenco { list-style: none; padding: 0; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.contatto {
+  display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--bordo); border-radius: 14px;
+  background: var(--superficie); color: var(--inchiostro); text-decoration: none;
+}
+a.contatto:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+.contatto-tipo { font-size: 0.82rem; color: var(--inchiostro-tenue); }
+.contatto-valore { font-weight: 600; font-size: 1.05rem; overflow-wrap: anywhere; }
+a.contatto .contatto-valore { color: var(--blu); }
+.contatto-sotto { font-size: 0.78rem; color: var(--inchiostro-tenue); }
+.contatti-modifica { list-style: none; padding: 0; margin: 0.8rem 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.contatti-modifica li { display: flex; flex-direction: column; gap: 0.4rem; padding-bottom: 0.9rem; border-bottom: 1px solid var(--bordo); }
+.contatti-riga { display: flex; gap: 0.6rem; align-items: center; }
+.contatti-riga input { flex: 1; min-width: 0; }
+.contatti-riga select { flex: none; max-width: 9rem; }
