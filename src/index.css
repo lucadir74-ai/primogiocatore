@@ -2883,3 +2883,17 @@ a.contatto .contatto-valore { color: var(--blu); }
 .chi-sono-vedi { align-self: flex-start; font-size: 0.9rem; }
 .chi-sono-partite { list-style: none; margin: 0; padding: 0.2rem 0 0.2rem 0.8rem; border-left: 2px solid var(--bordo); display: flex; flex-direction: column; gap: 0.6rem; max-height: 22rem; overflow-y: auto; }
 .chi-sono-partite > li { display: block; padding: 0; border: 0; }
+
+/* ---------- Tavoli: filtri e giorni (tanti tavoli insieme) ---------- */
+.filtri-tavoli { display: flex; flex-wrap: wrap; gap: 0.5rem 0.6rem; align-items: center; margin: 0.2rem 0 0.9rem; }
+.filtri-tavoli select {
+  flex: 1 1 9rem; min-width: 0; font: inherit; font-size: 16px; padding: 0.55rem 0.6rem;
+  border-radius: 10px; border: 1px solid var(--bordo); background: var(--carta); color: var(--inchiostro);
+}
+.filtri-tavoli .campo-cerca { flex: 1 1 100%; margin: 0; }
+.filtri-tavoli .spunta-fazioni { margin: 0; }
+.giorno-tavoli {
+  margin: 1.1rem 0 0.5rem; padding: 0.4rem 0;
+  font-family: var(--display); font-size: 0.98rem; font-weight: 700;
+  display: flex; align-items: baseline; gap: 0.5rem;
+}
