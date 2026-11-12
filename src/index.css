@@ -2875,3 +2875,4 @@ a.contatto .contatto-valore { color: var(--blu); }
 .passi-file { margin: 0.4rem 0 1rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.45rem; line-height: 1.4; }
 .scegli-file { display: block; text-align: center; box-sizing: border-box; position: relative; }
 .scegli-file:focus-within { outline: 2px solid var(--blu); outline-offset: 2px; }
+.nota-aperta { padding: 0.7rem 0.8rem; border: 1px solid var(--bordo); border-radius: 12px; }
