@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { nomeTana } from './Ludoteca.jsx'
+import { eProblemaDiRete } from './coda'
 
 const TIPI = [
   ['telefono', 'Telefono', '333 1234567'],
@@ -88,7 +89,7 @@ export default function Contatti({ profilo }) {
     setSalvando(true)
     const { error } = await supabase.rpc('contatti_salva', { p_tana: dati.tana_id, p_voci: voci })
     setSalvando(false)
-    if (error) { setErrore(error.message); return }
+    if (error) { setErrore(eProblemaDiRete(error) ? 'Senza rete i contatti non si possono salvare: riprova quando torna la linea.' : error.message); return }
     setBozza(null)
     setMessaggio('Contatti salvati.')
     carica()

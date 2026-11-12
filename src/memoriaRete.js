@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.0.0 - 202611101200
+// v1.1.0 - 202611131700 (anche i contatti della Tana e gli ospiti da riconoscere si rivedono senza rete)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -20,6 +20,7 @@ const FUNZIONI_DI_LETTURA = new Set([
   'richieste_da_decidere', 'richieste_tavolo_mie', 'ospiti_simili', 'elenco_unioni',
   'chi_ha', 'chi_ha_gioco', 'ludoteca_cerca', 'ludoteca_dove', 'ludoteca_elenco',
   'puo_gestire_ludoteca', 'tavolo_pubblico', 'non_nell_elenco', 'soci_con_account', 'scheda_iscritto',
+  'contatti_elenco', 'ospiti_da_riconoscere', 'partite_di_ospite',
 ])
 
 const ATTESA = 8000                 // oltre, se c'è una copia si mostra quella
