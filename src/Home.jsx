@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.4.0 - 202611030900 (avviso «Porta qui le tue partite» per chi non ha mai fatto il primo import da BGG o collegato BGA)
+// v1.5.0 - 202611130900 (riquadro «Prossimi tavoli», con quanti hanno ancora posto)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -139,6 +139,9 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     return { testo: 'Iscriviti', tono: '' }
   }
 
+  // Quanti dei prossimi tavoli hanno ancora posto (senza limite di posti: sì).
+  const conPosto = (tavoli || []).filter((t) => postiLiberi(t) !== 0).length
+
   return (
     <div className="scheda home">
       <h2 className="home-saluto">Ciao {(profilo.nome || '').trim().split(/\s+/)[0] || daMostrare(profilo)}</h2>
@@ -154,10 +157,17 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
         <button type="button" className="home-riquadro" onClick={onTavoli}>
           <span className="home-numero">{tavoli == null ? '…' : tavoli.length}</span>
           <span>
-            <span className="home-riquadro-titolo">{tavoli?.length === 1 ? 'Tavolo aperto' : 'Tavoli aperti'}</span>
+            <span className="home-riquadro-titolo">{tavoli?.length === 1 ? 'Prossimo tavolo' : 'Prossimi tavoli'}</span>
             <span className="home-riquadro-sotto">
               {tavoli == null ? '' : primo ? `il primo ${giornoBreve(primo.inizio)} ${giornoNumero(primo.inizio)}` : 'nessuno in programma'}
             </span>
+            {tavoli?.length > 0 && (
+              <span className="home-riquadro-sotto">
+                {conPosto === 0 ? (tavoli.length === 1 ? 'completo' : 'tutti completi')
+                  : conPosto === tavoli.length ? (conPosto === 1 ? 'c\u2019è posto' : 'tutti con posti liberi')
+                  : `${conPosto} con posti liberi`}
+              </span>
+            )}
           </span>
         </button>
 
