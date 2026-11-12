@@ -96,6 +96,7 @@ const ICONE = {
   giocatori: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7z M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6 M16 4.5a3.2 3.2 0 010 6.3 M18 14.3c2.2.6 3.5 2.6 3.5 5.7',
   tavoli: 'M3 10h18 M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3 M6 10v9 M18 10v9',
   home: 'M3 11l9-7 9 7 M5 9.5V20h5v-6h4v6h5V9.5',
+  contatti: 'M4 6h16v12H4z M4 7l8 6 8-6',
 }
 
 function Icona({ nome }) {
@@ -1190,6 +1191,7 @@ export default function App() {
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
               ['giocatori', 'Giocatori'],
+              ['contatti', 'Contatti'],
             ].map(([id, etichetta]) => (
               <button
                 key={id}
