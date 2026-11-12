@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.24.0 - 202611101800 (un tavolo, una partita sola: niente doppione con due tocchi o due organizzatori)
+// v2.25.0 - 202611131200 (tanti tavoli: divisi per giorno, filtri per luogo, giorno, posto e gioco; i tavoli di oggi restano in vista; «casa privata»)
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
@@ -65,6 +65,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const [cercandoPosizione, setCercandoPosizione] = useState(false)
   const [locandina, setLocandina] = useState(null)
   const [gestione, setGestione] = useState(null)   // il tavolo di cui sono aperte le azioni di gestione
+  // Con tanti tavoli (un evento ne ha dieci al giorno) servono i filtri.
+  const [filtroLuogo, setFiltroLuogo] = useState('')     // '' tutti | 'case' | id del luogo
+  const [filtroGiorno, setFiltroGiorno] = useState('')   // '' tutti | AAAA-MM-GG
+  const [soloPosto, setSoloPosto] = useState(false)
+  const [cercaTavolo, setCercaTavolo] = useState('')
+  const [quantiPassati, setQuantiPassati] = useState(10)
   // Dalla Home si arriva già sul tavolo toccato.
   const [aperto, setAperto] = useState(apriSubito ? { id: apriSubito } : null)   // tavolo visto come lo vede chi arriva dal link
   const [sessione, setSessione] = useState(null)
@@ -1091,9 +1097,54 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
   // --- Vetrina ---
   const adesso = new Date()
-  const futuri = tavoli.filter((t) => new Date(t.inizio) >= adesso)
+  // Un tavolo resta «in programma» per tutto il suo giorno: appena
+  // iniziato non sparisce fra i passati, dove chi deve registrare la
+  // partita non lo ritroverebbe.
+  const inizioOggi = new Date(adesso.getFullYear(), adesso.getMonth(), adesso.getDate())
+  const giornoDi = (d) => {
+    const x = new Date(d)
+    const p = (n) => String(n).padStart(2, '0')
+    return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`
+  }
+  const titoloGiorno = (g) => {
+    const d = new Date(g + 'T12:00')
+    const oggi = giornoDi(adesso)
+    const domani = giornoDi(new Date(adesso.getTime() + 86400000))
+    const testo = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
+    return g === oggi ? `Oggi, ${testo}` : g === domani ? `Domani, ${testo}` : testo.charAt(0).toUpperCase() + testo.slice(1)
+  }
+  const eCasa = (t) => t.luoghi?.tipo === 'casa'
+  const haPosto = (t) => {
+    if (t.stato !== 'aperto') return false
+    if (!t.posti_max) return true
+    return (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length < t.posti_max
+  }
+  const futuri = tavoli.filter((t) => new Date(t.inizio) >= inizioOggi)
+
+  // Le scelte dei filtri vengono dai tavoli in programma: i luoghi pubblici
+  // uno per uno, le case private tutte insieme (il nome dice di chi sono).
+  const luoghiFiltro = [...new Map(futuri.filter((t) => t.luogo_id && !eCasa(t))
+    .map((t) => [String(t.luogo_id), nomeLuogo(t.luoghi, profilo?.id)])).entries()]
+    .map(([id, nome]) => ({ id, nome, quanti: futuri.filter((t) => String(t.luogo_id) === id).length }))
+    .sort((x, y) => y.quanti - x.quanti || x.nome.localeCompare(y.nome, 'it'))
+  const quanteCase = futuri.filter(eCasa).length
+  const giorniFiltro = [...new Set(futuri.map((t) => giornoDi(t.inizio)))].sort()
+  const tantiTavoli = futuri.length > 6
+  const mostraLuoghi = luoghiFiltro.length + (quanteCase ? 1 : 0) > 1
+  const mostraGiorni = tantiTavoli && giorniFiltro.length > 1
+  // Un filtro rimasto su un luogo o un giorno che non c'è più non nasconde tutto.
+  const luogoScelto = filtroLuogo === 'case' ? (quanteCase ? 'case' : '')
+    : luoghiFiltro.some((l) => l.id === filtroLuogo) ? filtroLuogo : ''
+  const giornoScelto = giorniFiltro.includes(filtroGiorno) ? filtroGiorno : ''
+  const testoCercato = cercaTavolo.trim().toLowerCase()
+  const filtriAttivi = Boolean(luogoScelto || giornoScelto || soloPosto || testoCercato)
+
   const prossimi = futuri
     .filter((t) => {
+      if (luogoScelto === 'case' ? !eCasa(t) : luogoScelto && String(t.luogo_id) !== luogoScelto) return false
+      if (giornoScelto && giornoDi(t.inizio) !== giornoScelto) return false
+      if (soloPosto && (!haPosto(t) || new Date(t.inizio) < adesso)) return false
+      if (testoCercato && !`${t.titolo || ''} ${t.giochi?.nome || ''} ${t.descrizione || ''}`.toLowerCase().includes(testoCercato)) return false
       if (!miaPosizione || raggio == null) return true
       const d = distanzaDi(t)
       return d != null && d <= raggio
@@ -1107,7 +1158,14 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       if (db == null) return -1
       return da - db
     })
-  const passati = tavoli.filter((t) => new Date(t.inizio) < adesso).reverse()
+  // In ordine di data: un titolo per ogni giorno.
+  const perGiorno = []
+  for (const t of prossimi) {
+    const g = giornoDi(t.inizio)
+    if (perGiorno.at(-1)?.giorno !== g) perGiorno.push({ giorno: g, tavoli: [] })
+    perGiorno.at(-1).tavoli.push(t)
+  }
+  const passati = tavoli.filter((t) => new Date(t.inizio) < inizioOggi).reverse()
 
   const scheda = (t) => {
     const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
@@ -1127,9 +1185,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
           <div className="nome-giocatore">
             <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
-            <span className="anno block">{quando(t.inizio)}</span>
+            <span className="anno block">
+              {quando(t.inizio)}
+              {passato && giornoDi(t.inizio) === giornoDi(adesso) && !t.partita_id && t.stato === 'aperto' ? ' · iniziato' : ''}
+            </span>
             <span className="anno block">
               {nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'}
+              {eCasa(t) ? ' · casa privata' : ''}
               {(() => {
                 const p = posizioneDi(t)
                 const d = distanzaDi(t)
@@ -1260,8 +1322,45 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       )}
 
       <h3 className="titolo-sezione">
-        In programma <span className="conteggio">{prossimi.length}</span>
+        In programma <span className="conteggio">{filtriAttivi ? `${prossimi.length} di ${futuri.length}` : prossimi.length}</span>
       </h3>
+      {(mostraLuoghi || mostraGiorni || tantiTavoli) && (
+        <div className="filtri-tavoli">
+          {mostraLuoghi && (
+            <select value={luogoScelto} onChange={(e) => setFiltroLuogo(e.target.value)} aria-label="Luogo">
+              <option value="">Tutti i luoghi</option>
+              {luoghiFiltro.map((l) => <option key={l.id} value={l.id}>{l.nome} ({l.quanti})</option>)}
+              {quanteCase > 0 && <option value="case">Case private ({quanteCase})</option>}
+            </select>
+          )}
+          {mostraGiorni && (
+            <select value={giornoScelto} onChange={(e) => setFiltroGiorno(e.target.value)} aria-label="Giorno">
+              <option value="">Tutti i giorni</option>
+              {giorniFiltro.map((g) => (
+                <option key={g} value={g}>
+                  {titoloGiorno(g)} ({futuri.filter((t) => giornoDi(t.inizio) === g).length})
+                </option>
+              ))}
+            </select>
+          )}
+          {tantiTavoli && (
+            <>
+              <input className="campo-cerca" value={cercaTavolo} onChange={(e) => setCercaTavolo(e.target.value)}
+                placeholder="Cerca un gioco o un tavolo" aria-label="Cerca fra i tavoli" />
+              <label className="spunta-fazioni">
+                <input type="checkbox" checked={soloPosto} onChange={(e) => setSoloPosto(e.target.checked)} />
+                Solo quelli con posto
+              </label>
+            </>
+          )}
+          {filtriAttivi && (
+            <button type="button" className="bottone-piatto"
+              onClick={() => { setFiltroLuogo(''); setFiltroGiorno(''); setSoloPosto(false); setCercaTavolo('') }}>
+              togli i filtri
+            </button>
+          )}
+        </div>
+      )}
       {raggio != null && futuri.some((t) => !posizioneDi(t)) && (
         <p className="aiuto">
           {(() => {
@@ -1273,16 +1372,32 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       )}
       {prossimi.length === 0 ? (
         <p className="aiuto">
-          {raggio != null && futuri.length > 0
+          {filtriAttivi && futuri.length > 0
+            ? 'Nessun tavolo con questi filtri.'
+            : raggio != null && futuri.length > 0
             ? `Nessun tavolo entro ${raggio} km.`
             : 'Nessun tavolo in programma.'}
         </p>
-      ) : prossimi.map(scheda)}
+      ) : miaPosizione ? prossimi.map(scheda) : perGiorno.map((g) => (
+        <div key={g.giorno}>
+          {(perGiorno.length > 1 || tantiTavoli) && (
+            <h4 className="giorno-tavoli">
+              {titoloGiorno(g.giorno)} <span className="conteggio">{g.tavoli.length}</span>
+            </h4>
+          )}
+          {g.tavoli.map(scheda)}
+        </div>
+      ))}
 
       {passati.length > 0 && (
         <>
           <h3 className="titolo-sezione">Passati</h3>
-          {passati.slice(0, 10).map(scheda)}
+          {passati.slice(0, quantiPassati).map(scheda)}
+          {passati.length > quantiPassati && (
+            <button type="button" className="bottone-piatto" onClick={() => setQuantiPassati(quantiPassati + 20)}>
+              Mostra altri ({passati.length - quantiPassati})
+            </button>
+          )}
         </>
       )}
 

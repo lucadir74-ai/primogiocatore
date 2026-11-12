@@ -77,7 +77,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       .eq('stato', 'aperto')
       .gte('inizio', new Date().toISOString())
       .order('inizio', { ascending: true })
-      .limit(30)
+      .limit(300)   // un evento ne porta dieci al giorno: il conteggio deve restare giusto
       .then(({ data }) => { if (!finito) setTavoli((data || []).filter((t) => t.pubblicato !== false)) })
 
     // Il Primeggio generale: il mio IPG e quanti sono in classifica.
