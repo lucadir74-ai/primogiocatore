@@ -1,5 +1,5 @@
 -- Primo Giocatore - contatti della Tana
--- v1.0.0 - 202611121000
+-- v1.1.0 - 202611131900 (tipo «indirizzo»: la sede, che nell'app apre la mappa)
 -- Si lancia una volta nell'editor SQL di Supabase. Si può rilanciare
 -- senza danni. Non tocca partite, ospiti né account.
 --
@@ -78,7 +78,7 @@ begin
   delete from contatti_tana c where c.tana_id::text = p_tana;
   insert into contatti_tana (tana_id, tipo, etichetta, valore, ordine, aggiornato_da)
   select t.id,
-         case when v.voce ->> 'tipo' in ('telefono', 'whatsapp', 'email', 'facebook', 'instagram', 'telegram', 'sito', 'altro')
+         case when v.voce ->> 'tipo' in ('telefono', 'whatsapp', 'email', 'facebook', 'instagram', 'telegram', 'indirizzo', 'sito', 'altro')
               then v.voce ->> 'tipo' else 'altro' end,
          nullif(left(trim(v.voce ->> 'etichetta'), 60), ''),
          left(trim(v.voce ->> 'valore'), 200),
