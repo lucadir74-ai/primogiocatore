@@ -1,5 +1,5 @@
 -- Primo Giocatore - riconoscimento delle persone, fase 4 (regola unica)
--- v1.2.0 - 202611122000 (fra i dubbi mai per il solo nome di battesimo: serve lo stesso cognome, o il nome intero uguale)
+-- v1.3.0 - 202611122100 (le partite di un ospite, per capire chi è prima di decidere)
 -- Va eseguito DOPO riconoscimento_fase1/2/3.sql, niente_doppioni.sql e
 -- ospiti_doppi.sql. Si può rilanciare senza danni. Non cancella partite,
 -- ospiti né account.
@@ -240,6 +240,34 @@ as $function$
   limit 400;
 $function$;
 
+-- 4b. Le partite di un ospite, per capire chi è ----------------------------
+-- Le vede chi può decidere su quell'ospite: chi l'ha inserito o chi organizza.
+drop function if exists public.partite_di_ospite(uuid);
+create function public.partite_di_ospite(p_ospite uuid)
+ returns table(partita_id text, giocata_il timestamptz, gioco text, luogo text,
+               registrata_da text, con text)
+ language sql stable security definer set search_path to 'public'
+as $function$
+  select pt.id::text, pt.giocata_il,
+    (select g.nome from giochi g where g.id = pt.gioco_id),
+    (select l.nome from luoghi l where l.id = pt.luogo_id),
+    (select coalesce(nullif(trim(x.nickname), ''), x.nome) from profili x where x.id = pt.registrata_da),
+    (select string_agg(coalesce(
+              (select coalesce(nullif(trim(x.nickname), ''), x.nome) from profili x where x.id = a.utente_id),
+              (select trim(y.nome || ' ' || coalesce(y.cognome, '')) from ospiti y where y.id = a.ospite_id),
+              '?'), ', ' order by a.utente_id is null, a.id)
+       from partecipazioni a
+      where a.partita_id = pt.id and a.ospite_id is distinct from p_ospite)
+  from partecipazioni pa
+  join partite pt on pt.id = pa.partita_id
+  where pa.ospite_id = p_ospite
+    and auth.uid() is not null and (select public.ammesso())
+    and exists (select 1 from ospiti o where o.id = p_ospite
+                and ((select public.e_organizzatore()) or o.creato_da = auth.uid()))
+  order by pt.giocata_il desc
+  limit 40;
+$function$;
+
 -- 5. «Sì, è lui»: l'ospite passa a quell'account ----------------------------
 create or replace function public.riconosci_ospite(p_ospite uuid, p_utente uuid)
  returns void language plpgsql security definer set search_path to 'public'
@@ -299,10 +327,12 @@ $function$;
 
 revoke all on function public.riconoscimi()                   from public, anon;
 revoke all on function public.ospiti_da_riconoscere()         from public, anon;
+revoke all on function public.partite_di_ospite(uuid)         from public, anon;
 revoke all on function public.riconosci_ospite(uuid, uuid)    from public, anon;
 revoke all on function public.ospite_non_e(uuid, uuid[])      from public, anon;
 grant execute on function public.riconoscimi()                to authenticated;
 grant execute on function public.ospiti_da_riconoscere()      to authenticated;
+grant execute on function public.partite_di_ospite(uuid)      to authenticated;
 grant execute on function public.riconosci_ospite(uuid, uuid) to authenticated;
 grant execute on function public.ospite_non_e(uuid, uuid[])   to authenticated;
 
