@@ -1322,7 +1322,6 @@ export default function App() {
               onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
               onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
               onDati={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}
-              onContatti={() => { setScheda('contatti'); window.scrollTo({ top: 0 }) }}
             />
           ) : scheda === 'partita' ? (
             <Partita

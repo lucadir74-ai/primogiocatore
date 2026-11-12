@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.25.0 - 202611131200 (tanti tavoli: divisi per giorno, filtri per luogo, giorno, posto e gioco; i tavoli di oggi restano in vista; «casa privata»)
+// v2.26.0 - 202611131500 (schede compatte: una riga per tavolo, che si apre al tocco con dettagli e azioni)
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
@@ -71,6 +71,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const [soloPosto, setSoloPosto] = useState(false)
   const [cercaTavolo, setCercaTavolo] = useState('')
   const [quantiPassati, setQuantiPassati] = useState(10)
+  const [espanso, setEspanso] = useState(null)   // il tavolo di cui si vedono dettagli e azioni
   // Dalla Home si arriva già sul tavolo toccato.
   const [aperto, setAperto] = useState(apriSubito ? { id: apriSubito } : null)   // tavolo visto come lo vede chi arriva dal link
   const [sessione, setSessione] = useState(null)
@@ -1167,6 +1168,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   }
   const passati = tavoli.filter((t) => new Date(t.inizio) < inizioOggi).reverse()
 
+  // I titoli dei giorni ci sono con più giorni o con tanti tavoli: sotto
+  // un titolo alla riga basta l'ora, altrimenti serve anche la data.
+  const conTitoli = !miaPosizione && (perGiorno.length > 1 || tantiTavoli)
+
   const scheda = (t) => {
     const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
     const daAccettare = t.su_approvazione
@@ -1179,34 +1184,53 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       || (t.iscrizioni_tavolo || []).some((i) =>
         i.ruolo === 'dimostratore' && i.utente_id === profilo.id && i.stato !== 'annullato')
     const passato = new Date(t.inizio) < adesso
+    const prima = new Date(t.inizio) < inizioOggi          // di un giorno passato
+    const aperta = espanso === t.id
+    const liberi = t.posti_max ? Math.max(0, t.posti_max - conf) : null
+    const iscrittoIo = (t.iscrizioni_tavolo || []).some((i) => i.utente_id === profilo.id && i.stato === 'confermato')
+    const oraTavolo = new Date(t.inizio).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+    const luogo = nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'
+    const p = posizioneDi(t)
+    const d = distanzaDi(t)
+    // A destra, in una parola: cosa c'è da sapere su quel tavolo.
+    const esito = t.stato !== 'aperto' ? { testo: t.stato, pieno: true }
+      : !t.pubblicato ? { testo: 'bozza', pieno: true }
+      : iscrittoIo ? { testo: 'iscritto ✓', pieno: false }
+      : passato ? (t.partita_id ? { testo: 'giocato', pieno: true } : prima ? null : { testo: 'iniziato', pieno: true })
+      : liberi === 0 ? { testo: 'completo', pieno: true }
+      : liberi != null ? { testo: liberi === 1 ? '1 posto' : `${liberi} posti`, pieno: false }
+      : { testo: 'posti liberi', pieno: false }
     return (
-      <div className="tavolo-scheda" key={t.id}>
-        <div className="tavolo-testa">
+      <div className={`tavolo-scheda compatta${aperta ? ' aperta' : ''}`} key={t.id}>
+        <button type="button" className="tavolo-riga" aria-expanded={aperta}
+          onClick={() => setEspanso(aperta ? null : t.id)}>
+          {/* Sotto il titolo del giorno basta l'ora; altrove serve anche la data. */}
+          {conTitoli && !prima && <span className="tavolo-ora">{oraTavolo}</span>}
           {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
-          <div className="nome-giocatore">
+          <span className="tavolo-riga-testo">
             <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
-            <span className="anno block">
-              {quando(t.inizio)}
-              {passato && giornoDi(t.inizio) === giornoDi(adesso) && !t.partita_id && t.stato === 'aperto' ? ' · iniziato' : ''}
+            <span className="anno">
+              {conTitoli && !prima ? '' : `${quando(t.inizio)} · `}
+              {luogo}{eCasa(t) ? ' · casa privata' : ''}
+              {d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : ''}
             </span>
-            <span className="anno block">
-              {nomeLuogo(t.luoghi, profilo?.id) || 'luogo da definire'}
-              {eCasa(t) ? ' · casa privata' : ''}
-              {(() => {
-                const p = posizioneDi(t)
-                const d = distanzaDi(t)
-                const zona = p?.zona && !nomeLuogo(t.luoghi, profilo?.id).includes(p.zona) ? ` · ${p.zona}` : ''
-                return zona + (d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : '')
-              })()}
-              {' · '}{conf}
-              {t.posti_max ? `/${t.posti_max}` : ''} iscritti
-              {t.su_approvazione ? ' · su approvazione' : ''}
-              {mio && daAccettare > 0 ? ` · ${daAccettare} da accettare` : ''}
-              {!t.pubblicato ? ' · bozza' : ''}
-              {t.stato !== 'aperto' ? ` · ${t.stato}` : ''}
-            </span>
-          </div>
-        </div>
+          </span>
+          {esito && <span className={`tavolo-posti${esito.pieno ? ' pieno' : ''}`}>{esito.testo}</span>}
+          {mio && daAccettare > 0 && <span className="pallino" aria-label={`${daAccettare} da accettare`}>{daAccettare}</span>}
+          <span className="tavolo-freccia" aria-hidden="true">{aperta ? '▴' : '▾'}</span>
+        </button>
+        {aperta && (
+        <div className="tavolo-dettagli">
+          <span className="anno">{quando(t.inizio)}</span>
+          <span className="anno">
+            {luogo}{eCasa(t) ? ' · casa privata' : ''}
+            {p?.zona && !luogo.includes(p.zona) ? ` · ${p.zona}` : ''}
+          </span>
+          <span className="anno">
+            {conf}{t.posti_max ? `/${t.posti_max}` : ''} iscritti
+            {t.su_approvazione ? ' · su approvazione' : ''}
+            {mio && daAccettare > 0 ? ` · ${daAccettare} da accettare` : ''}
+          </span>
         {/* Un tavolo passato si guarda e basta: niente Apri, Condividi e
             Locandina. Restano la partita e, per chi gestisce, Gestisci
             (iscritti, registra partita). */}
@@ -1255,6 +1279,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
               </div>
             )}
           </div>
+        )}
+        </div>
         )}
       </div>
     )
@@ -1380,7 +1406,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         </p>
       ) : miaPosizione ? prossimi.map(scheda) : perGiorno.map((g) => (
         <div key={g.giorno}>
-          {(perGiorno.length > 1 || tantiTavoli) && (
+          {conTitoli && (
             <h4 className="giorno-tavoli">
               {titoloGiorno(g.giorno)} <span className="conteggio">{g.tavoli.length}</span>
             </h4>
