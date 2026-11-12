@@ -3,14 +3,14 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import Protezione, { ricaricaUnaVolta } from './Protezione.jsx'
-import { registerSW } from 'virtual:pwa-register'
+import { avviaAggiornamenti } from './aggiornamento'
 
 // Le misure dei tempi (tolte) lasciavano un registro sul telefono: via.
 try { localStorage.removeItem('primo-giocatore:misure') } catch { /* niente */ }
 
-// Tiene l'app disponibile senza rete e la aggiorna da sola
-// alla prima ricarica dopo un nuovo caricamento.
-registerSW({ immediate: true })
+// Tiene l'app disponibile senza rete; la versione nuova si propone
+// (aggiornamento.js), non ricarica più la pagina mentre la si usa.
+avviaAggiornamenti()
 
 // Un file della versione vecchia che non c'è più (app aggiornata mentre
 // era aperta): si ricarica per prendere quella nuova.

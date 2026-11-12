@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.2.0 - 202611131900 (ogni richiesta ha un tempo massimo: con la rete impiantata non si resta più su «Carico…» per sempre)
+// v1.3.0 - 202611132100 (rete lenta: la copia dopo 4 secondi invece di 8, e quando i dati nuovi arrivano si offre di aggiornare la pagina)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -20,10 +20,11 @@ const FUNZIONI_DI_LETTURA = new Set([
   'richieste_da_decidere', 'richieste_tavolo_mie', 'ospiti_simili', 'elenco_unioni',
   'chi_ha', 'chi_ha_gioco', 'ludoteca_cerca', 'ludoteca_dove', 'ludoteca_elenco',
   'puo_gestire_ludoteca', 'tavolo_pubblico', 'non_nell_elenco', 'soci_con_account', 'scheda_iscritto',
-  'contatti_elenco', 'ospiti_da_riconoscere', 'partite_di_ospite',
+  'contatti_elenco', 'ospiti_da_riconoscere', 'partite_di_ospite', 'partite_per_ospite',
 ])
 
-const ATTESA = 8000                 // oltre, se c'è una copia si mostra quella
+const ATTESA = 4000                 // oltre, se c'è una copia si mostra quella (e i dati nuovi, quando arrivano, si offrono)
+const FRESCA_PER = 120000           // per quanto una risposta arrivata in ritardo vale senza richiederla
 const SCADENZA = 45 * 86400000      // le copie non riviste da 45 giorni si buttano
 const PESO_MASSIMO = 4_000_000      // caratteri: le risposte enormi non si tengono
 const PAUSA_DOPO_GUASTO = 20000     // per quanto, dopo un guasto, si considera la rete giù
@@ -38,6 +39,10 @@ const MASSIMO_FILE = 120000         // foto caricate
 
 let giuFino = 0
 let datiVecchi = false
+// La rete era lenta e si è mostrata la copia; poi la risposta è arrivata:
+// l'avviso in cima offre di aggiornare la pagina (StatoRete.jsx).
+let nuoviArrivati = false
+const fresche = new Map()   // nome della copia -> quando è arrivata la risposta in ritardo
 const ascoltatori = new Set()
 
 const inLinea = () => typeof navigator === 'undefined' || navigator.onLine !== false
@@ -47,7 +52,13 @@ const inLinea = () => typeof navigator === 'undefined' || navigator.onLine !== f
 export const reteGiu = () => !inLinea() || Date.now() < giuFino
 
 // Per l'avviso in cima all'app.
-export const statoRete = () => ({ senzaRete: !inLinea(), datiVecchi })
+export const statoRete = () => ({ senzaRete: !inLinea(), datiVecchi, nuoviArrivati })
+// La pagina è stata aggiornata (o cambiata): l'offerta non serve più.
+export function vistiINuovi() {
+  if (!nuoviArrivati) return
+  nuoviArrivati = false
+  avvisa()
+}
 export function seguiRete(f) {
   ascoltatori.add(f)
   return () => ascoltatori.delete(f)
@@ -60,7 +71,7 @@ function segna(vecchi) {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => { giuFino = 0; datiVecchi = false; avvisa() })
+  window.addEventListener('online', () => { giuFino = 0; datiVecchi = false; nuoviArrivati = false; avvisa() })
   window.addEventListener('offline', avvisa)
 }
 
@@ -284,6 +295,17 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     })
   }
 
+  // Appena arrivata in ritardo (la pagina intanto mostrava la copia): chi
+  // aggiorna la pagina la trova subito, senza rifare l'attesa.
+  const arrivata = fresche.get(chiave)
+  if (arrivata) {
+    fresche.delete(chiave)
+    if (Date.now() - arrivata < FRESCA_PER) {
+      const c = await copia
+      if (c) return ricostruisci(c)
+    }
+  }
+
   const rete = fetchATempo(indirizzo, opzioni, MASSIMO_LETTURA).then(
     (r) => ({ r }),
     (e) => ({ e }),
@@ -298,7 +320,15 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     if (c) {
       // La rete c'è ma non risponde: si mostra la copia; se poi la
       // risposta arriva, resta da parte per la prossima volta.
-      rete.then((x) => { if (x.r?.ok) mettiDaParte(chiave, x.r) })
+      rete.then(async (x) => {
+        if (!x.r?.ok) return
+        await mettiDaParte(chiave, x.r)
+        giuFino = 0
+        fresche.set(chiave, Date.now())
+        datiVecchi = false
+        nuoviArrivati = true
+        avvisa()
+      })
       segna(true)
       return ricostruisci(c)
     }

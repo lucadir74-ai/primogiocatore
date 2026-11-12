@@ -33,10 +33,9 @@ export default defineConfig({
     react(),
     indirizzoPubblico,
     VitePWA({
-      // L'aggiornamento avviene da solo: appena il telefono ritrova la
-      // rete e si ricarica la pagina, prende la versione nuova. Senza,
-      // resterebbe per sempre su quella salvata la prima volta.
-      registerType: 'autoUpdate',
+      // La versione nuova aspetta e si propone (src/aggiornamento.js): prima
+      // ricaricava la pagina da sola, anche mentre si stava scrivendo.
+      registerType: 'prompt',
       // Il manifesto è già scritto a mano in public/
       manifest: false,
       includeAssets: ['apple-touch-icon.png', 'icona-192.png', 'icona-512.png'],

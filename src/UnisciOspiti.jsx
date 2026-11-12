@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.9.0 - 202611121500 («Chi sono questi ospiti?»: i nomi dubbi li conferma chi li ha inseriti)
+// v3.10.0 - 202611132100 (le partite di ogni ospite le conta il database, in una risposta sola)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -89,6 +89,18 @@ function UnioniFatte({ onCambio }) {
   )
 }
 
+// Quante partite ha ogni ospite. Il conto lo fa il database e arriva in
+// una risposta sola (script partite_per_ospite.sql); senza lo script si
+// leggono come prima tutte le partecipazioni e si contano qui.
+async function partitePerOspite() {
+  const { data, error } = await supabase.rpc('partite_per_ospite')
+  if (!error && data && typeof data === 'object') return new Map(Object.entries(data))
+  const righe = await tutteLeRighe(() => supabase.from('partecipazioni').select('ospite_id').not('ospite_id', 'is', null))
+  const conteggio = new Map()
+  for (const r of righe) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
+  return conteggio
+}
+
 export default function UnisciOspiti({ profilo, onRichieste }) {
   const [ospiti, setOspiti] = useState([])
   const [daUnire, setDaUnire] = useState('')   // sparisce
@@ -105,14 +117,13 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
 
   async function carica() {
     try {
-      const [o, p, pr] = await Promise.all([
+      const [o, conteggio, pr] = await Promise.all([
         tutteLeRighe(() => supabase.from('ospiti').select('*').order('nome')),
-        tutteLeRighe(() => supabase.from('partecipazioni').select('ospite_id').not('ospite_id', 'is', null)),
-        tutteLeRighe(() => supabase.from('profili').select('*').order('nome')),
+        partitePerOspite(),
+        // Solo quello che la pagina usa (prima arrivava il profilo intero di tutti).
+        tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname, bga_username, bga_id').order('nome')),
       ])
       setPersone(pr)
-      const conteggio = new Map()
-      for (const r of p) conteggio.set(r.ospite_id, (conteggio.get(r.ospite_id) || 0) + 1)
       // Quelli già collegati a un account, o uniti a un altro ospite,
       // non sono più ospiti da gestire.
       setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in)
