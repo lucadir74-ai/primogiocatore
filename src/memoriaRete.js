@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.3.0 - 202611132100 (rete lenta: la copia dopo 4 secondi invece di 8, e quando i dati nuovi arrivano si offre di aggiornare la pagina)
+// v1.3.1 - 202611132200 (anche l'elenco dei giochi delle Classifiche, classifiche_giochi, resta da parte)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -21,6 +21,7 @@ const FUNZIONI_DI_LETTURA = new Set([
   'chi_ha', 'chi_ha_gioco', 'ludoteca_cerca', 'ludoteca_dove', 'ludoteca_elenco',
   'puo_gestire_ludoteca', 'tavolo_pubblico', 'non_nell_elenco', 'soci_con_account', 'scheda_iscritto',
   'contatti_elenco', 'ospiti_da_riconoscere', 'partite_di_ospite', 'partite_per_ospite',
+  'classifiche_giochi',
 ])
 
 const ATTESA = 4000                 // oltre, se c'è una copia si mostra quella (e i dati nuovi, quando arrivano, si offrono)
