@@ -2851,3 +2851,27 @@ a.contatto .contatto-valore { color: var(--blu); }
 .contatti-riga { display: flex; gap: 0.6rem; align-items: center; }
 .contatti-riga input { flex: 1; min-width: 0; }
 .contatti-riga select { flex: none; max-width: 9rem; }
+
+/* ---------- Dati e import: la procedura a passi ---------- */
+.passo { border-bottom: 1px solid color-mix(in srgb, var(--bordo) 55%, transparent); }
+.passo > summary {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 0.9rem 0; cursor: pointer; list-style: none;
+}
+.passo > summary::-webkit-details-marker { display: none; }
+.passo > summary::after {
+  content: '⌄'; margin-left: auto; color: var(--inchiostro-tenue);
+  font-size: 1.2rem; line-height: 1; transition: transform 0.2s ease;
+}
+.passo[open] > summary::after { transform: rotate(180deg); }
+.passo-numero {
+  flex: none; width: 2rem; height: 2rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700;
+  border: 2px solid var(--primario); color: var(--inchiostro);
+}
+.passo.fatto .passo-numero { background: var(--primario); color: var(--su-primario); }
+.passo-testa { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.passi-file { margin: 0.4rem 0 1rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.45rem; line-height: 1.4; }
+.scegli-file { display: block; text-align: center; box-sizing: border-box; position: relative; }
+.scegli-file:focus-within { outline: 2px solid var(--blu); outline-offset: 2px; }
