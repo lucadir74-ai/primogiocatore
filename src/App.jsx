@@ -1,4 +1,4 @@
-// Primo Giocatore v4.28.0 - 202611121500 (ospiti riconosciuti da soli con nick o nome e cognome; i dubbi li conferma chi li ha inseriti)
+// Primo Giocatore v4.28.1 - 202611121800 (avvisi di richieste riletti al massimo una volta al minuto, non a ogni cambio di scheda)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -970,6 +970,9 @@ export default function App() {
   }
 
   // Chi organizza vede quante richieste "sono io" aspettano.
+  // Si rileggono al cambio di scheda, ma non più di una volta al minuto:
+  // dopo una decisione presa nella pagina si rileggono subito lo stesso.
+  const ultimiAvvisi = useRef({ id: null, il: 0 })
   useEffect(() => {
     if (!profilo) return
     // Numeri di un altro account su questo telefono: via, prima di mostrarli.
@@ -977,6 +980,9 @@ export default function App() {
       setDaApprovare(0); setTavoliChiesti(0); setSospeseBga(0)
       salvaAvvisi(profilo.id, { daApprovare: 0, tavoliChiesti: 0, sospeseBga: 0 })
     }
+    const ora = Date.now()
+    if (ultimiAvvisi.current.id === profilo.id && ora - ultimiAvvisi.current.il < 60000) return
+    ultimiAvvisi.current = { id: profilo.id, il: ora }
     contaDaGuardare().then((n) => { setDaApprovare(n); salvaAvvisi(profilo.id, { daApprovare: n }) })
     contaRichiesteTavolo().then((n) => { setTavoliChiesti(n); salvaAvvisi(profilo.id, { tavoliChiesti: n }) })
   }, [profilo?.id, scheda])
