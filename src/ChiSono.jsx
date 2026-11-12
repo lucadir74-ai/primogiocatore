@@ -1,5 +1,5 @@
 // Primo Giocatore - «Chi è questo ospite?»
-// v1.0.0 - 202611121500
+// v1.1.0 - 202611122100 («vedi le partite»: con chi e a cosa ha giocato quell'ospite, per capire chi è)
 //
 // Gli ospiti che somigliano a un iscritto ma non abbastanza da collegarli
 // da soli: solo il nome, un soprannome, un nome parziale, due omonimi.
@@ -37,12 +37,53 @@ export async function contaOspitiDaRiconoscere() {
 
 const PER_VOLTA = 15
 
+// Le partite di un ospite: quando, a cosa, dove e con chi. Servono a
+// riconoscerlo («ah, è il Gabriele di quella sera»).
+function PartiteOspite({ ospiteId }) {
+  const [partite, setPartite] = useState(null)
+  const [errore, setErrore] = useState('')
+
+  useEffect(() => {
+    let vivo = true
+    supabase.rpc('partite_di_ospite', { p_ospite: ospiteId }).then(({ data, error }) => {
+      if (!vivo) return
+      if (error) {
+        setErrore(/partite_di_ospite/.test(error.message || '')
+          ? 'Manca lo script riconoscimento_fase4.sql aggiornato nel database.' : error.message)
+        setPartite([])
+      } else setPartite(data || [])
+    })
+    return () => { vivo = false }
+  }, [ospiteId])
+
+  if (partite === null) return <p className="aiuto">Carico le partite…</p>
+  if (errore) return <div className="avviso errore">{errore}</div>
+  if (partite.length === 0) return <p className="aiuto">Nessuna partita con questo nome.</p>
+  return (
+    <ul className="chi-sono-partite">
+      {partite.map((p) => (
+        <li key={p.partita_id}>
+          <strong>{p.gioco || 'Gioco'}</strong>
+          <span className="anno block">
+            {giorno(String(p.giocata_il).slice(0, 10))}
+            {p.luogo ? ` · ${p.luogo}` : ''}
+            {p.registrata_da ? ` · registrata da ${p.registrata_da}` : ''}
+          </span>
+          {p.con && <span className="anno block">con {p.con}</span>}
+        </li>
+      ))}
+      {partite.length >= 40 && <li className="anno">Sono le 40 più recenti.</li>}
+    </ul>
+  )
+}
+
 export default function ChiSono({ onCambio }) {
   const [ospiti, setOspiti] = useState(null)
   const [quanti, setQuanti] = useState(PER_VOLTA)
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
   const [lavorando, setLavorando] = useState(false)
+  const [aperto, setAperto] = useState(null)   // l'ospite di cui si guardano le partite
 
   useEffect(() => { carica() }, [])
 
@@ -87,8 +128,8 @@ export default function ChiSono({ onCambio }) {
       </h3>
       {ospiti.length > 0 && (
         <p className="aiuto">
-          Questi nomi somigliano a un iscritto, ma non abbastanza per esserne sicuri. Se sai chi è,
-          tocca il suo nome: le partite passano al suo account. Se non è nessuno di loro, dillo e non
+          Questi nomi somigliano a un iscritto, ma non abbastanza per esserne sicuri. Guarda le partite
+          per capire chi è; se lo sai, tocca il suo nome: le partite passano al suo account. Se non è nessuno di loro, dillo e non
           te lo chiediamo più.
         </p>
       )}
@@ -105,6 +146,14 @@ export default function ChiSono({ onCambio }) {
                 {!o.mio && o.creato_da ? ` · inserito da ${o.creato_da}` : ''}
               </span>
             </div>
+            {o.partite > 0 && (
+              <button type="button" className="bottone-piatto chi-sono-vedi"
+                aria-expanded={aperto === o.ospite_id}
+                onClick={() => setAperto(aperto === o.ospite_id ? null : o.ospite_id)}>
+                {aperto === o.ospite_id ? 'nascondi le partite' : 'vedi le partite'}
+              </button>
+            )}
+            {aperto === o.ospite_id && <PartiteOspite ospiteId={o.ospite_id} />}
             <div className="chi-sono-scelte">
               {o.candidati.map((c) => (
                 <button key={c.id} type="button" className="tasto-piccolo" onClick={() => eLui(o, c)} disabled={lavorando}>

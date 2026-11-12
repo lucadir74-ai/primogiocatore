@@ -1,5 +1,5 @@
 -- Primo Giocatore - riconoscimento delle persone, fase 4 (regola unica)
--- v1.1.0 - 202611121800 (ospiti di Board Game Arena fuori dai dubbi, salvo nome proprio uguale; veloce anche con migliaia di ospiti)
+-- v1.3.0 - 202611122100 (le partite di un ospite, per capire chi è prima di decidere)
 -- Va eseguito DOPO riconoscimento_fase1/2/3.sql, niente_doppioni.sql e
 -- ospiti_doppi.sql. Si può rilanciare senza danni. Non cancella partite,
 -- ospiti né account.
@@ -15,10 +15,12 @@
 --    battesimo di un iscritto («Luca») non collega nessuno da sola,
 --    nemmeno se è il nick di qualcuno o un nome confermato in passato:
 --    di Luca ce n'è più d'uno.
--- 3. Tutti i casi dubbi (solo nome, solo cognome, soprannomi, nomi
---    parziali, omonimi) li decide chi ha inserito l'ospite, che sa con
---    chi ha giocato, oppure un organizzatore: «Il tuo "Gess" è Gessica
---    Bianchi?». Un «no» si ricorda e non viene più riproposto.
+-- 3. I casi dubbi li decide chi ha inserito l'ospite, che sa con chi ha
+--    giocato, oppure un organizzatore. Sono dubbi solo: gli omonimi, il
+--    nick che è anche un nome di battesimo, e lo stesso cognome con il
+--    nome mancante o abbreviato («Salvi», «V. Salvi»). Il solo nome di
+--    battesimo non propone nessuno: quegli ospiti si collegano a mano
+--    dalla sezione Ospiti. Un «no» si ricorda e non viene più riproposto.
 --    Gli ospiti arrivati da Board Game Arena (hanno il numero BGA) sono
 --    quasi tutti avversari sconosciuti: fra i dubbi entrano solo se il
 --    nome è proprio uguale a quello di un iscritto, non per somiglianza.
@@ -149,8 +151,9 @@ $function$;
 -- 4. I dubbi: per chi ha inserito l'ospite (o per chi organizza) ------------
 -- Una riga per coppia ospite / iscritto che gli somiglia.
 -- forza 3 = nome intero o nick uguale, ma non collegato da solo (omonimi,
---           nome comune); 2 = stessa prima parola o stesso cognome;
---           1 = nome parziale (gess / gessica).
+--           nick che è anche un nome di battesimo);
+--       2 = stesso cognome, e il nome non lo contraddice.
+-- Il nome di battesimo da solo non propone nessuno.
 drop function if exists public.ospiti_da_riconoscere();
 create function public.ospiti_da_riconoscere()
  returns table(ospite_id uuid, nome text, cognome text, partite int, ultima date, creato_da text,
@@ -188,21 +191,31 @@ as $function$
     select g.id, g.nome, g.cognome, g.creato_da, p.id, 3
     from g join p on g.c <> '' and p.pn = g.n and p.pc = g.c
     union all
-    -- Somiglianze: solo per gli ospiti inseriti a mano o da un file.
-    select g.id, g.nome, g.cognome, g.creato_da, p.id,
-      case
-        when length(g.primo) >= 3 and g.primo in (p.pprimo, p.pk, p.pc) then 2
-        when g.c <> '' and g.c = p.pc then 2
-        when length(g.primo) >= 3 and length(p.pprimo) >= 3
-             and (left(p.pprimo, length(g.primo)) = g.primo or left(g.primo, length(p.pprimo)) = p.pprimo) then 1
-        when length(g.primo) >= 3 and length(p.pk) >= 3
-             and (left(p.pk, length(g.primo)) = g.primo or left(g.primo, length(p.pk)) = p.pk) then 1
-        else 0
-      end
-    from g cross join p
-    where not g.da_bga
-      and not (g.c = '' and exists (select 1 from interi i where i.id = p.id and i.intero = g.n))
-      and not (g.c <> '' and p.pn = g.n and p.pc = g.c)
+    -- Stesso cognome (solo per gli ospiti inseriti a mano o da un file).
+    -- Il nome da solo non basta mai: «Francesco Vitolo» non è Francesco
+    -- Ciabatta, e di Valerio ce n'è più d'uno. Si propone un iscritto solo
+    -- se il cognome è lo stesso e quello che resta del nome non lo
+    -- contraddice: niente («Salvi»), un'iniziale («V. Salvi»), un pezzo
+    -- («Vale Salvi»).
+    select x.id, x.nome, x.cognome, x.creato_da, x.utente, 2
+    from (
+      select g.id, g.nome, g.cognome, g.creato_da, p.id as utente, p.pn,
+        rtrim(case
+          when g.c <> '' and g.c = p.pc then g.n
+          when g.c <> '' then null
+          when g.n = p.pc then ''
+          when right(g.n, length(p.pc) + 1) = ' ' || p.pc then left(g.n, length(g.n) - length(p.pc) - 1)
+          when left(g.n, length(p.pc) + 1) = p.pc || ' ' then substr(g.n, length(p.pc) + 2)
+        end, '. ') as resto
+      from g cross join p
+      where not g.da_bga and p.pc <> ''
+        and not (g.c = '' and exists (select 1 from interi i where i.id = p.id and i.intero = g.n))
+        and not (g.c <> '' and p.pn = g.n and p.pc = g.c)
+    ) x
+    where x.resto is not null
+      and (x.resto = ''
+           or left(x.pn, length(x.resto)) = x.resto
+           or (x.pn <> '' and left(x.resto, length(x.pn)) = x.pn))
   ),
   scelte as (
     select c.*, u.nome as u_nome, u.cognome as u_cognome, u.nickname as u_nick
@@ -225,6 +238,34 @@ as $function$
                     where r.ospite_id = c.id and r.utente_id = c.utente)
   order by 7 desc, 4 desc, c.nome, c.id, c.forza desc
   limit 400;
+$function$;
+
+-- 4b. Le partite di un ospite, per capire chi è ----------------------------
+-- Le vede chi può decidere su quell'ospite: chi l'ha inserito o chi organizza.
+drop function if exists public.partite_di_ospite(uuid);
+create function public.partite_di_ospite(p_ospite uuid)
+ returns table(partita_id text, giocata_il timestamptz, gioco text, luogo text,
+               registrata_da text, con text)
+ language sql stable security definer set search_path to 'public'
+as $function$
+  select pt.id::text, pt.giocata_il,
+    (select g.nome from giochi g where g.id = pt.gioco_id),
+    (select l.nome from luoghi l where l.id = pt.luogo_id),
+    (select coalesce(nullif(trim(x.nickname), ''), x.nome) from profili x where x.id = pt.registrata_da),
+    (select string_agg(coalesce(
+              (select coalesce(nullif(trim(x.nickname), ''), x.nome) from profili x where x.id = a.utente_id),
+              (select trim(y.nome || ' ' || coalesce(y.cognome, '')) from ospiti y where y.id = a.ospite_id),
+              '?'), ', ' order by a.utente_id is null, a.id)
+       from partecipazioni a
+      where a.partita_id = pt.id and a.ospite_id is distinct from p_ospite)
+  from partecipazioni pa
+  join partite pt on pt.id = pa.partita_id
+  where pa.ospite_id = p_ospite
+    and auth.uid() is not null and (select public.ammesso())
+    and exists (select 1 from ospiti o where o.id = p_ospite
+                and ((select public.e_organizzatore()) or o.creato_da = auth.uid()))
+  order by pt.giocata_il desc
+  limit 40;
 $function$;
 
 -- 5. «Sì, è lui»: l'ospite passa a quell'account ----------------------------
@@ -286,10 +327,12 @@ $function$;
 
 revoke all on function public.riconoscimi()                   from public, anon;
 revoke all on function public.ospiti_da_riconoscere()         from public, anon;
+revoke all on function public.partite_di_ospite(uuid)         from public, anon;
 revoke all on function public.riconosci_ospite(uuid, uuid)    from public, anon;
 revoke all on function public.ospite_non_e(uuid, uuid[])      from public, anon;
 grant execute on function public.riconoscimi()                to authenticated;
 grant execute on function public.ospiti_da_riconoscere()      to authenticated;
+grant execute on function public.partite_di_ospite(uuid)      to authenticated;
 grant execute on function public.riconosci_ospite(uuid, uuid) to authenticated;
 grant execute on function public.ospite_non_e(uuid, uuid[])   to authenticated;
 
