@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.8.0 - 202611021600 (elenco «Unioni fatte» con «separa»: l'ultima parola è di chi conosce le persone)
+// v3.9.0 - 202611121500 («Chi sono questi ospiti?»: i nomi dubbi li conferma chi li ha inseriti)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
+import ChiSono from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
 
@@ -234,6 +235,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
+      <ChiSono onCambio={() => { carica(); onRichieste?.() }} />
       <RichiesteDaApprovare profilo={profilo} onCambio={() => { carica(); onRichieste?.() }} />
 
       {sembranoIscritti.length > 0 && (
