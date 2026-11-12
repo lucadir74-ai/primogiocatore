@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.1.0 - 202611131700 (anche i contatti della Tana e gli ospiti da riconoscere si rivedono senza rete)
+// v1.2.0 - 202611131900 (ogni richiesta ha un tempo massimo: con la rete impiantata non si resta più su «Carico…» per sempre)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -27,6 +27,12 @@ const ATTESA = 8000                 // oltre, se c'è una copia si mostra quella
 const SCADENZA = 45 * 86400000      // le copie non riviste da 45 giorni si buttano
 const PESO_MASSIMO = 4_000_000      // caratteri: le risposte enormi non si tengono
 const PAUSA_DOPO_GUASTO = 20000     // per quanto, dopo un guasto, si considera la rete giù
+// Oltre questi tempi una richiesta si dà per persa: senza, con la rete
+// impiantata la pagina restava su «Carico…» (o «Salvo…») per sempre.
+const MASSIMO_LETTURA = 25000
+const MASSIMO_ACCESSO = 20000       // entrare, rinnovare l'accesso
+const MASSIMO_SCRITTURA = 60000     // salvataggi e funzioni del database
+const MASSIMO_FILE = 120000         // foto caricate
 
 /* ---------- Stato della rete ---------- */
 
@@ -197,6 +203,53 @@ function maiVista() {
   return e
 }
 
+/* ---------- Un tempo massimo per ogni richiesta ---------- */
+
+const NON_RISPONDE = 'il server non ha risposto in tempo. Riprova fra poco.'
+function tempoScaduto() {
+  const e = new Error(NON_RISPONDE)
+  e.name = 'Senza rete'
+  e.scaduta = true
+  return e
+}
+
+// Quante richieste sono in viaggio adesso: Prepara.jsx aspetta che
+// siano finite prima di aprire la pagina successiva.
+let inViaggio = 0
+export const richiesteInCorso = () => inViaggio
+
+function massimoPer(url) {
+  if (url.includes('/auth/v1/')) return MASSIMO_ACCESSO
+  if (url.includes('/storage/v1/')) return MASSIMO_FILE
+  return MASSIMO_SCRITTURA
+}
+
+// fetch che si interrompe da solo dopo «massimo» millisecondi. Se chi
+// chiama ha già un suo segnale di interruzione, vale anche quello.
+async function fetchATempo(indirizzo, opzioni, massimo) {
+  if (typeof AbortController === 'undefined') return fetch(indirizzo, opzioni)
+  const freno = new AbortController()
+  let scaduto = false
+  const sveglia = setTimeout(() => { scaduto = true; freno.abort() }, massimo)
+  const esterno = opzioni?.signal
+  const inoltra = () => freno.abort()
+  if (esterno) {
+    if (esterno.aborted) freno.abort()
+    else esterno.addEventListener('abort', inoltra, { once: true })
+  }
+  inViaggio++
+  try {
+    return await fetch(indirizzo, { ...(opzioni || {}), signal: freno.signal })
+  } catch (e) {
+    if (scaduto) throw tempoScaduto()
+    throw e
+  } finally {
+    inViaggio--
+    clearTimeout(sveglia)
+    esterno?.removeEventListener?.('abort', inoltra)
+  }
+}
+
 /* ---------- Il fetch che si dà a Supabase ---------- */
 
 export async function fetchConMemoria(indirizzo, opzioni) {
@@ -207,7 +260,7 @@ export async function fetchConMemoria(indirizzo, opzioni) {
   // nota di come va, per sapere se la rete c'è.
   if (!chiave) {
     try {
-      const r = await fetch(indirizzo, opzioni)
+      const r = await fetchATempo(indirizzo, opzioni, massimoPer(url))
       giuFino = 0
       return r
     } catch (e) {
@@ -231,7 +284,7 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     })
   }
 
-  const rete = fetch(indirizzo, opzioni).then(
+  const rete = fetchATempo(indirizzo, opzioni, MASSIMO_LETTURA).then(
     (r) => ({ r }),
     (e) => ({ e }),
   )
@@ -257,6 +310,14 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     giuFino = Date.now() + PAUSA_DOPO_GUASTO
     const c = await copia
     if (c) { segna(true); return ricostruisci(c) }
+    // Tempo scaduto: si risponde di no una volta sola. Lasciando fallire la
+    // richiesta, la libreria la ritenterebbe altre tre volte.
+    if (esito.e.scaduta) {
+      avvisa()
+      return new Response(JSON.stringify({ code: 'SENZA_RETE', message: `Senza rete: ${NON_RISPONDE}` }), {
+        status: 504, statusText: 'Senza rete', headers: { 'content-type': 'application/json' },
+      })
+    }
     throw maiVista()
   }
 

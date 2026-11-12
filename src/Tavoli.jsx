@@ -1,9 +1,9 @@
 // Primo Giocatore - Tavoli
-// v2.26.0 - 202611131500 (schede compatte: una riga per tavolo, che si apre al tocco con dettagli e azioni)
+// v2.27.0 - 202611131900 (si leggono i tavoli da oggi in poi e gli ultimi passati, non più tutti da sempre)
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, daMostrare, fetchBgg, tutteLeRighe } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
@@ -81,19 +81,38 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     supabase.auth.getSession().then(({ data }) => setSessione(data.session))
   }, [])
 
+  // I tavoli si leggevano tutti, da sempre, dal più vecchio: il database
+  // ne dà al massimo mille per volta, e superata quella soglia sarebbero
+  // spariti proprio i più nuovi, senza errori. Ora: quelli da oggi in poi
+  // tutti (a blocchi), i passati solo gli ultimi, e altri a richiesta.
+  const CAMPI_TAVOLO = `
+    *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
+    luoghi ( nome, tipo, creato_da, nome_per_altri ),
+    iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id, nome_visibile )
+  `
+  const passatiDaLeggere = useRef(30)
+  const [totalePassati, setTotalePassati] = useState(0)
+  const mezzanotte = () => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
+  }
+  // Gli ultimi passati, dal più recente: { data, count, error }.
+  const leggiPassati = (oggi) => supabase.from('tavoli')
+    .select(CAMPI_TAVOLO, { count: 'exact' })
+    .lt('inizio', oggi)
+    .order('inizio', { ascending: false }).order('id')
+    .range(0, passatiDaLeggere.current - 1)
+  // Un elenco intero a blocchi, senza far cadere il resto se non arriva.
+  const tutte = (query) => tutteLeRighe(query).then((data) => ({ data, error: null }), (error) => ({ data: null, error }))
+
   async function carica() {
     setCaricamento(true)
-    const [t, pr, lu, se, po] = await Promise.all([
-      supabase
-        .from('tavoli')
-        .select(`
-          *, giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-          luoghi ( nome, tipo, creato_da, nome_per_altri ),
-          iscrizioni_tavolo ( id, stato, ruolo, utente_id, ospite_id, nome_visibile )
-        `)
-        .order('inizio', { ascending: true }),
-      supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome'),
-      supabase.from('luoghi').select('nome').order('nome'),
+    const oggi = mezzanotte()
+    const [t, pa, pr, lu, se, po] = await Promise.all([
+      tutte(() => supabase.from('tavoli').select(CAMPI_TAVOLO).gte('inizio', oggi).order('inizio', { ascending: true })),
+      leggiPassati(oggi),
+      tutte(() => supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome')),
+      tutte(() => supabase.from('luoghi').select('nome').order('nome')),
       // Le prossime serate: nella scelta del giorno sono segnate.
       supabase.from('serate').select('data, ora_inizio')
         .gte('data', new Date().toISOString().slice(0, 10)).eq('annullata', false).order('data'),
@@ -101,12 +120,30 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     ])
     // Prima di lanciare posizione_luoghi.sql la funzione non c'è: niente distanze, il resto va.
     if (!po.error && Array.isArray(po.data)) setPosizioni(new Map(po.data.map((x) => [String(x.tavolo_id), x])))
-    if (t.error) setErrore(t.error.message)
-    else setTavoli(t.data || [])
+    if (t.error || pa.error) setErrore((t.error || pa.error).message)
+    else {
+      // Come prima: tutti insieme, dal più vecchio al più nuovo.
+      setTavoli([...[...(pa.data || [])].reverse(), ...(t.data || [])])
+      setTotalePassati(pa.count ?? (pa.data || []).length)
+    }
     if (pr.data) setPersone(pr.data)
     if (lu.data) setLuoghiNoti(lu.data.map((x) => x.nome))
     if (se.data) setSerateFuture(se.data)
     setCaricamento(false)
+  }
+
+  // «Mostra altri» fra i passati: se quelli letti non bastano se ne
+  // leggono altri, senza ricaricare la pagina.
+  async function altriPassati() {
+    const voluti = quantiPassati + 20
+    setQuantiPassati(voluti)
+    if (voluti <= passatiDaLeggere.current || passatiDaLeggere.current >= totalePassati) return
+    passatiDaLeggere.current = voluti + 40
+    const oggi = mezzanotte()
+    const pa = await leggiPassati(oggi)
+    if (pa.error) { setErrore(pa.error.message); return }
+    setTotalePassati(pa.count ?? (pa.data || []).length)
+    setTavoli((prima) => [...[...(pa.data || [])].reverse(), ...prima.filter((x) => new Date(x.inizio) >= new Date(oggi))])
   }
 
   /* ---------- Creazione e modifica ---------- */
@@ -1419,9 +1456,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <>
           <h3 className="titolo-sezione">Passati</h3>
           {passati.slice(0, quantiPassati).map(scheda)}
-          {passati.length > quantiPassati && (
-            <button type="button" className="bottone-piatto" onClick={() => setQuantiPassati(quantiPassati + 20)}>
-              Mostra altri ({passati.length - quantiPassati})
+          {Math.max(totalePassati, passati.length) > quantiPassati && (
+            <button type="button" className="bottone-piatto" onClick={altriPassati}>
+              Mostra altri ({Math.max(totalePassati, passati.length) - quantiPassati})
             </button>
           )}
         </>

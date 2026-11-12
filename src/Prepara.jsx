@@ -1,5 +1,5 @@
 // Primo Giocatore - le pagine preparate per quando manca la rete
-// v1.0.0 - 202611101500
+// v1.1.0 - 202611131900 (una pagina alla volta, e solo ad app ferma)
 //
 // Senza rete una pagina mostra la copia dell'ultima volta che è stata
 // aperta (memoriaRete.js). Chi non l'aveva mai aperta trovava solo un
@@ -16,11 +16,14 @@
 // memoria (archivio.js, elenchiPartita.js).
 
 import { Component, Suspense, useEffect, useState } from 'react'
+import { richiesteInCorso } from './memoriaRete'
 
 const CHIAVE = 'primo-giocatore:preparato-2'   // 2: anche le sezioni del Profilo
 const OGNI = 12 * 3600000
 const PRIMA_ATTESA = 6000    // l'app si apre in pace, poi si comincia
-const PER_PAGINA = 2000      // basta che la pagina parta: le letture proseguono da sole
+const PER_PAGINA = 2000      // il minimo: il tempo di far partire le letture della pagina
+const MASSIMO_PAGINA = 20000 // oltre non si aspetta più: si passa alla successiva
+const OGNI_QUANTO = 500      // ogni quanto si guarda se le letture sono finite
 
 function ultimaVolta(profiloId) {
   try {
@@ -44,7 +47,16 @@ export default function Prepara({ profilo, pagine, aperta }) {
   useEffect(() => {
     if (!profilo?.id) return
     if (Date.now() - ultimaVolta(profilo.id) < OGNI) return
-    const t = setTimeout(() => { if (navigator.onLine) setPasso(0) }, PRIMA_ATTESA)
+    // Si comincia ad app ferma: finché le letture dell'apertura (Home,
+    // archivio, elenchi della Partita) sono in viaggio, si aspetta.
+    let t
+    let giri = 0
+    const prova = () => {
+      if (!navigator.onLine) return
+      if (richiesteInCorso() > 0 && giri++ < 60) { t = setTimeout(prova, OGNI_QUANTO); return }
+      setPasso(0)
+    }
+    t = setTimeout(prova, PRIMA_ATTESA)
     return () => clearTimeout(t)
   }, [profilo?.id])
 
@@ -57,7 +69,18 @@ export default function Prepara({ profilo, pagine, aperta }) {
     }
     // Rete caduta a metà: ci si ferma, si rifà alla prossima apertura.
     if (!navigator.onLine) { setPasso(-1); return }
-    const t = setTimeout(() => setPasso((n) => n + 1), PER_PAGINA)
+    // Una pagina alla volta: la successiva si apre quando le letture di
+    // questa sono finite (prima partivano tutte a due secondi una
+    // dall'altra, e chi intanto toccava una pagina restava in coda).
+    const inizio = Date.now()
+    let t
+    const prova = () => {
+      const passato = Date.now() - inizio
+      const libero = richiesteInCorso() === 0 && document.visibilityState !== 'hidden'
+      if (passato < MASSIMO_PAGINA && !libero) { t = setTimeout(prova, OGNI_QUANTO); return }
+      setPasso((n) => n + 1)
+    }
+    t = setTimeout(prova, PER_PAGINA)
     return () => clearTimeout(t)
   }, [passo])
 

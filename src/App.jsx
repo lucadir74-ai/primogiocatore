@@ -1,4 +1,4 @@
-// Primo Giocatore v4.28.1 - 202611121800 (avvisi di richieste riletti al massimo una volta al minuto, non a ogni cambio di scheda)
+// Primo Giocatore v4.29.0 - 202611131900 (richieste con tempo massimo, schermata d'errore con «Ricarica», profilo non più riletto a ogni ritorno all'app)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -1052,7 +1052,10 @@ export default function App() {
         else setErroreProfilo('Il profilo non è stato creato: controlla il trigger su auth.users.')
       })
     return () => { vivo = false }
-  }, [sessione, riprova])
+    // Solo quando cambia la persona: tornando all'app la libreria rimanda
+    // «accesso fatto» con una sessione nuova ma uguale, e rileggere il
+    // profilo cancellava quello che si stava scrivendo senza aver salvato.
+  }, [sessione?.user?.id, riprova])
 
   // Modifiche fatte senza rete appena partite (o rifiutate): il profilo si rilegge.
   useEffect(() => {
