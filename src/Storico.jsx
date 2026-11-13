@@ -1,10 +1,10 @@
 // Primo Giocatore - Storico
-// v4.1.0 - 202611132100 (ricerca che non rallenta la scrittura: il testo di ogni partita si prepara una volta sola)
+// v4.1.1 - 202611132200 (le partite arrivate da BGA non hanno «Modifica»)
 
 import { unisciCondivise } from './condivise'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
-import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
+import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import { leggiBozza } from './bozza'
@@ -357,12 +357,14 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
 
                 {p.registrata_da === profilo.id && (
                   <div className="azioni-partita">
-                    <button
-                      className="bottone-piatto"
-                      onClick={() => onModifica?.(p.id, { sezione, cerca, dove, aperta: p.id })}
-                    >
-                      Modifica
-                    </button>
+                    {!daBga(p) && (
+                      <button
+                        className="bottone-piatto"
+                        onClick={() => onModifica?.(p.id, { sezione, cerca, dove, aperta: p.id })}
+                      >
+                        Modifica
+                      </button>
+                    )}
                     <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
                       Cancella
                     </button>

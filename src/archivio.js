@@ -1,5 +1,5 @@
 // Primo Giocatore - l'archivio delle partite, uno solo per tutta l'app
-// v1.5.0 - 202611132100 (sul telefono una riga per partita: a ogni novità si scrivono solo le partite cambiate, non tutto l'archivio)
+// v1.5.1 - 202611132200 (riconosce le partite arrivate da BGA)
 //
 // Storico e Statistiche leggevano ognuno, a ogni apertura, tutte le
 // partite (migliaia, con giocatori e punteggi). Ora le legge una volta
@@ -16,6 +16,7 @@ import { luoghiPerChiGuarda } from './luoghiNome'
 
 const CAMPI = `
   id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, registrata_da,
+  chiave_esterna, bga_tavolo,
   giochi ( id, nome, immagine_url ),
   luoghi ( id, nome, tipo ),
   partecipazioni (
@@ -24,6 +25,12 @@ const CAMPI = `
     ospiti:ospite_id ( nome, utente_collegato )
   )
 `
+
+// Arrivata da Board Game Arena: è già completa così, non si modifica né si rifà.
+// L'archivio veloce non porta la chiave d'origine: lì si riconosce dal luogo
+// in cui l'import mette tutte le partite di BGA.
+export const daBga = (p) => p?.bga_tavolo != null || /^bga:/.test(p?.chiave_esterna || '')
+  || (p?.luoghi?.tipo === 'online' && p.luoghi.nome === 'Board Game Arena')
 
 let stato = { utente: null, righe: null, lettura: null, cache: undefined }
 const ascoltatori = new Set()
