@@ -1,9 +1,10 @@
 // Primo Giocatore - Statistiche
-// v3.22.1 - 202611030500 (singolare e plurale: «1 partita», «1 vinta», «1 gioco»)
+// v3.23.0 - 202611131200 (Primeggio a pezzi: la classifica generale e le righe di chi o cosa si guarda, non più la tabella intera)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, COLORI, daMostrare } from './supabase'
+import { ipgGenerale, ipgPersona, ipgGioco, dimenticaIpg } from './ipgDati'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
@@ -124,17 +125,30 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
   useEffect(() => { carica() }, [])
 
   // Primeggio: gli IPG calcolati sul server, uguali per tutti.
+  // Non più la tabella intera: all'apertura la classifica generale, poi
+  // le righe del giocatore o del gioco che si guarda (src/ipgDati.js),
+  // unite a quelle già lette. «letti» dice quali pezzi sono completi:
+  // la classifica di un gioco si mostra solo quando ci sono tutte le sue
+  // righe, non con le poche arrivate guardando qualche giocatore.
   const [primeggio, setPrimeggio] = useState([])
+  const [letti, setLetti] = useState(() => new Set())
   const [ricalcolo, setRicalcolo] = useState('')
-  useEffect(() => { caricaPrimeggio() }, [])
-  async function caricaPrimeggio() {
-    try {
-      const righe = await tutteLeRighe(() => supabase.from('ipg')
-        .select('profilo_id, gioco_id, ipg, partite, posizione, nome, colore, aggiornato_il')
-        .order('profilo_id').order('gioco_id'), 1000, null)
-      setPrimeggio(righe)
-    } catch { /* tabella non ancora creata: il Primeggio resta nascosto */ }
+  const [giroIpg, setGiroIpg] = useState(0)   // cresce dopo un ricalcolo: si rilegge tutto
+  function unisciIpg(pezzo, righe) {
+    setPrimeggio((prima) => {
+      const m = new Map(prima.map((r) => [`${r.profilo_id}|${r.gioco_id}`, r]))
+      for (const r of righe) m.set(`${r.profilo_id}|${r.gioco_id}`, r)
+      return [...m.values()]
+    })
+    setLetti((prima) => new Set(prima).add(pezzo))
   }
+  function leggiPezzo(pezzo, leggi) {
+    let vivo = true
+    leggi().then((righe) => { if (vivo) unisciIpg(pezzo, righe) },
+      () => { /* tabella non ancora creata: il Primeggio resta nascosto */ })
+    return () => { vivo = false }
+  }
+  useEffect(() => leggiPezzo('generale', () => ipgGenerale({ leggere: true })), [giroIpg])
   async function ricalcolaPrimeggio() {
     setRicalcolo('Ricalcolo in corso…')
     try {
@@ -146,7 +160,10 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
         ? ` Pesi BGG ancora da recuperare: ${j.pesi_mancanti} giochi (ripeti il ricalcolo o aspetta la notte).`
         : ''
       setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}`)
-      await caricaPrimeggio()
+      dimenticaIpg()
+      setPrimeggio([])
+      setLetti(new Set())
+      setGiroIpg((n) => n + 1)
     } catch (e) {
       setRicalcolo(`Non riuscito: ${e.message}`)
     }
@@ -162,9 +179,11 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     return m
   }, [primeggio])
   const ipgDi = (id, gioco = '') => indiceIpg.get(`${id}|${String(gioco || '')}`)
-  const classificaDi = (gioco = '') => primeggio
-    .filter((r) => r.gioco_id === String(gioco || '') && r.posizione != null)
-    .sort((a, b) => a.posizione - b.posizione)
+  const classificaDi = (gioco = '') => (letti.has(gioco ? `gioco:${gioco}` : 'generale')
+    ? primeggio
+      .filter((r) => r.gioco_id === String(gioco || '') && r.posizione != null)
+      .sort((a, b) => a.posizione - b.posizione)
+    : [])
 
   // Arrivo da un'altra scheda: apro direttamente su quel soggetto.
   useEffect(() => {
@@ -504,8 +523,6 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
 
   /* ---------- Vista ---------- */
 
-  if (caricamento) return <div className="scheda"><p>Conto&hellip;</p></div>
-
   const tutteOpzioni = tipo === 'persona' ? elenchi.persone
     : tipo === 'gioco' ? elenchi.giochi
     : tipo === 'luogo' ? [...elenchi.luoghi, ['ignoto', 'Non indicato']]
@@ -514,6 +531,22 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
   // Se ciò che era scelto non c'è più (es. cambio di elenco), il primo.
   // Calcolato, non impostato: cambiare stato qui romperebbe il disegno.
   const attivo = tutteOpzioni.some(([id]) => id === scelto) ? scelto : tutteOpzioni[0]?.[0] ?? null
+
+  // Le righe Primeggio di chi o di cosa si sta guardando. Gli ospiti non
+  // hanno IPG: per loro non si chiede niente.
+  const pezzoIpg = caricamento || attivo == null ? null
+    : tipo === 'persona' ? (String(attivo).startsWith('ospite:') ? null : `persona:${attivo}`)
+    : tipo === 'gioco' ? `gioco:${attivo}`
+    : null
+  useEffect(() => {
+    if (!pezzoIpg) return
+    const id = pezzoIpg.slice(pezzoIpg.indexOf(':') + 1)
+    return leggiPezzo(pezzoIpg, () => (pezzoIpg.startsWith('persona:')
+      ? ipgPersona(id, { leggere: true })
+      : ipgGioco(id, { leggere: true })))
+  }, [pezzoIpg, giroIpg])
+
+  if (caricamento) return <div className="scheda"><p>Conto&hellip;</p></div>
 
   const vaiAlGiocatore = (chiave) => { setTipo('persona'); setScelto(chiave) }
   const vaiAlGioco = (id) => { setTipo('gioco'); setScelto(id) }

@@ -1,5 +1,5 @@
 -- Primo Giocatore - Primeggio e Classifiche più leggeri
--- v1.0.0 - 202611131200
+-- v1.1.0 - 202611132200 (giocatori nell'ordine dell'indice, come PostgREST, non per ctid; classifiche_giochi con i pari merito al confine)
 --
 -- Il traffico verso Supabase (egress) era quasi tutto qui:
 -- - il ricalcolo notturno del Primeggio leggeva ogni notte tutte le
@@ -14,10 +14,12 @@
 -- 2. classifiche_giochi: il riepilogo per gioco della pagina Classifiche
 --    (nome, quanti in classifica, chi è primo), già calcolato qui;
 -- 3. gli indici per leggere la tabella ipg per gioco e per persona.
--- I giocatori di ogni partita escono nell'ordine in cui sono salvati nel
--- database (ctid), lo stesso in cui li dava la lettura di prima: in casi
--- rari (la stessa persona due volte nella stessa partita) il calcolo ne
--- tiene conto, e così l'IPG resta quello di prima.
+-- I giocatori di ogni partita escono nello stesso ordine in cui li dava
+-- la lettura di prima (PostgREST, dall'indice su partita_id): il calcolo
+-- ne dipende (la stessa persona due volte nella stessa partita, e gli
+-- arrotondamenti di openskill), e così l'IPG resta identico.
+-- La v1.0.0 li ordinava per ctid: dopo certe modifiche di una riga
+-- l'ordine era diverso. Rilanciare questo script la sostituisce.
 -- Lanciare PRIMA di caricare i file. Si può rilanciare senza danni.
 -- Se i file arrivano prima dello script, l'app e il server continuano
 -- a funzionare come prima.
@@ -36,12 +38,22 @@ with pg as materialized (
   order by p.id
   limit greatest(1, least(coalesce(p_limite, 2000), 5000))
 ),
+-- I giocatori di ogni partita si leggono come li leggeva PostgREST: una
+-- partita alla volta, dall'indice su partita_id, e «riga» ne fissa
+-- l'ordine di arrivo. Non è l'ordine per ctid: quando una riga viene
+-- modificata senza spostarsi di pagina (aggiornamento «HOT») il ctid
+-- cambia, ma l'indice continua a darla nella posizione di prima.
 pt as materialized (
-  select x.partita_id, x.ctid as riga, x.utente_id, x.ospite_id, x.punteggio_totale, x.posizione,
-         x.vincitore, o.utente_collegato
-  from partecipazioni x
-  join pg on pg.id = x.partita_id
-  left join ospiti o on o.id = x.ospite_id
+  select pg.id as partita_id, x.riga, x.utente_id, x.ospite_id, x.punteggio_totale, x.posizione,
+         x.vincitore, x.utente_collegato
+  from pg
+  cross join lateral (
+    select y.utente_id, y.ospite_id, y.punteggio_totale, y.posizione, y.vincitore,
+           (select o.utente_collegato from ospiti o where o.id = y.ospite_id) as utente_collegato,
+           row_number() over () as riga
+    from partecipazioni y
+    where y.partita_id = pg.id
+  ) x
 ),
 chiavi as materialized (
   select k, (row_number() over (order by k)) - 1 as n
@@ -86,25 +98,45 @@ grant execute on function public.primeggio_partite(uuid, int) to service_role;
 
 -- 2. -------------------------------------------------------------------
 -- Con i permessi di chi guarda: valgono le regole della tabella ipg.
+-- L'ordine è quello della pagina: più classificati, più giocatori, poi
+-- il nome. Il nome però lo ordina l'app (alfabeto italiano del browser):
+-- il database ha regole sue (per esempio ignora spazi e apostrofi), e al
+-- confine del limite potrebbe scegliere giochi diversi. Per questo qui
+-- si restituiscono i primi p_limite giochi PIÙ quelli a pari merito con
+-- l'ultimo (stessi classificati e giocatori): l'app li ordina e taglia.
+-- A parità anche di nome vale l'ordine che dava la pagina di prima (la
+-- prima riga del gioco nella tabella letta per profilo_id e gioco_id).
 create or replace function public.classifiche_giochi(
   p_cerca text default null,
   p_limite int default 30
 ) returns table (gioco_id text, nome text, immagine text, classificati int, giocatori int, primo text)
 language sql stable security invoker set search_path to 'public'
 as $function$
-  select i.gioco_id::text,
-         max(i.gioco_nome)::text,
-         max(i.gioco_immagine)::text,
-         (count(*) filter (where i.posizione is not null))::int,
-         count(*)::int,
-         ((array_agg(i.nome order by i.posizione) filter (where i.posizione is not null))[1])::text
-  from ipg i
-  where i.gioco_id::text <> ''
-  group by i.gioco_id
-  having coalesce(p_cerca, '') = ''
-      or position(lower(p_cerca) in lower(coalesce(max(i.gioco_nome), 'Gioco'))) > 0
-  order by 4 desc, 5 desc, coalesce(max(i.gioco_nome), 'Gioco')
-  limit greatest(1, least(coalesce(p_limite, 30), 200))
+  with g as (
+    select i.gioco_id::text as gioco_id,
+           max(i.gioco_nome)::text as nome,
+           max(i.gioco_immagine)::text as immagine,
+           (count(*) filter (where i.posizione is not null))::int as classificati,
+           count(*)::int as giocatori,
+           ((array_agg(i.nome order by i.posizione) filter (where i.posizione is not null))[1])::text as primo,
+           min(i.profilo_id::text collate "C") as primo_profilo
+    from ipg i
+    where i.gioco_id::text <> ''
+    group by i.gioco_id
+    having coalesce(p_cerca, '') = ''
+        or position(lower(p_cerca) in lower(coalesce(max(i.gioco_nome), 'Gioco'))) > 0
+  ),
+  soglia as (
+    select g.classificati, g.giocatori from g
+    order by g.classificati desc, g.giocatori desc
+    offset greatest(1, least(coalesce(p_limite, 30), 200)) - 1
+    limit 1
+  )
+  select g.gioco_id, g.nome, g.immagine, g.classificati, g.giocatori, g.primo
+  from g
+  where not exists (select 1 from soglia)
+     or (g.classificati, g.giocatori) >= (select s.classificati, s.giocatori from soglia s)
+  order by g.classificati desc, g.giocatori desc, g.primo_profilo, g.gioco_id
 $function$;
 
 revoke all on function public.classifiche_giochi(text, int) from public, anon;
