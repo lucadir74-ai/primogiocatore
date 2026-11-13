@@ -1,12 +1,12 @@
 // Primo Giocatore - Statistiche
-// v3.23.0 - 202611131200 (Primeggio a pezzi: la classifica generale e le righe di chi o cosa si guarda, non più la tabella intera)
+// v3.23.1 - 202611132200 (le partite arrivate da BGA non hanno «Modifica»)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
 import { ipgGenerale, ipgPersona, ipgGioco, dimenticaIpg } from './ipgDati'
 import { unisciCondivise } from './condivise'
-import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio } from './archivio'
+import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -1041,7 +1041,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
 
                     {p.registrata_da === profilo.id && (
                       <div className="azioni-partita">
-                        {onModifica && (
+                        {onModifica && !daBga(p) && (
                           <button className="bottone-piatto" onClick={() => onModifica(p.id)}>
                             Modifica
                           </button>

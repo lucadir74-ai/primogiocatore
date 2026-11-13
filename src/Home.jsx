@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.5.1 - 202611131500 (tolto il collegamento ai contatti in fondo: c'è la voce nella barra in basso)
+// v1.5.2 - 202611132200 («Rifai l'ultima» guarda solo le partite dal vivo, non quelle online)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -8,7 +8,7 @@
 import { nomeLuogo } from './luoghiNome'
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
-import { archivioInMemoria, leggiArchivio, seguiArchivio } from './archivio'
+import { archivioInMemoria, leggiArchivio, seguiArchivio, daBga } from './archivio'
 import { unisciCondivise } from './condivise'
 import { leggiBozza, scriviBozza } from './bozza'
 import { copertinaTavolo } from './immagini'
@@ -106,7 +106,8 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
 
   useEffect(() => seguiArchivio((righe) => setPartite(ordina(righe))), [profilo.id])
 
-  const ultima = partite?.[0] || null
+  // Solo dal vivo: una partita online (BGA o altra piattaforma) non si rifà al tavolo.
+  const ultima = partite?.find((p) => !daBga(p) && p.luoghi?.tipo !== 'online') || null
 
   // «Rifai l'ultima»: stesso gioco e stessi giocatori, il resto da capo.
   async function rifaiUltima() {
