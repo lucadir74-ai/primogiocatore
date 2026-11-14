@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.4.0 - 202611141800 (nell'elenco per gioco c'è anche la tua posizione: «tu sei 3° su 7»)
+// v1.4.0 - 202611141800 (elenco per gioco più chiaro: «Fenadir è 1° su 7 · tu sei 3°»)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -77,7 +77,7 @@ function useRighe(id, leggi) {
 function mioPosto(mia, g) {
   if (!mia) return null
   if (mia.posizione != null) {
-    return <strong className="mio-posto"> · {mia.posizione === 1 ? 'il 1° sei tu' : `tu sei ${mia.posizione}°`}</strong>
+    return mia.posizione === 1 ? null : <strong> · tu sei {mia.posizione}°</strong>
   }
   const mancano = MIN_GIOCO - (mia.partite || 0)
   if (g.classificati > 0 && mancano > 0) return ` · a te ${mancano === 1 ? 'manca 1 partita' : `mancano ${mancano} partite`}`
@@ -306,9 +306,11 @@ export default function Classifiche({ profilo, onIndietro }) {
                   <div className="nome-giocatore">
                     <button className="nome-cliccabile" onClick={() => setGiocoAperto(g.id)}>{g.nome}</button>
                     <span className="anno block">
-                      {g.classificati > 0
-                        ? `1° ${g.primo} · ${g.classificati} in classifica`
-                        : `${g.giocatori} ${g.giocatori === 1 ? 'iscritto' : 'iscritti'} · classifica da ${MIN_GIOCO} partite`}
+                      {g.classificati === 0
+                        ? `${g.giocatori} ${g.giocatori === 1 ? 'iscritto' : 'iscritti'} · classifica da ${MIN_GIOCO} partite`
+                        : mie.get(String(g.id))?.posizione === 1
+                          ? <strong>Tu sei 1° su {g.classificati}</strong>
+                          : `${g.primo} è 1° su ${g.classificati}`}
                       {mioPosto(mie.get(String(g.id)), g)}
                     </span>
                   </div>
