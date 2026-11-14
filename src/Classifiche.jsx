@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.3.0 - 202611131200 (si legge solo ciò che si guarda: niente più tabella intera a ogni apertura)
+// v1.4.0 - 202611141800 (elenco per gioco più chiaro: «Fenadir è 1° su 7 · tu sei 3°»)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -73,10 +73,22 @@ function useRighe(id, leggi) {
   return stato.id === id ? stato : { id, righe: null, errore: '' }
 }
 
+// La mia posizione in un gioco dell'elenco: niente se non ci ho mai giocato.
+function mioPosto(mia, g) {
+  if (!mia) return null
+  if (mia.posizione != null) {
+    return mia.posizione === 1 ? null : <strong> · tu sei {mia.posizione}°</strong>
+  }
+  const mancano = MIN_GIOCO - (mia.partite || 0)
+  if (g.classificati > 0 && mancano > 0) return ` · a te ${mancano === 1 ? 'manca 1 partita' : `mancano ${mancano} partite`}`
+  return null
+}
+
 export default function Classifiche({ profilo, onIndietro }) {
   const [tutti, setTutti] = useState([])          // righe della classifica generale
   const [primiGiochi, setPrimiGiochi] = useState([])
   const [senzaNomi, setSenzaNomi] = useState(false)
+  const [mie, setMie] = useState(() => new Map())   // gioco_id -> la mia riga
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
   const [vista, setVista] = useState('generale')   // generale | giochi
@@ -99,6 +111,10 @@ export default function Classifiche({ profilo, onIndietro }) {
       }
     })()
     giochiSenzaNome().then((s) => { if (vivo) setSenzaNomi(s) }, () => {})
+    // Le mie posizioni gioco per gioco, per l'elenco «Per gioco».
+    ipgPersona(profilo.id).then((righe) => {
+      if (vivo) setMie(new Map(righe.filter((r) => r.gioco_id !== '').map((r) => [String(r.gioco_id), r])))
+    }, () => {})
     return () => { vivo = false }
   }, [])
 
@@ -290,9 +306,12 @@ export default function Classifiche({ profilo, onIndietro }) {
                   <div className="nome-giocatore">
                     <button className="nome-cliccabile" onClick={() => setGiocoAperto(g.id)}>{g.nome}</button>
                     <span className="anno block">
-                      {g.classificati > 0
-                        ? `1° ${g.primo} · ${g.classificati} in classifica`
-                        : `${g.giocatori} ${g.giocatori === 1 ? 'iscritto' : 'iscritti'} · classifica da ${MIN_GIOCO} partite`}
+                      {g.classificati === 0
+                        ? `${g.giocatori} ${g.giocatori === 1 ? 'iscritto' : 'iscritti'} · classifica da ${MIN_GIOCO} partite`
+                        : mie.get(String(g.id))?.posizione === 1
+                          ? <strong>Tu sei 1° su {g.classificati}</strong>
+                          : `${g.primo} è 1° su ${g.classificati}`}
+                      {mioPosto(mie.get(String(g.id)), g)}
                     </span>
                   </div>
                 </li>
