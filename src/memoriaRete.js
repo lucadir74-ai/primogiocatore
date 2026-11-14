@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.4.0 - 202611141500 (si annota quale richiesta ha risposto in ritardo e in quanto tempo: si legge in Dati e import)
+// v1.5.0 - 202611141700 (risposta in ritardo: niente più avviso; la copia si mostra in silenzio e i dati nuovi valgono dalla prossima apertura della pagina)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -24,7 +24,7 @@ const FUNZIONI_DI_LETTURA = new Set([
   'classifiche_giochi',
 ])
 
-const ATTESA = 4000                 // oltre, se c'è una copia si mostra quella (e i dati nuovi, quando arrivano, si offrono)
+const ATTESA = 4000                 // oltre, se c'è una copia si mostra quella (i dati nuovi, quando arrivano, valgono dalla volta dopo)
 const FRESCA_PER = 120000           // per quanto una risposta arrivata in ritardo vale senza richiederla
 const SCADENZA = 45 * 86400000      // le copie non riviste da 45 giorni si buttano
 const PESO_MASSIMO = 4_000_000      // caratteri: le risposte enormi non si tengono
@@ -40,9 +40,6 @@ const MASSIMO_FILE = 120000         // foto caricate
 
 let giuFino = 0
 let datiVecchi = false
-// La rete era lenta e si è mostrata la copia; poi la risposta è arrivata:
-// l'avviso in cima offre di aggiornare la pagina (StatoRete.jsx).
-let nuoviArrivati = false
 const fresche = new Map()   // nome della copia -> quando è arrivata la risposta in ritardo
 const ascoltatori = new Set()
 
@@ -53,13 +50,7 @@ const inLinea = () => typeof navigator === 'undefined' || navigator.onLine !== f
 export const reteGiu = () => !inLinea() || Date.now() < giuFino
 
 // Per l'avviso in cima all'app.
-export const statoRete = () => ({ senzaRete: !inLinea(), datiVecchi, nuoviArrivati })
-// La pagina è stata aggiornata (o cambiata): l'offerta non serve più.
-export function vistiINuovi() {
-  if (!nuoviArrivati) return
-  nuoviArrivati = false
-  avvisa()
-}
+export const statoRete = () => ({ senzaRete: !inLinea(), datiVecchi })
 export function seguiRete(f) {
   ascoltatori.add(f)
   return () => ascoltatori.delete(f)
@@ -72,7 +63,7 @@ function segna(vecchi) {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => { giuFino = 0; datiVecchi = false; nuoviArrivati = false; avvisa() })
+  window.addEventListener('online', () => { giuFino = 0; datiVecchi = false; avvisa() })
   window.addEventListener('offline', avvisa)
 }
 
@@ -370,18 +361,22 @@ export async function fetchConMemoria(indirizzo, opzioni) {
   if (esito.lenta) {
     const c = await copia
     if (c) {
-      // La rete c'è ma non risponde: si mostra la copia; se poi la
-      // risposta arriva, resta da parte per la prossima volta.
+      // Il server tarda: si mostra la copia, senza avvisi. Se poi la
+      // risposta arriva resta da parte per la prossima volta; se non
+      // arriva affatto, allora sì che si avvisa.
       rete.then(async (x) => {
-        if (!x.r?.ok) return
+        if (x.e) {
+          if (eInterruzione(x.e)) return
+          giuFino = Date.now() + PAUSA_DOPO_GUASTO
+          segna(true)
+          return
+        }
+        if (!x.r.ok) return
         await mettiDaParte(chiave, x.r)
         giuFino = 0
         fresche.set(chiave, Date.now())
-        datiVecchi = false
-        nuoviArrivati = true
-        avvisa()
+        segna(false)
       })
-      segna(true)
       return ricostruisci(c)
     }
     esito = await rete

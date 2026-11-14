@@ -1,5 +1,5 @@
 // Primo Giocatore - l'avviso «senza rete» e le partite in attesa
-// v1.1.0 - 202611141500 (l'avviso parla di server in ritardo, non di rete lenta: si misura la risposta del database, non la linea)
+// v1.2.0 - 202611141700 (tolto l'avviso «il server ha risposto in ritardo»: non serviva a chi usa l'app)
 //
 // Sta in cima all'app, sotto la testata. Dice tre cose, solo quando servono:
 // - manca la rete (o non risponde): quello che vedi è dell'ultima volta;
@@ -11,15 +11,13 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { statoRete, seguiRete, vistiINuovi } from './memoriaRete'
+import { statoRete, seguiRete } from './memoriaRete'
 import { leggiCoda, inviaCoda, EVENTO_CODA } from './coda'
 import { leggiArchivio } from './archivio'
 import { leggiModifiche, inviaModifiche, EVENTO_MODIFICHE } from './modifiche'
 import { inviaABggSeServe } from './invioBgg'
 
-// pagina: quella aperta; onAggiorna: la ridisegna con i dati appena arrivati
-// (assente dove ridisegnare farebbe perdere quello che si sta scrivendo).
-export default function StatoRete({ profilo, pagina, onAggiorna }) {
+export default function StatoRete({ profilo }) {
   const [rete, setRete] = useState(statoRete)
   const [inCoda, setInCoda] = useState(() => leggiCoda(profilo?.id).length)
   const [esito, setEsito] = useState(null)   // { salvate } | { rifiutate, motivo }
@@ -27,8 +25,6 @@ export default function StatoRete({ profilo, pagina, onAggiorna }) {
   const [esitoModifiche, setEsitoModifiche] = useState(null)   // { salvate } | { cosa, motivo }
 
   useEffect(() => seguiRete(setRete), [])
-  // Cambiata pagina: quella nuova ha già letto per conto suo.
-  useEffect(() => { vistiINuovi() }, [pagina])
 
   useEffect(() => {
     if (!profilo?.id) return
@@ -92,8 +88,7 @@ export default function StatoRete({ profilo, pagina, onAggiorna }) {
   }, [profilo?.id])
 
   const fuori = rete.senzaRete || rete.datiVecchi
-  const nuovi = rete.nuoviArrivati && !fuori && Boolean(onAggiorna)
-  if (!fuori && !nuovi && !inCoda && !esito && !modifiche && !esitoModifiche) return null
+  if (!fuori && !inCoda && !esito && !modifiche && !esitoModifiche) return null
 
   return (
     <div className="stato-rete" role="status">
@@ -104,12 +99,6 @@ export default function StatoRete({ profilo, pagina, onAggiorna }) {
             <strong>{rete.senzaRete ? 'Sei senza rete.' : 'Il server non risponde.'}</strong>{' '}
             Vedi i dati dell&rsquo;ultima volta. Puoi registrare partite: partono da sole quando torna la linea.
           </span>
-        </p>
-      )}
-      {nuovi && (
-        <p className="stato-rete-riga">
-          Il server ha risposto in ritardo: intanto vedi i dati dell&rsquo;ultima volta. Ora sono arrivati quelli nuovi.{' '}
-          <button type="button" className="bottone-piatto" onClick={() => { vistiINuovi(); onAggiorna() }}>Aggiorna la pagina</button>
         </p>
       )}
       {inCoda > 0 && (
