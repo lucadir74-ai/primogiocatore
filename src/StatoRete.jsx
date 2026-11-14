@@ -1,5 +1,5 @@
 // Primo Giocatore - l'avviso «senza rete» e le partite in attesa
-// v1.0.0 - 202611101200
+// v1.1.0 - 202611141500 (l'avviso parla di server in ritardo, non di rete lenta: si misura la risposta del database, non la linea)
 //
 // Sta in cima all'app, sotto la testata. Dice tre cose, solo quando servono:
 // - manca la rete (o non risponde): quello che vedi è dell'ultima volta;
@@ -101,14 +101,14 @@ export default function StatoRete({ profilo, pagina, onAggiorna }) {
         <p className="stato-rete-riga stato-rete-fuori">
           <span className="stato-rete-pallino" aria-hidden="true" />
           <span>
-            <strong>{rete.senzaRete ? 'Sei senza rete.' : 'La rete non risponde.'}</strong>{' '}
+            <strong>{rete.senzaRete ? 'Sei senza rete.' : 'Il server non risponde.'}</strong>{' '}
             Vedi i dati dell&rsquo;ultima volta. Puoi registrare partite: partono da sole quando torna la linea.
           </span>
         </p>
       )}
       {nuovi && (
         <p className="stato-rete-riga">
-          La rete era lenta e vedi i dati dell&rsquo;ultima volta: ora sono arrivati quelli nuovi.{' '}
+          Il server ha risposto in ritardo: intanto vedi i dati dell&rsquo;ultima volta. Ora sono arrivati quelli nuovi.{' '}
           <button type="button" className="bottone-piatto" onClick={() => { vistiINuovi(); onAggiorna() }}>Aggiorna la pagina</button>
         </p>
       )}

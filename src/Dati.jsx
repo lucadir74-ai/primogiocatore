@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v5.0.0 - 202611121200 (procedura guidata in quattro passi: giochi da BGG, partite da BGG, BGA, file; l'utente BGG si scrive una volta)
+// v5.1.0 - 202611141500 (elenco delle risposte lente del server)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -11,6 +11,7 @@ import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
 import { importaCollezioneBgg, contaCollezioneBgg, fraseCollezione } from './collezioneBgg'
+import { risposteLente, svuotaRisposteLente } from './memoriaRete'
 import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
 
 const OGGI = () => new Date().toISOString().slice(0, 10)
@@ -58,6 +59,36 @@ function ArchivioTelefono({ profilo }) {
       </p>
       <button className="bottone bottone-secondario" onClick={ricarica} disabled={lavoro}>Ricarica tutto l&rsquo;archivio</button>
       {stato && <p className="aiuto">{stato}</p>}
+    </Sezione>
+  )
+}
+
+// Le richieste al database che hanno risposto in ritardo (memoriaRete.js):
+// quando compare l'avviso «il server ha risposto in ritardo», qui si vede quale.
+function RisposteLente() {
+  const [righe, setRighe] = useState(() => risposteLente())
+  const quando = (t) => new Date(t).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const secondi = (ms) => (ms / 1000).toLocaleString('it-IT', { maximumFractionDigits: 1 })
+  return (
+    <Sezione id="risposte-lente" titolo="Risposte lente del server" nota={righe.length ? String(righe.length) : null}>
+      <p className="aiuto">
+        Le richieste a cui il server ha risposto dopo più di 4 secondi, su questo telefono: servono a capire cosa rallenta l&rsquo;app.
+      </p>
+      {righe.length === 0 ? (
+        <p className="aiuto">Nessuna finora.</p>
+      ) : (
+        <>
+          <ul className="risposte-lente">
+            {righe.map((r, i) => (
+              <li key={i}>
+                <strong>{r.cosa}</strong> · {secondi(r.ms)} s{r.arrivata ? '' : ' · non arrivata'}
+                <span className="anno block">{quando(r.quando)}{r.dettaglio ? ` · ${r.dettaglio}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+          <button className="bottone bottone-secondario" onClick={() => { svuotaRisposteLente(); setRighe([]) }}>Svuota l&rsquo;elenco</button>
+        </>
+      )}
     </Sezione>
   )
 }
@@ -796,6 +827,7 @@ export default function Dati({ profilo }) {
       </Passo>
 
       <ArchivioTelefono profilo={profilo} />
+      <RisposteLente />
 
       <Sezione id="esporta" titolo="Esporta" nota="una copia delle tue partite">
         <button className="bottone" onClick={esportaJson} disabled={lavorando}>

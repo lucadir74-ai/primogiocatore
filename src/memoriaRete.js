@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.3.1 - 202611132200 (anche l'elenco dei giochi delle Classifiche, classifiche_giochi, resta da parte)
+// v1.4.0 - 202611141500 (si annota quale richiesta ha risposto in ritardo e in quanto tempo: si legge in Dati e import)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -262,6 +262,57 @@ async function fetchATempo(indirizzo, opzioni, massimo) {
   }
 }
 
+/* ---------- Il registro delle risposte lente ---------- */
+
+// Ogni richiesta al database che supera ATTESA resta annotata sul
+// telefono (le ultime 30): cosa si chiedeva e quanto ci ha messo. Serve a
+// capire quale lettura fa comparire l'avviso «il server ha risposto in
+// ritardo», invece di tirare a indovinare. Si legge in Dati e import.
+const CHIAVE_LENTE = 'primo-giocatore:risposte-lente'
+const LENTE_TENUTE = 30
+
+export function risposteLente() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHIAVE_LENTE) || '[]')
+    return Array.isArray(v) ? v : []
+  } catch { return [] }
+}
+export function svuotaRisposteLente() {
+  try { localStorage.removeItem(CHIAVE_LENTE) } catch { /* niente */ }
+}
+
+function descrivi(url, opzioni) {
+  try {
+    const u = new URL(url)
+    const metodo = (opzioni?.method || 'GET').toUpperCase()
+    const intestazioni = new Headers(opzioni?.headers || {})
+    const conta = metodo === 'HEAD' || /count=/.test(intestazioni.get('Prefer') || '')
+    const scrive = metodo !== 'GET' && metodo !== 'HEAD' && !u.pathname.includes('/rpc/')
+    const cosa = u.pathname.replace(/^\/(rest|auth|storage)\/v1\//, (_, t) => (t === 'rest' ? '' : `${t}/`))
+      + (conta ? ' (conteggio)' : '') + (scrive ? ' (scrittura)' : '')
+    let dettaglio = ''
+    try { dettaglio = decodeURIComponent(u.search.slice(1)) } catch { dettaglio = u.search.slice(1) }
+    if (!dettaglio && typeof opzioni?.body === 'string' && u.pathname.includes('/rpc/')) dettaglio = opzioni.body
+    return { cosa, dettaglio: dettaglio.replace(/\s+/g, ' ').slice(0, 200) }
+  } catch { return { cosa: 'richiesta', dettaglio: '' } }
+}
+
+// Segue una richiesta fino alla fine e la annota solo se è stata lenta.
+function cronometra(url, opzioni, promessa) {
+  const partenza = Date.now()
+  const annota = (arrivata) => {
+    const ms = Date.now() - partenza
+    if (ms < ATTESA) return
+    try {
+      const v = risposteLente()
+      v.unshift({ quando: partenza, ms, arrivata, ...descrivi(url, opzioni) })
+      localStorage.setItem(CHIAVE_LENTE, JSON.stringify(v.slice(0, LENTE_TENUTE)))
+    } catch { /* memoria piena o assente: pazienza */ }
+  }
+  promessa.then(() => annota(true), (e) => { if (!eInterruzione(e)) annota(false) })
+  return promessa
+}
+
 /* ---------- Il fetch che si dà a Supabase ---------- */
 
 export async function fetchConMemoria(indirizzo, opzioni) {
@@ -272,7 +323,7 @@ export async function fetchConMemoria(indirizzo, opzioni) {
   // nota di come va, per sapere se la rete c'è.
   if (!chiave) {
     try {
-      const r = await fetchATempo(indirizzo, opzioni, massimoPer(url))
+      const r = await cronometra(url, opzioni, fetchATempo(indirizzo, opzioni, massimoPer(url)))
       giuFino = 0
       return r
     } catch (e) {
@@ -307,7 +358,7 @@ export async function fetchConMemoria(indirizzo, opzioni) {
     }
   }
 
-  const rete = fetchATempo(indirizzo, opzioni, MASSIMO_LETTURA).then(
+  const rete = cronometra(url, opzioni, fetchATempo(indirizzo, opzioni, MASSIMO_LETTURA)).then(
     (r) => ({ r }),
     (e) => ({ e }),
   )
