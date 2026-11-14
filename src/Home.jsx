@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.5.3 - 202611141700 (il controllo «hai importato da BGG?» non si rifà a ogni apertura)
+// v1.6.0 - 202611142000 (tornando alla Home tavoli e IPG si vedono subito: la pagina non si ridisegna due volte)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -34,6 +34,11 @@ function chiHaVinto(p) {
 
 const giaOrdinate = new WeakMap()
 
+// I tavoli e l'IPG dell'ultima volta che la Home è stata aperta, finché
+// l'app resta aperta: tornando alla Home si vedono subito, e la pagina
+// non si ridisegna due volte (prima senza i tavoli, poi con).
+let ricordo = { id: null, tavoli: null, ipg: null }
+
 function Icona({ d }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -44,7 +49,7 @@ function Icona({ d }) {
 }
 
 export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati }) {
-  const [tavoli, setTavoli] = useState(null)
+  const [tavoli, setTavoli] = useState(() => (ricordo.id === profilo.id ? ricordo.tavoli : null))
   // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
   // importata (la lettura automatica parte solo dopo il primo import), o
   // nome BGA senza aver mai collegato l'account.
@@ -66,7 +71,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     profilo.bgg_username?.trim() && daBgg === 0 ? 'BGG' : null,
     profilo.bga_username?.trim() && !profilo.bga_id ? 'BGA' : null,
   ].filter(Boolean)
-  const [ipg, setIpg] = useState(null)
+  const [ipg, setIpg] = useState(() => (ricordo.id === profilo.id ? ricordo.ipg : null))
   // Unire le copie su tutto l'archivio costa: se arriva di nuovo lo stesso
   // elenco (apertura, poi rilettura senza novità), il risultato si riusa.
   const ordina = (righe) => {
@@ -94,7 +99,12 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       .gte('inizio', new Date().toISOString())
       .order('inizio', { ascending: true })
       .limit(300)   // un evento ne porta dieci al giorno: il conteggio deve restare giusto
-      .then(({ data }) => { if (!finito) setTavoli((data || []).filter((t) => t.pubblicato !== false)) })
+      .then(({ data, error }) => {
+        if (finito || (error && tavoli)) return   // lettura fallita: restano quelli di prima
+        const nuovi = (data || []).filter((t) => t.pubblicato !== false)
+        ricordo = { ...ricordo, id: profilo.id, tavoli: nuovi }
+        setTavoli(nuovi)
+      })
 
     // Il Primeggio generale: il mio IPG e quanti sono in classifica.
     Promise.all([
@@ -102,7 +112,10 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       supabase.from('ipg').select('profilo_id', { count: 'exact', head: true })
         .eq('gioco_id', '').not('posizione', 'is', null),
     ]).then(([mio, tutti]) => {
-      if (!finito && mio.data) setIpg({ ...mio.data, su: tutti.count || null })
+      if (finito || !mio.data) return
+      const nuovo = { ...mio.data, su: tutti.count || null }
+      ricordo = { ...ricordo, id: profilo.id, ipg: nuovo }
+      setIpg(nuovo)
     }).catch(() => { /* tabella assente: il riquadro mostra il trattino */ })
 
     leggiArchivio(profilo.id).then((r) => { if (!finito) setPartite(ordina(r)) }).catch(() => {

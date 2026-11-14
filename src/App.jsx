@@ -1,4 +1,4 @@
-// Primo Giocatore v4.31.0 - 202611141700 (apertura senza attese: accesso e profilo dal telefono, poi si aggiornano dalla rete; tolto l'avviso «Aggiorna la pagina»)
+// Primo Giocatore v4.31.1 - 202611142000 (dal menu in basso ogni pagina si apre dall'inizio, non scesa come quella di prima)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -1263,6 +1263,9 @@ export default function App() {
                   setRitornoStorico(null)
                   if (id === 'tavoli') setApriTavolo(null)
                   setScheda(id)
+                  // Sempre dall'inizio: senza, la pagina nuova si apriva
+                  // scesa quanto lo era quella di prima.
+                  window.scrollTo({ top: 0 })
                 }}
                 aria-current={scheda === id ? 'page' : undefined}
               >
