@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.23.1 - 202611132200 (le partite arrivate da BGA non hanno «Modifica»)
+// v3.24.0 - 202611141900 (il collegamento alle Classifiche è un tasto con la tua posizione in Primeggio)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
@@ -580,9 +580,21 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
     <div className="scheda">
       <h2>Statistiche</h2>
       {onClassifiche && (
-        <p className="aiuto">
-          <button className="bottone-piatto" onClick={onClassifiche}>Classifiche di tutti gli iscritti →</button>
-        </p>
+        <button type="button" className="tasto-classifiche" onClick={onClassifiche}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 4h8v5a4 4 0 0 1-8 0V4z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8.5 20h7 M10 17h4" />
+          </svg>
+          <span className="tasto-classifiche-testo">
+            <strong>Classifiche</strong>
+            <small>
+              {ipgDi(profilo.id)?.posizione
+                ? `Tu sei ${ipgDi(profilo.id).posizione}° su ${classificaDi().length} in Primeggio`
+                : 'Primeggio: tutti gli iscritti'}
+            </small>
+          </span>
+          <span className="tasto-classifiche-freccia" aria-hidden="true">›</span>
+        </button>
       )}
 
       {errore && <div className="avviso errore">{errore}</div>}
