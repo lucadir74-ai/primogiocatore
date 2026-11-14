@@ -1,5 +1,5 @@
 // Primo Giocatore - le letture dal database tenute da parte sul telefono
-// v1.5.0 - 202611141700 (risposta in ritardo: niente più avviso; la copia si mostra in silenzio e i dati nuovi valgono dalla prossima apertura della pagina)
+// v1.5.1 - 202611141830 (risposte lente: si segna se intanto l'app era in sottofondo)
 //
 // Ogni lettura riuscita (tavoli, giochi, classifiche, profilo…) resta
 // sul telefono. Si chiede sempre prima alla rete: la copia serve solo
@@ -288,15 +288,28 @@ function descrivi(url, opzioni) {
   } catch { return { cosa: 'richiesta', dettaglio: '' } }
 }
 
+// Con l'app in sottofondo (schermo spento, altra app aperta) il telefono
+// sospende le richieste: il tempo cresce anche se il server è veloce.
+// Si ricorda l'ultima volta che l'app è andata in sottofondo, così le
+// richieste rimaste a metà si riconoscono nell'elenco.
+let ultimoSottofondo = 0
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') ultimoSottofondo = Date.now()
+  })
+}
+
 // Segue una richiesta fino alla fine e la annota solo se è stata lenta.
 function cronometra(url, opzioni, promessa) {
   const partenza = Date.now()
   const annota = (arrivata) => {
     const ms = Date.now() - partenza
     if (ms < ATTESA) return
+    const sottofondo = ultimoSottofondo >= partenza
+      || (typeof document !== 'undefined' && document.visibilityState !== 'visible')
     try {
       const v = risposteLente()
-      v.unshift({ quando: partenza, ms, arrivata, ...descrivi(url, opzioni) })
+      v.unshift({ quando: partenza, ms, arrivata, sottofondo, ...descrivi(url, opzioni) })
       localStorage.setItem(CHIAVE_LENTE, JSON.stringify(v.slice(0, LENTE_TENUTE)))
     } catch { /* memoria piena o assente: pazienza */ }
   }

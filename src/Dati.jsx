@@ -1,5 +1,5 @@
 // Primo Giocatore - Esporta e importa
-// v5.1.0 - 202611141500 (elenco delle risposte lente del server)
+// v5.1.1 - 202611141830 (risposte lente: segnate quelle con l'app in sottofondo)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -81,7 +81,7 @@ function RisposteLente() {
           <ul className="risposte-lente">
             {righe.map((r, i) => (
               <li key={i}>
-                <strong>{r.cosa}</strong> · {secondi(r.ms)} s{r.arrivata ? '' : ' · non arrivata'}
+                <strong>{r.cosa}</strong> · {secondi(r.ms)} s{r.arrivata ? '' : ' · non arrivata'}{r.sottofondo ? ' · app in sottofondo (tempo non affidabile)' : ''}
                 <span className="anno block">{quando(r.quando)}{r.dettaglio ? ` · ${r.dettaglio}` : ''}</span>
               </li>
             ))}
