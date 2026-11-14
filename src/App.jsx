@@ -1,9 +1,9 @@
-// Primo Giocatore v4.30.0 - 202611132100 (versione nuova: si propone invece di ricaricare da soli; rete lenta: copia dopo 4 secondi e poi «Aggiorna la pagina»)
+// Primo Giocatore v4.31.0 - 202611141700 (apertura senza attese: accesso e profilo dal telefono, poi si aggiornano dalla rete; tolto l'avviso «Aggiorna la pagina»)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
 
-import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
@@ -824,6 +824,22 @@ function IconaEsci() {
   )
 }
 
+// Il profilo com'era all'ultima lettura, su questo telefono: all'apertura
+// si parte da questo, senza aspettare il database, e poi lo si aggiorna.
+const CHIAVE_PROFILO = 'primo-giocatore:profilo'
+function profiloSalvato(id) {
+  try {
+    const p = JSON.parse(localStorage.getItem(CHIAVE_PROFILO) || 'null')
+    return p?.id === id ? p : null
+  } catch { return null }
+}
+function salvaProfilo(p) {
+  try {
+    if (p) localStorage.setItem(CHIAVE_PROFILO, JSON.stringify(p))
+    else localStorage.removeItem(CHIAVE_PROFILO)
+  } catch { /* niente: alla prossima apertura si aspetta il database */ }
+}
+
 // Ultimi numeri degli avvisi (richieste, partite BGA in sospeso) su questo telefono.
 const CHIAVE_AVVISI = 'primo-giocatore:avvisi'
 function leggiAvvisi() {
@@ -888,8 +904,6 @@ export default function App() {
   const [tavoliChiesti, setTavoliChiesti] = useState(() => leggiAvvisi().tavoliChiesti || 0)   // richieste di tavolo per me
   const [daBgg, setDaBgg] = useState(null)   // { fatte, daControllare }
   const [controlloBga, setControlloBga] = useState(0)   // rifà la ricerca del nome BGA
-  // Ridisegna la pagina aperta: dopo una rete lenta, con i dati appena arrivati.
-  const [giroPagina, setGiroPagina] = useState(0)
 
   // Partite nuove su BGG (anche quelle che BG Stats ci pubblica, comprese
   // quelle di Board Game Arena): arrivano da sole all'apertura.
@@ -1010,6 +1024,10 @@ export default function App() {
       setSessione(s)
       setPronto(true)
     }
+    // Chi era già dentro entra subito con l'accesso salvato: il rinnovo
+    // lo fa la libreria intanto, prima della prima lettura.
+    const subito = sessioneSalvata()
+    if (subito) parti(subito)
     supabase.auth.getSession().then(({ data }) => parti(data.session || sessioneSalvata()), () => parti(sessioneSalvata()))
     // Rete che c'è ma non risponde: dopo qualche secondo non si aspetta più.
     const fretta = setTimeout(() => { const s = sessioneSalvata(); if (s) parti(s) }, 4000)
@@ -1023,6 +1041,7 @@ export default function App() {
       setPronto(true)
       if (!s) {
         setProfilo(null)
+        salvaProfilo(null)
         svuotaMemoriaRete()   // le copie sul telefono erano di chi è uscito
       }
       // Rientro dal collegamento di recupero: prima la password nuova.
@@ -1034,6 +1053,9 @@ export default function App() {
   useEffect(() => {
     if (!sessione) return
     let vivo = true
+    // Subito il profilo dell'ultima volta: l'app si apre senza aspettare.
+    const copia = profiloSalvato(sessione.user.id)
+    if (copia) setProfilo((p) => p || profiloConModifiche(copia))
     supabase
       .from('profili')
       .select('*')
@@ -1041,9 +1063,14 @@ export default function App() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (!vivo) return
-        if (error) setErroreProfilo(traduciErrore(error))
+        if (error) { if (!copia) setErroreProfilo(traduciErrore(error)) }
         else if (data) {
           setErroreProfilo('')
+          // Uguale a quello già sullo schermo: non si tocca niente (rimetterlo
+          // cancellerebbe quello che si sta scrivendo nel profilo).
+          const uguale = copia && JSON.stringify(copia) === JSON.stringify(data)
+          salvaProfilo(data)
+          if (uguale) return
           // Il nickname scelto all'iscrizione arriva con l'account: al
           // primo accesso finisce nel profilo, se non ce n'è già uno.
           const nick = sessione.user.user_metadata?.nickname?.trim()
@@ -1245,9 +1272,7 @@ export default function App() {
             ))}
           </nav>
 
-          {/* Nella pagina Partita non si offre di ridisegnare: si perderebbe la modifica in corso. */}
-          <StatoRete profilo={profilo} pagina={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
-            onAggiorna={scheda === 'partita' ? null : () => setGiroPagina((n) => n + 1)} />
+          <StatoRete profilo={profilo} />
           <Prepara profilo={profilo} aperta={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
             pagine={pagineDaPreparare} />
 
@@ -1329,7 +1354,6 @@ export default function App() {
 
           {scheda === 'home' && <Installa variante="avviso" />}
 
-          <Fragment key={giroPagina}>
           {scheda === 'home' ? (
             <Home
               profilo={profilo}
@@ -1455,7 +1479,6 @@ export default function App() {
               )
             })()
           )}
-          </Fragment>
 
         </>
       )}

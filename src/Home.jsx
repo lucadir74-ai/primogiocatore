@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.5.2 - 202611132200 («Rifai l'ultima» guarda solo le partite dal vivo, non quelle online)
+// v1.5.3 - 202611141700 (il controllo «hai importato da BGG?» non si rifà a ogni apertura)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -51,9 +51,16 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
   const [daBgg, setDaBgg] = useState(null)
   useEffect(() => {
     if (!profilo.bgg_username?.trim()) return
+    // Chi ha già importato non torna indietro: non si richiede a ogni apertura.
+    const fatto = `primo-giocatore:bgg-importato:${profilo.id}`
+    try { if (localStorage.getItem(fatto)) { setDaBgg(1); return } } catch { /* si chiede al database */ }
     supabase.from('partite').select('id', { count: 'exact', head: true })
       .eq('registrata_da', profilo.id).like('chiave_esterna', 'bgg:%')
-      .then(({ count, error }) => { if (!error) setDaBgg(count ?? 0) })
+      .then(({ count, error }) => {
+        if (error) return
+        setDaBgg(count ?? 0)
+        if (count > 0) { try { localStorage.setItem(fatto, '1') } catch { /* niente */ } }
+      })
   }, [profilo.id, profilo.bgg_username])
   const manca = [
     profilo.bgg_username?.trim() && daBgg === 0 ? 'BGG' : null,
