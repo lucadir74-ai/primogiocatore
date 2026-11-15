@@ -5,7 +5,7 @@
 // con cui quella persona si è iscritta.
 
 import { useEffect, useState } from 'react'
-import { supabase, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
 import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
@@ -128,7 +128,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       // Quelli già collegati a un account, o uniti a un altro ospite,
       // non sono più ospiti da gestire.
       setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in)
-        .map((x) => ({ ...x, partite: conteggio.get(x.id) || 0 })))
+        // Nella pagina il nome è quello intero: chi nasce dalla partita ha
+        // il cognome in un campo a parte.
+        .map((x) => ({ ...x, nome: nomeOspite(x), partite: conteggio.get(x.id) || 0 })))
     } catch (e) {
       setErrore(e.message)
     }
@@ -179,8 +181,16 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   async function salvaNome() {
     setErrore(''); setMessaggio('')
     if (!rinomina.nome.trim()) { setErrore('Il nome non può restare vuoto.'); return }
+    // Chi ha il cognome a parte lo tiene a parte: la prima parola è il
+    // nome, il resto il cognome. Gli altri restano scritti tutti nel nome.
+    const intero = rinomina.nome.trim().replace(/\s+/g, ' ')
+    const o = ospiti.find((x) => x.id === rinomina.id)
+    const parole = intero.split(' ')
+    const campi = o?.cognome && parole.length > 1
+      ? { nome: parole[0], cognome: parole.slice(1).join(' ') }
+      : { nome: intero, cognome: null }
     const { error } = await supabase
-      .from('ospiti').update({ nome: rinomina.nome.trim() }).eq('id', rinomina.id)
+      .from('ospiti').update(campi).eq('id', rinomina.id)
     if (error) setErrore(error.message)
     else { setMessaggio('Nome corretto.'); setRinomina(null); carica() }
   }

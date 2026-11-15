@@ -11,12 +11,12 @@
 // da più persone conta una volta sola, come in Storico e Statistiche.
 
 import { useEffect, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 
 // Se l'ospite si è iscritto, da qui in poi è la stessa persona.
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
-const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : (x.ospiti?.nome || 'Sconosciuto'))
+const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti))
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 const data = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -49,7 +49,7 @@ export default function RiepilogoPartita({ profilo, partitaId, giocoId, giocoNom
             partecipazioni (
               utente_id, ospite_id, punteggio_totale, posizione,
               profili:utente_id ( nome, nickname, colore ),
-              ospiti:ospite_id ( nome, utente_collegato )
+              ospiti:ospite_id ( nome, cognome, utente_collegato )
             )
           `)
           .eq('gioco_id', giocoId)

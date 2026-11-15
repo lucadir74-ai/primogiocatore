@@ -11,7 +11,7 @@
 // e a ciascuno può assegnare un tavolo con un gioco.
 
 import { useEffect, useState } from 'react'
-import { supabase, daMostrare } from './supabase'
+import { supabase, nomeOspite, daMostrare } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
 import { SceltaOra } from './SceltaQuando.jsx'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
@@ -39,7 +39,7 @@ const ORARI = [
 
 // Una disponibilità riguarda un profilo o un ospite: la chiave li tiene distinti.
 const chiaveDi = (d) => (d.profilo_id ? `p:${d.profilo_id}` : `o:${d.ospite_id}`)
-const nomeDi = (d) => (d.profili ? daMostrare(d.profili) : d.ospiti?.nome || 'Dimostratore')
+const nomeDi = (d) => (d.profili ? daMostrare(d.profili) : (d.ospiti ? nomeOspite(d.ospiti) : 'Dimostratore'))
 
 // Separatore fra una persona e l'altra nella gestione della serata.
 const RIGA = { padding: '0.6rem 0', borderTop: '1px solid var(--bordo)' }
@@ -83,13 +83,13 @@ export default function Serate({ profilo }) {
     const [p, o] = await Promise.all([
       supabase.from('profili').select('id, nome, nickname')
         .eq('dimostratore', true),
-      supabase.from('ospiti').select('id, nome')
+      supabase.from('ospiti').select('id, nome, cognome')
         .eq('dimostratore', true).is('utente_collegato', null).is('unito_in', null),
     ])
     if (p.error || o.error) { setErrore((p.error || o.error).message); return }
     setDimostratori([
       ...(p.data || []).map((x) => ({ chiave: `p:${x.id}`, tipo: 'profilo', id: x.id, nome: daMostrare(x) })),
-      ...(o.data || []).map((x) => ({ chiave: `o:${x.id}`, tipo: 'ospite', id: x.id, nome: x.nome })),
+      ...(o.data || []).map((x) => ({ chiave: `o:${x.id}`, tipo: 'ospite', id: x.id, nome: nomeOspite(x) })),
     ].sort((a, b) => a.nome.localeCompare(b.nome, 'it')))
   }
 
@@ -251,7 +251,7 @@ export default function Serate({ profilo }) {
         .select(`
           *, disponibilita (
             id, profilo_id, ospite_id, stato, note,
-            profili ( nome, nickname ), ospiti ( nome )
+            profili ( nome, nickname ), ospiti ( nome, cognome )
           )
         `)
         .gte('data', primoDelMese)

@@ -66,6 +66,11 @@ export const daMostrare = (p) =>
   || [p?.nome, p?.cognome].filter(Boolean).join(' ')
   || 'Sconosciuto'
 
+// Nome intero di un ospite: quelli inseriti dalla partita hanno il
+// cognome in un campo a parte, quelli degli import tutto nel nome.
+export const nomeOspite = (o) =>
+  [o?.nome, o?.cognome].map((t) => (t || '').trim()).filter(Boolean).join(' ') || 'Sconosciuto'
+
 // Supabase restituisce al massimo mille righe per interrogazione.
 // Questa funzione le chiede a blocchi finché non finiscono: senza,
 // oltre le mille partite le statistiche sarebbero semplicemente

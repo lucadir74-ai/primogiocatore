@@ -4,7 +4,7 @@
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
 import { useEffect, useRef, useState } from 'react'
-import { supabase, daMostrare, fetchBgg, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, daMostrare, fetchBgg, tutteLeRighe } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import { cercaIndirizzo } from './indirizzo'
@@ -214,13 +214,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     if (!serata) { setDisponibili([]); return }
     const { data } = await supabase
       .from('disponibilita')
-      .select('profilo_id, ospite_id, stato, profili ( id, nome, nickname ), ospiti ( id, nome )')
+      .select('profilo_id, ospite_id, stato, profili ( id, nome, nickname ), ospiti ( id, nome, cognome )')
       .eq('serata_id', serata.id)
       .in('stato', ['si', 'forse'])
     setDisponibili((data || [])
       .map((d) => d.profilo_id
         ? { chiave: `p:${d.profilo_id}`, tipo: 'profilo', id: d.profilo_id, nome: daMostrare(d.profili), stato: d.stato }
-        : { chiave: `o:${d.ospite_id}`, tipo: 'ospite', id: d.ospite_id, nome: d.ospiti?.nome || 'Dimostratore', stato: d.stato })
+        : { chiave: `o:${d.ospite_id}`, tipo: 'ospite', id: d.ospite_id, nome: d.ospiti ? nomeOspite(d.ospiti) : 'Dimostratore', stato: d.stato })
       .sort((a, b) => (a.stato === 'si' ? 0 : 1) - (b.stato === 'si' ? 0 : 1)))
   }
 
