@@ -150,7 +150,7 @@ async function corpoPartita(db, partitaId, io) {
 
   const idOspiti = [...new Set(righe.map((r) => r.ospite_id).filter(Boolean))]
   const { data: ospiti } = idOspiti.length
-    ? await db.from('ospiti').select('id, nome, utente_collegato').in('id', idOspiti)
+    ? await db.from('ospiti').select('id, nome, cognome, utente_collegato').in('id', idOspiti)
     : { data: [] }
   const perOspite = new Map((ospiti || []).map((o) => [o.id, o]))
   const idProfili = [...new Set([
@@ -162,6 +162,9 @@ async function corpoPartita(db, partitaId, io) {
     : { data: [] }
   const perProfilo = new Map((profili || []).map((x) => [x.id, x]))
 
+  // L'ospite inserito dalla partita ha il cognome in un campo a parte:
+  // su BGG va il nome intero, come lo si legge nell'app.
+  const nomeOspite = (x) => [x?.nome, x?.cognome].map((t) => (t || '').trim()).filter(Boolean).join(' ')
   const coop = p.tipo_punteggio === 'coop'
   const giocatori = righe.map((r) => {
     const o = r.ospite_id ? perOspite.get(r.ospite_id) : null
@@ -170,7 +173,7 @@ async function corpoPartita(db, partitaId, io) {
     // Chi ha il nome utente BGG viene indicato con quello: la partita
     // compare anche sul suo profilo BGG, come con BG Stats.
     const username = idAccount === io.utente_id ? io.bgg_username : (acc?.bgg_username || '')
-    const nome = acc ? (acc.nickname || acc.nome || username || 'Giocatore') : (o?.nome || 'Giocatore')
+    const nome = acc ? (acc.nickname || acc.nome || username || 'Giocatore') : (nomeOspite(o) || 'Giocatore')
     return {
       name: nome,
       username: username || '',
