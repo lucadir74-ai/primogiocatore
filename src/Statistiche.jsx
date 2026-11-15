@@ -2,6 +2,7 @@
 // v3.25.0 - 202611151200 (sotto la classifica Primeggio, la spiegazione completa del calcolo dell'IPG)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
+import { durataLeggibile } from './durata'
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
 import { ipgGenerale, ipgPersona, ipgGioco, dimenticaIpg } from './ipgDati'
@@ -992,7 +993,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                       {mostraGioco
                         ? (p.giochi?.nome || 'Gioco')
                         : (p.luoghi?.nome || 'Luogo non indicato')}
-                      {p.durata_minuti ? ` · ${p.durata_minuti} min` : ''}
+                      {p.durata_minuti ? ` · ${durataLeggibile(p.durata_minuti)}` : ''}
                     </strong>
                     {mostraGioco && (
                       <span className="anno">{p.luoghi?.nome || 'luogo non indicato'}</span>
