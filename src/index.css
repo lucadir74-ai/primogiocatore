@@ -1880,6 +1880,21 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
   padding: 0.4rem 0;
 }
 
+/* ---------- Primeggio: la spiegazione del calcolo dell'IPG ---------- */
+.spiega-ipg { font-size: 0.9rem; line-height: 1.45; }
+.spiega-ipg h4 { margin: 0.9rem 0 0.25rem; font-size: 0.95rem; color: var(--inchiostro); }
+.spiega-ipg p { margin: 0.35rem 0; }
+.spiega-ipg ul { margin: 0.35rem 0; padding-left: 1.2rem; }
+.spiega-ipg li { margin: 0.2rem 0; }
+.spiega-formula {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  font-weight: 600;
+  text-align: center;
+}
+.spiega-fonte { color: var(--inchiostro-tenue); font-size: 0.82rem; }
+
 /* ---------- Statistiche: riga che si apre, serie record ---------- */
 .riga-cliccabile {
   display: flex;
