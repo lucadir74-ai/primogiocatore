@@ -1,6 +1,7 @@
 // Primo Giocatore - Storico
 // v4.1.1 - 202611132200 (le partite arrivate da BGA non hanno «Modifica»)
 
+import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { supabase, COLORI, daMostrare } from './supabase'
@@ -307,7 +308,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                 <span className="anno">
                   {data(p.giocata_il)}
                   {p.luoghi?.nome ? ` · ${p.luoghi.nome}` : ''}
-                  {p.durata_minuti ? ` · ${p.durata_minuti} min` : ''}
+                  {p.durata_minuti ? ` · ${durataLeggibile(p.durata_minuti)}` : ''}
                 </span>
                 {vincitori.length > 0 && (
                   <span className="riga-vincitore">

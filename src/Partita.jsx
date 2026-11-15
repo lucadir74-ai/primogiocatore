@@ -135,6 +135,16 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     if (secondi > 0) setMinuti(String(Math.max(1, Math.round(secondi / 60))))
   }, [secondi])
 
+  // La durata si salva in minuti, ma si scrive e si legge in ore e minuti:
+  // 178 minuti sono 2 h 58 min. Scrivere 75 nei minuti li porta a 1 h 15.
+  const totaleMinuti = Number(minuti) || 0
+  const oreScritte = totaleMinuti >= 60 ? String(Math.floor(totaleMinuti / 60)) : ''
+  const minutiScritti = totaleMinuti % 60 || (totaleMinuti && totaleMinuti < 60) ? String(totaleMinuti % 60) : ''
+  function scriviDurata(ore, min) {
+    const tot = Math.max(0, parseInt(ore, 10) || 0) * 60 + Math.max(0, parseInt(min, 10) || 0)
+    setMinuti(tot ? String(tot) : '')
+  }
+
   // Gli elenchi (giochi, persone, ospiti, luoghi) restano sul telefono:
   // aprendo la pagina si usano subito quelli dell'ultima volta, intanto si
   // rileggono dal database e la pagina si aggiorna da sola.
@@ -920,8 +930,13 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               <Cronometro secondi={secondi} inCorso={inCorso}
                 onAvviaFerma={avviaOFerma} onAzzera={azzeraTimer} />
               <span className="minuti-scritti">
-                <input id="minuti" type="number" min="1" inputMode="numeric" className="mini minuti"
-                  value={minuti} onChange={(e) => setMinuti(e.target.value)} placeholder="—" />
+                <input id="minuti" type="number" min="0" inputMode="numeric" className="mini minuti"
+                  aria-label="Ore" value={oreScritte}
+                  onChange={(e) => scriviDurata(e.target.value, minutiScritti)} placeholder="0" />
+                <span className="unita">h</span>
+                <input type="number" min="0" inputMode="numeric" className="mini minuti"
+                  aria-label="Minuti" value={minutiScritti}
+                  onChange={(e) => scriviDurata(oreScritte, e.target.value)} placeholder="0" />
                 <span className="unita">min</span>
               </span>
             </div>
