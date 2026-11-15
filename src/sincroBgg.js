@@ -398,7 +398,7 @@ export function scartaNomeBga(profiloId, nome) {
 // { nome, partite, righe: [id partecipazione], ospiti: [id] } oppure null
 export async function cercaNomeBga(profiloId) {
   const righe = await tutteLeRighe(() => supabase.from('partite')
-    .select('id, partecipazioni ( id, utente_id, ospite_id, ospiti:ospite_id ( nome, utente_collegato ) )')
+    .select('id, partecipazioni ( id, utente_id, ospite_id, ospiti:ospite_id ( nome, cognome, utente_collegato ) )')
     .eq('registrata_da', profiloId)
     .like('chiave_esterna', 'bgg:%'))
   return calcolaNomeBga(profiloId, righe)
@@ -415,7 +415,7 @@ function calcolaNomeBga(profiloId, righe) {
   for (const p of senzaMe) {
     const visti = new Set()
     for (const x of p.partecipazioni || []) {
-      const nome = x.ospiti?.nome?.trim()
+      const nome = [x.ospiti?.nome, x.ospiti?.cognome].map((t) => (t || '').trim()).filter(Boolean).join(' ')
       if (!nome || x.ospiti.utente_collegato) continue
       const k = nome.toLowerCase()
       if (scartati.has(k)) continue
