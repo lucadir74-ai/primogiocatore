@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.24.0 - 202611141900 (il collegamento alle Classifiche è un tasto con la tua posizione in Primeggio)
+// v3.25.0 - 202611151200 (sotto la classifica Primeggio, la spiegazione completa del calcolo dell'IPG)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
@@ -10,6 +10,7 @@ import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daB
 import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import SpiegaIpg from './SpiegaIpg.jsx'
 
 // L'istogramma chiedeva il nome del mese due volte per ogni partita, e
 // ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
@@ -55,20 +56,6 @@ function ClassificaPrimeggio({ righe, vaiAlGiocatore, profilo }) {
         </li>
       ))}
     </ElencoCorto>
-  )
-}
-
-function SpiegaPrimeggio() {
-  const [aperta, setAperta] = useState(false)
-  if (!aperta) return <button className="bottone-piatto" onClick={() => setAperta(true)}>Come funziona?</button>
-  return (
-    <span className="block">
-      Il Primeggio stima la forza di ognuno dalla posizione finale in ogni partita e dalla forza
-      degli avversari: battere chi è forte vale di più. Dopo ogni partita l'app è anche più sicura
-      della stima, e l'IPG (Indice Primo Giocatore) è il valore prudente: per questo nelle prime
-      partite tende a salire. Si parte da 1000; un giocatore medio con molte partite sta intorno ai
-      1500. Le cooperative non contano, e la stessa partita registrata da più persone conta una volta.
-    </span>
   )
 }
 
@@ -1146,8 +1133,9 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
           <h3 className="titolo-sezione">Primeggio a {nome}</h3>
           <ClassificaPrimeggio righe={classifica} vaiAlGiocatore={vaiAlGiocatore} profilo={profilo} />
           <p className="aiuto">
-            Chi ha almeno {MIN_GIOCO} partite a questo gioco, fra chi ha un account. <SpiegaPrimeggio />
+            Chi ha almeno {MIN_GIOCO} partite a questo gioco, fra chi ha un account.
           </p>
+          <SpiegaIpg />
         </>
       )}
 
@@ -1327,10 +1315,10 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
           <p className="aiuto">
             L'IPG globale è la media degli IPG di ogni gioco: contano di più i giochi complessi
             (peso BoardGameGeek) e quelli che giochi spesso, fino a 20 partite per gioco. In classifica
-            entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.{' '}
-            <SpiegaPrimeggio />
+            entra chi ha un account e almeno {MIN_GLOBALE} partite competitive.
             {aggiornato && ` Aggiornata il ${new Date(aggiornato).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`}
           </p>
+          <SpiegaIpg />
         </>
       ) : (
         <p className="aiuto">La classifica Primeggio non è ancora stata calcolata.</p>

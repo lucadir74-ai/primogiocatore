@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.4.0 - 202611141800 (elenco per gioco più chiaro: «Fenadir è 1° su 7 · tu sei 3°»)
+// v1.5.0 - 202611151200 (in fondo, la spiegazione completa del calcolo dell'IPG)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 import { COLORI } from './supabase'
 import { ipgGenerale, ipgGioco, ipgPersona, giochiClassifiche, giochiSenzaNome } from './ipgDati'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import SpiegaIpg from './SpiegaIpg.jsx'
 
 // Le stesse soglie del calcolo sul server (src/primeggioCalcolo.js).
 const MIN_GIOCO = 5
@@ -332,6 +333,8 @@ export default function Classifiche({ profilo, onIndietro }) {
           )}
         </>
       )}
+
+      <SpiegaIpg />
 
       {aggiornato && (
         <p className="aiuto">
