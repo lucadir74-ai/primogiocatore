@@ -42,7 +42,7 @@ const PER_VOLTA = 15
 
 // Le partite di un ospite: quando, a cosa, dove e con chi. Servono a
 // riconoscerlo («ah, è il Gabriele di quella sera»).
-function PartiteOspite({ ospiteId }) {
+export function PartiteOspite({ ospiteId }) {
   const [partite, setPartite] = useState(null)
   const [errore, setErrore] = useState('')
 
