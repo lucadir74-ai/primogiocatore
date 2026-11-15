@@ -1,8 +1,8 @@
 -- Primo Giocatore - voci del segnapunti di Trickerion
--- v1.0.0 - 202611160000
+-- v1.1.0 - 202611160010
 -- Le voci del conteggio finale dal regolamento (pag. 18), più i Punti
 -- Fama fatti durante la partita. Trova il gioco per numero BGG (163068)
--- o per nome. Si può rilanciare senza danni: riscrive le stesse voci.
+-- o per nome, così vale anche per l'Anniversary Edition. Si può rilanciare senza danni: riscrive le stesse voci.
 
 update public.giochi
    set categorie_punteggio = '[
@@ -15,10 +15,10 @@ update public.giochi
      {"chiave": "v-specialisti",   "etichetta": "Specialisti", "ordine": 7}
    ]'::jsonb
  where bgg_id::text = '163068'
-    or nome ilike 'trickerion%';
+    or nome ilike '%trickerion%';
 
--- Controllo: deve uscire una riga con 7 voci.
+-- Controllo: deve uscire una riga per edizione, ciascuna con 7 voci.
 select id, nome, bgg_id, jsonb_array_length(categorie_punteggio) as voci
   from public.giochi
  where bgg_id::text = '163068'
-    or nome ilike 'trickerion%';
+    or nome ilike '%trickerion%';
