@@ -8,7 +8,7 @@
 // che hai creato tu (per esempio i dimostratori inseriti a mano).
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { unisciCondivise } from './condivise'
 import { leggiArchivio, seguiArchivio } from './archivio'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -79,7 +79,7 @@ export default function Giocatori({ profilo, onStatistiche }) {
         const [righe, o] = await Promise.all([
           leggiArchivio(profilo.id),
           tutteLeRighe(() => supabase.from('ospiti')
-            .select('id, nome, utente_collegato').eq('creato_da', profilo.id).is('unito_in', null)),
+            .select('id, nome, cognome, utente_collegato').eq('creato_da', profilo.id).is('unito_in', null)),
         ])
         ospiti = o
         ultime = righe
@@ -120,7 +120,7 @@ export default function Giocatori({ profilo, onStatistiche }) {
         if (k === profilo.id || viste.has(k)) continue
         viste.add(k)
         const v = k.startsWith('ospite:')
-          ? voce(k, { tipo: 'ospite', nome: x.ospiti?.nome || 'Sconosciuto' })
+          ? voce(k, { tipo: 'ospite', nome: nomeOspite(x.ospiti) })
           : voce(k, { tipo: 'account' })
         v.insieme++
         if (!v.ultima || p.giocata_il > v.ultima) v.ultima = p.giocata_il

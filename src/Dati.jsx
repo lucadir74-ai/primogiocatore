@@ -2,7 +2,7 @@
 // v5.1.1 - 202611141830 (risposte lente: segnate quelle con l'app in sottofondo)
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, tutteLeRighe } from './supabase'
 import { importaBgstats, analizzaBgstats } from './bgstats'
 import { impronta, improntePresenti, giaPresente } from './impronta'
 import { leggiPartiteBgg, importaPartiteBgg, dataDiPartenza, ultimaSincro as ultimaSincroBgg } from './sincroBgg'
@@ -184,7 +184,7 @@ export default function Dati({ profilo }) {
         partecipazioni (
           punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
           profili:utente_id ( nome, nickname ),
-          ospiti:ospite_id ( nome )
+          ospiti:ospite_id ( nome, cognome )
         )
       `)
       .order('giocata_il', { ascending: true }))
@@ -215,7 +215,7 @@ export default function Dati({ profilo }) {
             : null,
           luogo: p.luoghi ? { nome: p.luoghi.nome, tipo: p.luoghi.tipo } : null,
           giocatori: (p.partecipazioni || []).map((x) => ({
-            nome: x.profili ? (x.profili.nickname || x.profili.nome) : x.ospiti?.nome || 'Sconosciuto',
+            nome: x.profili ? (x.profili.nickname || x.profili.nome) : nomeOspite(x.ospiti),
             registrato: Boolean(x.profili),
             punteggio: x.punteggio_totale,
             posizione: x.posizione,
@@ -255,7 +255,7 @@ export default function Dati({ profilo }) {
             p.giochi?.nome,
             p.luoghi?.nome,
             p.durata_minuti,
-            x.profili ? (x.profili.nickname || x.profili.nome) : x.ospiti?.nome,
+            x.profili ? (x.profili.nickname || x.profili.nome) : x.ospiti && nomeOspite(x.ospiti),
             x.punteggio_totale,
             x.posizione,
             x.vincitore ? 'sì' : 'no',

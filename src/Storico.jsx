@@ -4,7 +4,7 @@
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { supabase, COLORI, daMostrare } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -46,7 +46,7 @@ function testoDi(p) {
   let t = testiPartite.get(p)
   if (t === undefined) {
     t = [p.giochi?.nome, p.luoghi?.nome, p.note,
-      ...(p.partecipazioni || []).map((x) => (x.profili ? daMostrare(x.profili) : (x.ospiti?.nome || 'Sconosciuto')))]
+      ...(p.partecipazioni || []).map((x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti)))]
       .filter(Boolean).map(piatto).join('|')
     testiPartite.set(p, t)
   }
@@ -114,7 +114,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
 
   // Nome e colore di un partecipante, ospiti compresi.
   const chi = (p) => ({
-    nome: p.profili ? daMostrare(p.profili) : (p.ospiti?.nome || 'Sconosciuto'),
+    nome: p.profili ? daMostrare(p.profili) : nomeOspite(p.ospiti),
     colore: COLORI.find((c) => c.id === p.profili?.colore)?.hex || '#C9D1D8',
     ospite: Boolean(p.ospite_id),
     // Se l'ospite si è iscritto, da qui in poi è la stessa persona.

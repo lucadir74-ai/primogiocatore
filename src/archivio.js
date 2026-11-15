@@ -22,7 +22,7 @@ const CAMPI = `
   partecipazioni (
     id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio, ruolo, ordine_turno,
     profili:utente_id ( nome, nickname, colore ),
-    ospiti:ospite_id ( nome, utente_collegato )
+    ospiti:ospite_id ( nome, cognome, utente_collegato )
   )
 `
 
@@ -52,7 +52,7 @@ const ascoltatori = new Set()
    'tutti' = per tutti, 'spento' = mai (si legge tutto ogni volta). */
 export const ARCHIVIO_LOCALE = 'tutti'
 const CHIAVE_PROVA = 'primo-giocatore:archivio-locale'
-const VERSIONE_CACHE = 2   // 2: luoghi con proprietario e nome per gli altri
+const VERSIONE_CACHE = 3   // 3: ospiti con il cognome; 2: luoghi con proprietario e nome per gli altri
 const RILETTURA_COMPLETA = 7 * 86400000   // una settimana
 const MARGINE = 5 * 60000                 // si richiedono anche gli ultimi 5 minuti già letti
 

@@ -4,7 +4,7 @@
 
 import { durataLeggibile } from './durata'
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase, COLORI, daMostrare } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
 import { ipgGenerale, ipgPersona, ipgGioco, dimenticaIpg } from './ipgDati'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
@@ -97,7 +97,7 @@ function riepilogoPunteggi(punteggi) {
 
 /* Un ospite collegato a un account è la stessa persona. */
 const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x.ospite_id}`
-const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
+const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti))
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
 export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
@@ -955,7 +955,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
     }
   }
 
-  const nomeDiRiga = (x) => (x.profili ? daMostrare(x.profili) : x.ospiti?.nome || 'Sconosciuto')
+  const nomeDiRiga = (x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti))
   const coloreDiRiga = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
   return (
