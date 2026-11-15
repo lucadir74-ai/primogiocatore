@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
-import ChiSono from './ChiSono.jsx'
+import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
 
@@ -112,6 +112,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   const [persone, setPersone] = useState([])
   const [rinomina, setRinomina] = useState(null)      // { id, nome }
   const [collega, setCollega] = useState(null)        // { ospite, cerca }
+  const [aperto, setAperto] = useState(null)          // l'ospite di cui si guardano le partite
 
   useEffect(() => { carica() }, [])
 
@@ -320,9 +321,15 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
               <>
                 <div className="nome-giocatore">
                   <strong>{o.nome}</strong>
-                  <span className="anno block">
-                    {o.partite} {o.partite === 1 ? 'partita' : 'partite'}
-                  </span>
+                  {o.partite > 0 ? (
+                    <button type="button" className="bottone-piatto ospite-partite"
+                      aria-expanded={aperto === o.id}
+                      onClick={() => setAperto(aperto === o.id ? null : o.id)}>
+                      {o.partite} {o.partite === 1 ? 'partita' : 'partite'} · {aperto === o.id ? 'nascondi' : 'vedi'}
+                    </button>
+                  ) : (
+                    <span className="anno block">0 partite</span>
+                  )}
                 </div>
                 <span className="azioni-iscritto">
                   <button className="bottone-piatto"
@@ -330,6 +337,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                   <button className="bottone-piatto"
                     onClick={() => setCollega({ ospite: o, cerca: '' })}>si è iscritto</button>
                 </span>
+                {aperto === o.id && <div className="ospite-partite-elenco"><PartiteOspite ospiteId={o.id} /></div>}
               </>
             )}
           </li>

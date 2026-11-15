@@ -2955,3 +2955,8 @@ a.contatto .contatto-valore { color: var(--blu); }
 .tasto-classifiche-testo strong { font-weight: 600; }
 .tasto-classifiche-testo small { font-size: 0.8rem; color: var(--inchiostro-tenue); }
 .tasto-classifiche-freccia { color: var(--giallo); font-size: 1.2rem; }
+
+/* ---------- Ospiti: le partite di un ospite, sotto il suo nome ---------- */
+.elenco li:has(.ospite-partite) { flex-wrap: wrap; }
+.ospite-partite { display: block; font-size: 0.88rem; margin-top: 0.15rem; }
+.ospite-partite-elenco { flex: 1 0 100%; width: 100%; }
