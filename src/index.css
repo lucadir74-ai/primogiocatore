@@ -1185,6 +1185,10 @@ body {
 .pastiglia-stato.no.scelto { background: var(--rosso); border-color: var(--rosso); }
 .pastiglia-stato:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
 
+/* Appello della serata: tre bottoni corti accanto al nome. */
+.scelte-appello { display: flex; gap: 0.3rem; flex: none; }
+.pastiglia-stato.appello { flex: none; padding: 0.35rem 0.7rem; }
+
 .pastiglia-stato.piccola { flex: none; cursor: default; font-size: 0.75rem; padding: 0.15rem 0.6rem; }
 .pastiglia-stato.piccola.si { color: var(--verde); border-color: var(--verde); }
 .pastiglia-stato.piccola.forse { color: var(--giallo); border-color: var(--giallo); }
