@@ -2995,3 +2995,20 @@ a.contatto .contatto-valore { color: var(--blu); }
 .evento-stato.aperto { background: var(--vittoria-fondo); color: var(--verde); border-color: transparent; font-weight: 600; }
 .evento-testa h2 { margin: 0; text-wrap: balance; }
 .evento-riga.senza-bordo { border-bottom: 0; padding-top: 0; }
+/* Gestione eventi */
+.evento-riga-tasto { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--bordo); text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.elenco-eventi li:last-child .evento-riga-tasto { border-bottom: 0; }
+.evento-riga-tasto:focus-visible { outline: 2px solid var(--attivo); outline-offset: 2px; }
+.evento-ingresso-riga { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin: 0.6rem 0; }
+.evento-qr-piccolo { width: 132px; height: 132px; border-radius: 8px; border: 1px solid var(--bordo); background: #fff; cursor: zoom-in; flex: none; }
+.evento-link { flex: 1 1 220px; min-width: 0; display: grid; gap: 0.5rem; }
+.evento-link-testo { display: block; padding: 0.5rem 0.6rem; background: var(--carta); border: 1px solid var(--bordo); border-radius: 8px; font-size: 0.85rem; overflow-wrap: anywhere; user-select: all; }
+.evento-tasti { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+.evento-date { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 0.8rem; }
+.evento-persona { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.evento-persona .nome-giocatore { flex: 1 1 140px; min-width: 0; }
+.evento-persona select { width: auto; }
+.evento-nuovo { margin: 0.6rem 0 1.2rem; }
+.qr-schermo { position: fixed; inset: 0; z-index: 50; background: #fff; color: #131C26; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); text-align: center; }
+.qr-schermo img { width: min(86vw, 70vh); height: auto; }
+.qr-schermo-titolo { font-family: var(--display); font-size: 1.5rem; font-weight: 700; margin: 0; }

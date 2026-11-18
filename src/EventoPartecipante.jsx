@@ -1,5 +1,5 @@
 // Primo Giocatore - l'app di chi partecipa solo a un evento
-// v1.1.0 - 202611181900 (tavoli, registrazione e partite dell'evento)
+// v1.2.0 - 202611182000 (chi organizza l'evento lo gestisce da qui: link, QR, persone)
 //
 // Chi non è socio della Tana entra con il link di un evento e vede solo
 // i suoi eventi. Per l'evento scelto: i tavoli (iscriversi, pubblicarne),
@@ -14,6 +14,7 @@ import BarraScorrevole from './BarraScorrevole.jsx'
 
 const Tavoli = lazy(() => import('./Tavoli.jsx'))
 const Partita = lazy(() => import('./Partita.jsx'))
+const GestioneEventi = lazy(() => import('./GestioneEventi.jsx'))
 
 const RUOLI = { organizzatore: 'organizzi', dimostratore: 'spieghi i giochi', partecipante: 'partecipi' }
 const STATI = { in_arrivo: 'In arrivo', in_corso: 'In corso', concluso: 'Concluso' }
@@ -101,7 +102,8 @@ export default function EventoPartecipante({ profilo, avviso }) {
   }
 
   const st = statoEvento(evento)
-  const schede = [['tavoli', 'Tavoli'], ...(aperto ? [['partita', partitaId ? 'Modifica partita' : 'Registra partita']] : []), ['partite', 'Le mie partite']]
+  const schede = [['tavoli', 'Tavoli'], ...(aperto ? [['partita', partitaId ? 'Modifica partita' : 'Registra partita']] : []), ['partite', 'Le mie partite'],
+    ...(evento.ruolo === 'organizzatore' ? [['gestisci', 'Gestisci']] : [])]
 
   return (
     <>
@@ -141,6 +143,9 @@ export default function EventoPartecipante({ profilo, avviso }) {
         {scheda === 'partita' && aperto && (
           <Partita key={`${evento.id}-${partitaId || 'nuova'}`} profilo={profilo} evento={evento} soloEvento
             partitaId={partitaId} finitaModifica={() => { setPartitaId(null); setScheda('partite') }} />
+        )}
+        {scheda === 'gestisci' && evento.ruolo === 'organizzatore' && (
+          <GestioneEventi profilo={profilo} soloEventoId={evento.id} />
         )}
         {scheda === 'partite' && (
           <div className="scheda">

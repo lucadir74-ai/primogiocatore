@@ -38,6 +38,7 @@ const Organizzatori = lazy(() => import('./Organizzatori.jsx'))
 const Soci = lazy(() => import('./Soci.jsx'))
 const ImportaBga = lazy(() => import('./ImportaBga.jsx'))
 const Contatti = lazy(() => import('./Contatti.jsx'))
+const GestioneEventi = lazy(() => import('./GestioneEventi.jsx'))
 // Le pagine che si preparano da sole per quando manca la rete (Prepara.jsx):
 // quelle del menu in basso e le sezioni del Profilo. Il terzo valore dice
 // a chi tocca: 'org' agli organizzatori, 'soci' anche a chi organizza una Tana.
@@ -65,6 +66,7 @@ const SEZIONI_PROFILO = [
   ['giochi', 'Giochi doppi', true],   // mostra tutto il catalogo
   ['ruoli', 'Ruoli', true],   // solo per chi organizza
   ['soci', 'Soci', true],     // organizzatori, anche di una sola Tana
+  ['eventi', 'Eventi', true], // chi organizza tutto, una Tana o un evento
   ['info', 'Info'],           // versione, autore e novità
 ]
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
@@ -880,6 +882,7 @@ export default function App() {
   // Accesso riservato ai soci: null = sto controllando.
   const [ammesso, setAmmesso] = useState(null)
   const [orgTana, setOrgTana] = useState(false)
+  const [orgEvento, setOrgEvento] = useState(false)   // organizza almeno un evento
   // Link di un evento (?e=CODICE) ancora da usare: si entra nell'evento
   // appena c'è il profilo. avvisoEvento: l'esito, da mostrare una volta.
   const [codiceEvento, setCodiceEvento] = useState(codiceEventoInSospeso)
@@ -1123,6 +1126,8 @@ export default function App() {
     supabase.rpc('ammesso').then(({ data, error }) => setAmmesso(error ? true : data !== false))
     supabase.from('organizzatori_tana').select('tana_id').eq('utente_id', profilo.id).limit(1)
       .then(({ data }) => setOrgTana(Boolean(data?.length)))
+    supabase.from('evento_ruoli').select('evento_id').eq('utente_id', profilo.id).eq('ruolo', 'organizzatore').limit(1)
+      .then(({ data }) => setOrgEvento(Boolean(data?.length)), () => {})
   }
   useEffect(() => { setAmmesso(null); controllaAccesso() }, [profilo?.id])
 
@@ -1516,7 +1521,8 @@ export default function App() {
             />
           ) : (
             (() => {
-              const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore || (id === 'soci' && orgTana))
+              const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore
+                || (id === 'soci' && orgTana) || (id === 'eventi' && (orgTana || orgEvento)))
               const attiva = sezioni.some(([id]) => id === sezioneProfilo) ? sezioneProfilo : 'profilo'
               return (
                 <>
@@ -1543,6 +1549,8 @@ export default function App() {
                     <Soci profilo={profilo} />
                   ) : attiva === 'info' ? (
                     <Info />
+                  ) : attiva === 'eventi' ? (
+                    <GestioneEventi profilo={profilo} />
                   ) : (
                     <Organizzatori profilo={profilo} />
                   )}

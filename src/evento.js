@@ -44,7 +44,7 @@ export async function entraNellEvento(codice) {
   return data
 }
 
-const CAMPI_EVENTO = 'id, nome, inizio, fine, chiuso, codice, luogo_id, luoghi ( nome )'
+const CAMPI_EVENTO = 'id, nome, inizio, fine, chiuso, codice, tana_id, luogo_id, luoghi ( nome )'
 const conLuogo = (e) => ({ ...e, luogo_nome: e.luoghi?.nome || '' })
 
 // Gli eventi in cui ho un ruolo, i più recenti prima.
