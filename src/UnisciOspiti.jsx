@@ -4,7 +4,7 @@
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, nomeOspite, tutteLeRighe } from './supabase'
 import { RichiesteDaApprovare } from './SeiTu.jsx'
 import ChiSono, { PartiteOspite } from './ChiSono.jsx'
@@ -154,8 +154,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   // numero BGA. Chi organizza li vede tutti, gli altri solo gli ospiti
   // che hanno inserito loro. Il nick che resta è quello dell'iscritto.
   const organizza = !!(profilo?.organizzatore || profilo?.amministratore)
-  const proposte = propostePerIscritto(
-    ospiti.filter((o) => organizza || o.creato_da === profilo?.id), persone, esclusi)
+  const proposte = useMemo(() => propostePerIscritto(
+    ospiti.filter((o) => organizza || o.creato_da === profilo?.id), persone, esclusi),
+  [ospiti, persone, esclusi, organizza, profilo?.id])
 
   async function unisciAlIscritto(g, soloSicuri = false) {
     const voci = g.ospiti
@@ -214,9 +215,12 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     const campi = o?.cognome && parole.length > 1
       ? { nome: parole[0], cognome: parole.slice(1).join(' ') }
       : { nome: intero, cognome: null }
-    const { error } = await supabase
-      .from('ospiti').update(campi).eq('id', rinomina.id)
+    // Si chiede indietro la riga cambiata: se il database ha rifiutato
+    // in silenzio (ospite di un altro) non arriva niente, e lo si dice.
+    const { data, error } = await supabase
+      .from('ospiti').update(campi).eq('id', rinomina.id).select('id')
     if (error) setErrore(error.message)
+    else if (!data?.length) setErrore('Nome non cambiato: lo può correggere chi ha inserito l’ospite, o chi organizza.')
     else { setMessaggio('Nome corretto.'); setRinomina(null); carica() }
   }
 
@@ -229,7 +233,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     if (!confirm(`«${ospite.nome}» è ${nomeUtente}? Le sue ${ospite.partite} partite, i tavoli e le disponibilità passano a quell'account e la voce ospite sparisce.`)) return
 
     setLavorando(true)
-    const { error } = await supabase.rpc('collega_ospite', { p_ospite: ospite.id, p_utente: utente.id })
+    // riconosci_ospite (riconoscimento_fase4.sql): controlla chi può farlo
+    // e chiude le richieste «sono io» rimaste aperte su quell'ospite.
+    const { error } = await supabase.rpc('riconosci_ospite', { p_ospite: ospite.id, p_utente: utente.id })
     setLavorando(false)
     if (error) { setErrore(error.message); return }
     setMessaggio(`«${ospite.nome}» ora è ${nomeUtente}.`)
@@ -268,8 +274,11 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     }
   }
 
+  // Chi non organizza gestisce solo gli ospiti che ha inserito lui: gli
+  // altri non li vede proprio, invece di trovarsi tasti che non funzionano.
+  const gestibili = organizza ? ospiti : ospiti.filter((o) => o.creato_da === profilo?.id)
   const q = cerca.trim().toLowerCase()
-  const elenco = q ? ospiti.filter((o) => o.nome.toLowerCase().includes(q)) : ospiti
+  const elenco = q ? gestibili.filter((o) => o.nome.toLowerCase().includes(q)) : gestibili
 
   return (
     <div className="scheda">
@@ -337,7 +346,14 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       <ChiSono escludi={new Set(proposte.flatMap((g) => g.ospiti.map((x) => x.ospite.id)))}
         onCambio={() => { carica(); onRichieste?.() }} />
 
-      {ospiti.length > 8 && (
+      {!organizza && (
+        <p className="aiuto">
+          Qui trovi gli ospiti che hai inserito tu.
+          {gestibili.length === 0 && ' Per ora non ne hai.'} Gli altri li sistemano gli organizzatori.
+        </p>
+      )}
+
+      {gestibili.length > 8 && (
         <input
           className="campo-cerca"
           value={cerca}
@@ -408,12 +424,13 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
         ))}
       </ul>
 
+      {gestibili.length >= 2 && (<>
       <h3 className="titolo-sezione">Unisci due ospiti</h3>
 
       <div className="campo">
         <label htmlFor="u-da">Questo sparisce</label>
         <CercaScegli id="u-da" svuotabile
-          opzioni={ospiti.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          opzioni={gestibili.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
           valore={daUnire} onScegli={(id) => { setDaUnire(id); if (id === verso) setVerso('') }}
           segnaposto="Scrivi per cercare" etichetta="Ospite che sparisce" />
       </div>
@@ -421,7 +438,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       <div className="campo">
         <label htmlFor="u-verso">E confluisce in questo</label>
         <CercaScegli id="u-verso" svuotabile
-          opzioni={ospiti.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
+          opzioni={gestibili.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.partite} ${x.partite === 1 ? 'partita' : 'partite'}` }))}
           valore={verso} onScegli={setVerso}
           segnaposto="Scrivi per cercare" etichetta="Ospite in cui confluisce" />
       </div>
@@ -435,10 +452,13 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
         partite come destinazione. Si spostano anche le partite registrate da altri; se
         ti sbagli, l&rsquo;unione si annulla da «Unioni fatte».
       </p>
+      </>)}
 
-      <Sezione id="ospiti-unioni" titolo="Unioni fatte" nota="separa chi è diverso">
-        <UnioniFatte onCambio={carica} />
-      </Sezione>
+      {organizza && (
+        <Sezione id="ospiti-unioni" titolo="Unioni fatte" nota="separa chi è diverso">
+          <UnioniFatte onCambio={carica} />
+        </Sezione>
+      )}
     </div>
   )
 }

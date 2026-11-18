@@ -58,20 +58,42 @@ function nomeCognome(p) {
   return { n, c: c.join('') }
 }
 
+// Le parole di ospiti e iscritti si calcolano una volta sola: le coppie
+// da confrontare possono essere centinaia di migliaia.
+const cacheOspiti = new WeakMap()
+const cachePersone = new WeakMap()
+function preparaOspite(ospite) {
+  let x = cacheOspiti.get(ospite)
+  if (!x) {
+    // Il cognome a parte si aggiunge solo se il nome non lo contiene già
+    // (la pagina Ospiti mostra il nome intero).
+    const giaDentro = ospite.cognome && piatto(ospite.nome).endsWith(piatto(ospite.cognome))
+    const g = parole([ospite.nome, giaDentro ? null : ospite.cognome].filter(Boolean).join(' '))
+    x = { g, tutto: g.join('') }
+    cacheOspiti.set(ospite, x)
+  }
+  return x
+}
+function preparaPersona(p) {
+  let x = cachePersone.get(p)
+  if (!x) {
+    x = { ...nomeCognome(p), chiavi: [piatto(p.nickname), piatto(p.bga_username)].filter((k) => k.length >= 4) }
+    cachePersone.set(p, x)
+  }
+  return x
+}
+
 // Quanto l'ospite somiglia all'iscritto: 0 niente, 1 probabile, 2 sicuro
 // (nome e cognome uguali, o nick uguale).
 export function somiglianza(ospite, p) {
-  // Il cognome a parte si aggiunge solo se il nome non lo contiene già
-  // (la pagina Ospiti mostra il nome intero).
-  const giaDentro = ospite.cognome && piatto(ospite.nome).endsWith(piatto(ospite.cognome))
-  const g = parole([ospite.nome, giaDentro ? null : ospite.cognome].filter(Boolean).join(' '))
+  const { g, tutto } = preparaOspite(ospite)
+  const { n, c, chiavi } = preparaPersona(p)
   if (ospite.bga_id && p.bga_id && String(ospite.bga_id) === String(p.bga_id)) return 2
-  for (const k of [piatto(p.nickname), piatto(p.bga_username)]) {
-    if (k.length >= 4 && g.join('') === k) return 2
-  }
+  if (chiavi.includes(tutto)) return 2
   if (g.length < 2) return 0                 // serve nome E cognome
-  const { n, c } = nomeCognome(p)
   if (!c || n.length === 0) return 0
+  // Scorciatoia: il cognome dell'iscritto deve stare (quasi) all'inizio o in fondo.
+  if (!tutto.includes(c.slice(0, 3)) && !tutto.includes(c.slice(-3))) return 0
   let meglio = 0
   // Il cognome può essere in fondo («Mario Rossi») o in testa («Rossi Mario»),
   // e fatto di più parole («Di Marco», «De Angelis»).
@@ -95,8 +117,20 @@ export function somiglianza(ospite, p) {
 // coppie già escluse («ospite|utente»). I più sicuri e con più partite prima.
 export function propostePerIscritto(ospiti, persone, no = new Set()) {
   const perUtente = new Map()
+  // Gli ospiti di una parola sola (quasi tutti gli avversari di BGA)
+  // possono essere solo un nick o un numero BGA: si cercano per chiave,
+  // senza confrontarli con ogni iscritto.
+  const perChiave = new Map()
+  for (const p of persone) {
+    const chiavi = [...preparaPersona(p).chiavi, p.bga_id ? `#${p.bga_id}` : null].filter(Boolean)
+    for (const k of chiavi) { if (!perChiave.has(k)) perChiave.set(k, []); perChiave.get(k).push(p) }
+  }
   for (const o of ospiti) {
-    for (const p of persone) {
+    const corti = preparaOspite(o).g.length < 2
+    const daProvare = corti
+      ? [...(perChiave.get(preparaOspite(o).tutto) || []), ...(o.bga_id ? perChiave.get(`#${o.bga_id}`) || [] : [])]
+      : persone
+    for (const p of new Set(daProvare)) {
       if (no.has(`${o.id}|${p.id}`)) continue
       const forza = somiglianza(o, p)
       if (!forza) continue

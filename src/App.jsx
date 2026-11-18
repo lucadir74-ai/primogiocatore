@@ -1,4 +1,4 @@
-// Primo Giocatore v4.32.0 - 202611181200 (sezione Info nel Profilo: versione, autore e novità; vedi novita.js)
+// Primo Giocatore v4.33.0 - 202611182000 (profilo: modifiche in bozza fino a «Salva»)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -544,13 +544,28 @@ function CompletaProfilo({ profilo, setProfilo }) {
   )
 }
 
-function Profilo({ sessione, profilo, setProfilo }) {
+function Profilo({ sessione, profilo: salvato, setProfilo }) {
   const [salvataggio, setSalvataggio] = useState(false)
   const [errore, setErrore] = useState('')
   const [ok, setOk] = useState('')
+  // Quello che si scrive resta una bozza finché non si tocca «Salva»:
+  // prima finiva subito in tutta l'app, e uscendo senza salvare il nick
+  // nuovo restava in giro fino alla riapertura, senza essere salvato.
+  const [profilo, setBozza] = useState(salvato)
+  const CAMPI = ['nome', 'cognome', 'nickname', 'citta', 'colore', 'bgg_username', 'bga_username', 'collezione_condivisa']
+  const diversi = (a, b) => CAMPI.some((k) => (a[k] ?? '') !== (b[k] ?? ''))
+  const cambiato = diversi(profilo, salvato)
+  // Se il profilo cambia altrove (es. il nome BGA collegato da Dati) e qui
+  // non si stava scrivendo niente, la bozza si aggiorna; se si stava
+  // scrivendo, resta quello che si è scritto.
+  const prima = useRef(salvato)
+  useEffect(() => {
+    setBozza((b) => (diversi(b, prima.current) ? b : salvato))
+    prima.current = salvato
+  }, [salvato])   // eslint-disable-line react-hooks/exhaustive-deps
 
   function aggiorna(campo, valore) {
-    setProfilo((p) => ({ ...p, [campo]: valore }))
+    setBozza((p) => ({ ...p, [campo]: valore }))
     setOk('')
   }
 
@@ -563,8 +578,7 @@ function Profilo({ sessione, profilo, setProfilo }) {
     }
     setSalvataggio(true)
     try {
-      // Senza rete resta sul telefono e parte da solo (modifiche.js).
-      const { inAttesa } = await salvaOAccoda(sessione.user.id, 'profilo', sessione.user.id, {
+      const campi = {
         nome: profilo.nome.trim(),
         cognome: profilo.cognome.trim(),
         nickname: profilo.nickname?.trim() || null,
@@ -573,7 +587,11 @@ function Profilo({ sessione, profilo, setProfilo }) {
         bgg_username: profilo.bgg_username?.trim() || null,
         bga_username: profilo.bga_username?.trim() || null,
         collezione_condivisa: profilo.collezione_condivisa !== false,
-      })
+      }
+      // Senza rete resta sul telefono e parte da solo (modifiche.js).
+      const { inAttesa } = await salvaOAccoda(sessione.user.id, 'profilo', sessione.user.id, campi)
+      setProfilo((p) => ({ ...p, ...campi }))
+      setBozza((p) => ({ ...p, ...campi }))
       setOk(inAttesa
         ? 'Niente rete: il profilo è salvato sul telefono e partirà da solo quando torna la linea.'
         : 'Profilo salvato.')
@@ -659,9 +677,17 @@ function Profilo({ sessione, profilo, setProfilo }) {
         <p className="aiuto">Facoltativo.</p>
       </div>
 
+      {cambiato && !salvataggio && (
+        <p className="aiuto"><strong>Modifiche non ancora salvate.</strong></p>
+      )}
       <button className="bottone" onClick={salva} disabled={salvataggio}>
         {salvataggio ? 'Salvo\u2026' : 'Salva profilo'}
       </button>
+      {cambiato && !salvataggio && (
+        <button className="bottone bottone-secondario" onClick={() => { setBozza(salvato); setErrore('') }}>
+          Annulla le modifiche
+        </button>
+      )}
 
       <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>
         Esci dall'account

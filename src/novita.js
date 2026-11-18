@@ -16,6 +16,17 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.33.0',
+    data: '2026-11-18',
+    voci: [
+      'Ospiti: nuova parte «Si sono iscritti», che trova chi ha giocato come ospite per nome e cognome, anche scritti un po’ diversi, e lo unisce con un tocco',
+      'Ospiti e Luoghi: ognuno vede i tasti solo per quello che ha inserito lui; gli organizzatori per tutto',
+      'Luoghi: l’unione di due luoghi la fa il database in un colpo solo',
+      'Ruoli: dare o togliere un ruolo chiede conferma',
+      'Profilo: le modifiche valgono solo dopo «Salva», e si possono annullare',
+    ],
+  },
+  {
     versione: '4.32.0',
     data: '2026-11-18',
     voci: [

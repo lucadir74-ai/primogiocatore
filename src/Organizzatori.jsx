@@ -26,7 +26,21 @@ export default function Organizzatori({ profilo }) {
     }
   }
 
+  // Un ruolo si dà o si toglie solo dopo una conferma: sul telefono un
+  // tocco storto bastava a fare qualcuno amministratore.
+  const RUOLO = { amministratore: 'amministratore dell’app', organizzatore: 'organizzatore', dimostratore: 'dimostratore' }
+  const EFFETTO = {
+    amministratore: 'Potrà fare tutto, in ogni Tana e in ogni evento.',
+    organizzatore: 'Potrà pubblicare tavoli, gestire soci e ospiti e vedere i contatti degli iscritti.',
+    dimostratore: 'Potrà spiegare i giochi ai tavoli e usare il calendario interno.',
+  }
   async function cambia(id, campo, valore) {
+    const chi = persone.find((p) => p.id === id)
+    const nome = chi ? daMostrare(chi) : 'questa persona'
+    const domanda = valore
+      ? `Fare ${nome} ${RUOLO[campo] || campo}?\n\n${EFFETTO[campo] || ''}`
+      : `Togliere a ${nome} il ruolo di ${RUOLO[campo] || campo}?`
+    if (!confirm(domanda)) return
     setErrore(''); setMessaggio('')
     const { error } = await supabase
       .from('profili').update({ [campo]: valore }).eq('id', id)

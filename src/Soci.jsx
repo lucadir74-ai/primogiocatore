@@ -258,6 +258,9 @@ export default function Soci({ profilo }) {
   }
 
   function organizzatore(utente, tanaId, si) {
+    if (!confirm(si
+      ? `Nominare organizzatore di ${nomeTana(tanaId)}? Potrà gestire soci, ruoli, tavoli, serate ed eventi di quella Tana.`
+      : `Togliere il ruolo di organizzatore di ${nomeTana(tanaId)}?`)) return
     esegui(async () => {
       const { error } = await supabase.rpc('imposta_organizzatore_tana', { p_utente: utente, p_tana: tanaId, p_si: si })
       if (error) throw error

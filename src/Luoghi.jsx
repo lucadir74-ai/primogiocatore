@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione dei luoghi
-// v4.3.0 - 202610282000 (posizione nella tabella protetta luoghi_posizione; indirizzo anche scritto, con «Trova»)
+// v4.4.0 - 202611182000 (unione nel database, luoghi_sicuri.sql; tasti solo per chi crea il luogo o organizza)
 
 import { useEffect, useState } from 'react'
 import { supabase, tutteLeRighe } from './supabase'
@@ -35,7 +35,7 @@ export default function Luoghi({ profilo }) {
   async function carica() {
     try {
       const [l, p, t, po] = await Promise.all([
-        tutteLeRighe(() => supabase.from('luoghi').select('id, nome, tipo').order('nome')),
+        tutteLeRighe(() => supabase.from('luoghi').select('id, nome, tipo, creato_da').order('nome')),
         tutteLeRighe(() => supabase.from('partite').select('luogo_id').not('luogo_id', 'is', null)),
         tutteLeRighe(() => supabase.from('tavoli').select('luogo_id').not('luogo_id', 'is', null)),
         // Si vedono solo le posizioni pubbliche, le proprie e (per gli organizzatori) tutte.
@@ -155,14 +155,13 @@ export default function Luoghi({ profilo }) {
 
     setLavorando(true)
     try {
-      const { error: e1 } = await supabase.from('partite').update({ luogo_id: verso }).eq('luogo_id', daUnire)
-      if (e1) throw e1
-      const { error: e2 } = await supabase.from('tavoli').update({ luogo_id: verso }).eq('luogo_id', daUnire)
-      if (e2) throw e2
-      await supabase.from('serate').update({ luogo_id: verso }).eq('luogo_id', daUnire)
-
-      const { error: e4 } = await supabase.from('luoghi').delete().eq('id', daUnire)
-      if (e4) throw e4
+      // Tutto nel database, in un colpo solo (luoghi_sicuri.sql): partite,
+      // tavoli, serate ed eventi passano all'altro luogo, oppure niente.
+      const { error } = await supabase.rpc('unisci_luoghi', { p_da: daUnire, p_verso: verso })
+      if (error) {
+        if (/unisci_luoghi/.test(error.message || '')) throw new Error('Manca lo script luoghi_sicuri.sql nel database.')
+        throw error
+      }
 
       setMessaggio(`«${a.nome}» unito in «${b.nome}».`)
       setDaUnire(''); setVerso('')
@@ -182,6 +181,11 @@ export default function Luoghi({ profilo }) {
     else carica()
   }
 
+  // Si cambia solo un luogo che si è creato (chi organizza: tutti). Gli
+  // altri si vedono, ma senza tasti che il database rifiuterebbe.
+  const organizza = !!(profilo?.organizzatore || profilo?.amministratore)
+  const mio = (l) => organizza || l.creato_da === profilo?.id
+  const gestibili = luoghi.filter(mio)
   const q = cerca.trim().toLowerCase()
   const elenco = q ? luoghi.filter((l) => l.nome.toLowerCase().includes(q)) : luoghi
 
@@ -195,9 +199,14 @@ export default function Luoghi({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <button className="bottone bottone-secondario" onClick={marcaOnline}>
-        Marca come online le piattaforme
-      </button>
+      {!organizza && (
+        <p className="aiuto">Puoi cambiare i luoghi che hai creato tu; gli altri li sistemano gli organizzatori.</p>
+      )}
+      {organizza && (
+        <button className="bottone bottone-secondario" onClick={marcaOnline}>
+          Marca come online le piattaforme
+        </button>
+      )}
       <p className="aiuto">
         «Sono qui» registra la posizione del luogo usando il telefono, stando sul posto;
         «scrivi l&rsquo;indirizzo» la cerca dall&rsquo;indirizzo. Serve a mostrare i tavoli vicini
@@ -233,12 +242,16 @@ export default function Luoghi({ profilo }) {
                 <div className="nome-giocatore">
                   <strong>{l.nome}</strong>
                   <span className="anno block">{l.usi} {l.usi === 1 ? 'volta' : 'volte'}</span>
-                  <select className="scelta-punteggio" value={l.tipo || 'altro'}
-                    onChange={(e) => cambiaTipo(l.id, e.target.value)}
-                    aria-label={`Tipo di ${l.nome}`}>
-                    {TIPI.map((t) => <option key={t.id} value={t.id}>{t.etichetta}</option>)}
-                  </select>
-                  {l.latitudine != null && (
+                  {mio(l) ? (
+                    <select className="scelta-punteggio" value={l.tipo || 'altro'}
+                      onChange={(e) => cambiaTipo(l.id, e.target.value)}
+                      aria-label={`Tipo di ${l.nome}`}>
+                      {TIPI.map((t) => <option key={t.id} value={t.id}>{t.etichetta}</option>)}
+                    </select>
+                  ) : (
+                    <span className="anno block">{TIPI.find((t) => t.id === (l.tipo || 'altro'))?.etichetta}</span>
+                  )}
+                  {mio(l) && l.latitudine != null && (
                     <label className="spunta-fazioni">
                       <input type="checkbox" checked={Boolean(l.posizione_pubblica)}
                         onChange={(e) => cambiaVisibilita(l, e.target.checked)} />
@@ -246,7 +259,7 @@ export default function Luoghi({ profilo }) {
                     </label>
                   )}
                 </div>
-                <span className="azioni-iscritto">
+                {mio(l) && <span className="azioni-iscritto">
                   <button className="bottone-piatto"
                     onClick={() => setRinomina({ id: l.id, nome: l.nome })}>rinomina</button>
                   {l.tipo !== 'online' && (
@@ -270,7 +283,7 @@ export default function Luoghi({ profilo }) {
                   {l.usi === 0 && (
                     <button className="bottone-piatto pericolo" onClick={() => elimina(l)}>elimina</button>
                   )}
-                </span>
+                </span>}
                 {conIndirizzo === l.id && (
                   <div className="campo luogo-indirizzo">
                     <CampoIndirizzo id={`ind-${l.id}`} valore={null} casa={l.tipo === 'casa'}
@@ -283,12 +296,13 @@ export default function Luoghi({ profilo }) {
         ))}
       </ul>
 
+      {gestibili.length >= 2 && (<>
       <h3 className="titolo-sezione">Unisci due luoghi</h3>
 
       <div className="campo">
         <label htmlFor="l-da">Questo sparisce</label>
         <CercaScegli id="l-da" svuotabile
-          opzioni={luoghi.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
+          opzioni={gestibili.map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
           valore={daUnire} onScegli={(id) => { setDaUnire(id); if (id === verso) setVerso('') }}
           segnaposto="Scrivi per cercare" etichetta="Luogo che sparisce" />
       </div>
@@ -296,7 +310,7 @@ export default function Luoghi({ profilo }) {
       <div className="campo">
         <label htmlFor="l-verso">E confluisce in questo</label>
         <CercaScegli id="l-verso" svuotabile
-          opzioni={luoghi.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
+          opzioni={gestibili.filter((x) => x.id !== daUnire).map((x) => ({ id: x.id, nome: x.nome, nota: `${x.usi} ${x.usi === 1 ? 'uso' : 'usi'}` }))}
           valore={verso} onScegli={setVerso}
           segnaposto="Scrivi per cercare" etichetta="Luogo in cui confluisce" />
       </div>
@@ -304,6 +318,7 @@ export default function Luoghi({ profilo }) {
       <button className="bottone" onClick={unisci} disabled={lavorando || !daUnire || !verso}>
         {lavorando ? 'Unisco…' : 'Unisci'}
       </button>
+      </>)}
     </div>
   )
 }
