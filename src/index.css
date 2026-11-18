@@ -2964,3 +2964,22 @@ a.contatto .contatto-valore { color: var(--blu); }
 .elenco li:has(.ospite-partite) { flex-wrap: wrap; }
 .ospite-partite { display: block; font-size: 0.88rem; margin-top: 0.15rem; }
 .ospite-partite-elenco { flex: 1 0 100%; width: 100%; }
+
+/* ---------------- Profilo → Info ---------------- */
+.info-testa { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.4rem; }
+.info-testa h2 { margin: 0; }
+.info-testa img { flex: none; border-radius: 12px; }
+.info-versione { margin: 0.15rem 0 0; color: var(--inchiostro-tenue); font-variant-numeric: tabular-nums; }
+.info-firma { margin: 0.9rem 0 1.4rem; padding: 0.7rem 0.9rem; border-left: 3px solid var(--blu); background: var(--carta); border-radius: 0 var(--raggio) var(--raggio) 0; }
+.info h3 { margin: 0 0 0.6rem; }
+.info-uscita { border-top: 1px solid var(--bordo); padding: 0.6rem 0; }
+.info-uscita h4 { margin: 0 0 0.3rem; display: flex; align-items: baseline; gap: 0.6rem; font-family: var(--display); }
+.info-uscita summary { cursor: pointer; display: flex; align-items: baseline; gap: 0.6rem; list-style: none; }
+.info-uscita summary::-webkit-details-marker { display: none; }
+.info-uscita summary::after { content: '\203A'; margin-left: auto; color: var(--inchiostro-tenue); transition: transform 0.15s; }
+.info-uscita[open] summary::after { transform: rotate(90deg); }
+.info-numero { font-family: var(--display); font-weight: 600; }
+.info-data { color: var(--inchiostro-tenue); font-size: 0.85em; font-weight: normal; }
+.info-voci { margin: 0.35rem 0 0.2rem; padding-left: 1.2rem; }
+.info-voci li { margin: 0.2rem 0; }
+.info-piede { margin: 1.2rem 0 0; color: var(--inchiostro-tenue); font-size: 0.85em; text-align: center; }

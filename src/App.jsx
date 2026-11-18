@@ -1,4 +1,4 @@
-// Primo Giocatore v4.31.1 - 202611142000 (dal menu in basso ogni pagina si apre dall'inizio, non scesa come quella di prima)
+// Primo Giocatore v4.32.0 - 202611181200 (sezione Info nel Profilo: versione, autore e novità; vedi novita.js)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -49,6 +49,7 @@ const PAGINE_DA_PREPARARE = [
 import Benvenuto from './Benvenuto.jsx'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
+import Info from './Info.jsx'
 import CampoPassword from './CasellaPassword.jsx'
 import BarraScorrevole from './BarraScorrevole.jsx'
 
@@ -61,6 +62,7 @@ const SEZIONI_PROFILO = [
   ['giochi', 'Giochi doppi', true],   // mostra tutto il catalogo
   ['ruoli', 'Ruoli', true],   // solo per chi organizza
   ['soci', 'Soci', true],     // organizzatori, anche di una sola Tana
+  ['info', 'Info'],           // versione, autore e novità
 ]
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
 // Chi su questo telefono è già entrato una volta salta la pagina di benvenuto.
@@ -1475,6 +1477,8 @@ export default function App() {
                     <GiochiDoppi profilo={profilo} />
                   ) : attiva === 'soci' ? (
                     <Soci profilo={profilo} />
+                  ) : attiva === 'info' ? (
+                    <Info />
                   ) : (
                     <Organizzatori profilo={profilo} />
                   )}
