@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli organizzatori
-// v3.13.0 - 202611011000 (ricerca in cima alla pagina: trova un iscritto e ne mostra ruoli e azioni)
+// v3.14.0 - 202611190000 (amministratori dell'app: li vede e li nomina solo un amministratore)
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
@@ -18,7 +18,7 @@ export default function Organizzatori({ profilo }) {
     try {
       const righe = await tutteLeRighe(() => supabase
         .from('profili')
-        .select('id, nome, cognome, nickname, citta, organizzatore, dimostratore, creato_il')
+        .select('id, nome, cognome, nickname, citta, organizzatore, dimostratore, amministratore, creato_il')
         .order('nome'))
       setPersone(righe)
     } catch (e) {
@@ -31,14 +31,20 @@ export default function Organizzatori({ profilo }) {
     const { error } = await supabase
       .from('profili').update({ [campo]: valore }).eq('id', id)
     if (error) { setErrore(error.message); return }
+    // Il database può rifiutare in silenzio (lascia il valore di prima):
+    // si rilegge la riga per mostrare com'è davvero.
+    const { data: ora } = await supabase.from('profili').select(campo).eq('id', id).maybeSingle()
+    if (ora && ora[campo] !== valore) { setErrore('Il database non ha accettato il cambio: non hai il permesso per farlo.'); return }
     setPersone((p) => p.map((x) => (x.id === id ? { ...x, [campo]: valore } : x)))
     setMessaggio(valore ? 'Permesso assegnato.' : 'Permesso revocato.')
   }
 
-  if (!profilo.organizzatore) return null
+  if (!profilo.organizzatore && !profilo.amministratore) return null
 
   const q = cerca.trim().toLowerCase()
   const attuali = persone.filter((p) => p.organizzatore)
+  const amministratori = persone.filter((p) => p.amministratore)
+  const sonoAmm = Boolean(profilo.amministratore)
   const dimostratori = persone.filter((p) => p.dimostratore)
 
   // Senza ricerca: gli ultimi iscritti (non arriva nessuna notifica, quindi
@@ -75,8 +81,38 @@ export default function Organizzatori({ profilo }) {
 
       {!q && (
         <>
+          {sonoAmm && (
+            <>
+              <h3 className="titolo-sezione">
+                Amministratori dell&rsquo;app <span className="conteggio">{amministratori.length}</span>
+              </h3>
+              <p className="aiuto">
+                Possono tutto, in ogni Tana e in ogni evento: controllo soci, organizzatori delle Tane,
+                cancellazione degli eventi. Li vedi e li nomini solo tu che lo sei. Per aggiungerne uno,
+                cercalo qui sopra.
+              </p>
+              <ul className="elenco">
+                {amministratori.map((p) => (
+                  <li key={p.id}>
+                    <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
+                      <div className="nome-giocatore">
+                        <strong>{daMostrare(p)}</strong>
+                        {p.id === profilo.id && <span className="anno"> · tu</span>}
+                      </div>
+                    </button>
+                    {p.id !== profilo.id && (
+                      <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'amministratore', false)}>
+                        revoca
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
           <h3 className="titolo-sezione">
-            Organizzatori <span className="conteggio">{attuali.length}</span>
+            Organizzatori di Roma <span className="conteggio">{attuali.length}</span>
           </h3>
           <ul className="elenco">
             {attuali.map((p) => (
@@ -141,6 +177,7 @@ export default function Organizzatori({ profilo }) {
                 <div className="nome-giocatore">
                   <strong>{daMostrare(p)}</strong>
                   {eNuovo(p) && <span className="distintivo verde">Nuovo</span>}
+                  {p.amministratore && <span className="distintivo">Amministratore</span>}
                   {p.organizzatore && <span className="distintivo">Organizzatore</span>}
                   {p.dimostratore && <span className="distintivo">Dimostratore</span>}
                   <span className="anno block">
@@ -158,6 +195,11 @@ export default function Organizzatori({ profilo }) {
                 {!p.organizzatore && (
                   <button className="bottone-piatto" onClick={() => cambia(p.id, 'organizzatore', true)}>
                     organizzatore
+                  </button>
+                )}
+                {sonoAmm && !p.amministratore && (
+                  <button className="bottone-piatto" onClick={() => cambia(p.id, 'amministratore', true)}>
+                    amministratore
                   </button>
                 )}
               </span>

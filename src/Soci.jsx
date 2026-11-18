@@ -1,8 +1,8 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.3.0 - 202610212030 (toccando un socio dell'elenco si apre la sua scheda)
+// v1.4.0 - 202611190000 (le cose di tutte le Tane: solo l'amministratore dell'app)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
-//   l'app. Lo cambia solo chi organizza tutte le Tane.
+//   l'app. Lo cambia solo l'amministratore dell'app.
 // - Aggiungi socio: il modulo veloce per ogni nuovo iscritto.
 // - Importa CSV: aggiunge o aggiorna, non cancella mai.
 // - Non nell'elenco: gli account che non risultano soci, da decidere.
@@ -79,7 +79,9 @@ function forseLui(account, soci) {
 }
 
 export default function Soci({ profilo }) {
-  const globale = Boolean(profilo.organizzatore)
+  // Tutte le Tane, il controllo soci e gli organizzatori di Tana: solo
+  // l'amministratore dell'app (amministratore.sql).
+  const globale = Boolean(profilo.amministratore)
   const [tane, setTane] = useState([])
   const [mie, setMie] = useState([])                 // id delle Tane che gestisco
   const [tana, setTana] = useState(null)
@@ -411,13 +413,13 @@ export default function Soci({ profilo }) {
 
       {globale && (
         <Sezione id="soci-org" titolo="Organizzatori delle Tane">
-          <p className="aiuto">Gestiscono soci e accessi solo della loro Tana. Chi ha il ruolo Organizzatore li gestisce tutte.</p>
+          <p className="aiuto">Gestiscono tutto nella loro Tana: soci, ruoli, tavoli, serate, eventi. Gli amministratori dell&rsquo;app gestiscono tutte le Tane.</p>
           {tane.map((t) => {
             const loro = orgTane.filter((o) => o.tana_id === t.id)
             return (
               <div key={t.id} style={{ marginBottom: '1rem' }}>
                 <h4 className="finestra-sottotitolo">{t.nome}</h4>
-                {loro.length === 0 && <p className="aiuto">Nessuno, oltre agli organizzatori generali.</p>}
+                {loro.length === 0 && <p className="aiuto">Nessuno, oltre agli amministratori dell&rsquo;app.</p>}
                 <ul className="elenco">
                   {loro.map((o) => {
                     const p = persone.find((x) => x.id === o.utente_id)

@@ -1549,7 +1549,7 @@ export default function App() {
             />
           ) : (
             (() => {
-              const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore
+              const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore || profilo.amministratore
                 || (id === 'soci' && orgTana) || (id === 'eventi' && (orgTana || orgEvento)))
               const attiva = sezioni.some(([id]) => id === sezioneProfilo) ? sezioneProfilo : 'profilo'
               return (

@@ -332,7 +332,8 @@ export default function GestioneEventi({ profilo, soloEventoId = null }) {
   const [aperto, setAperto] = useState(soloEventoId)
   const [nuovo, setNuovo] = useState(null)
   const [errore, setErrore] = useState('')
-  const globale = !!profilo.organizzatore
+  // Tutto, in ogni Tana: l'amministratore dell'app (amministratore.sql).
+  const globale = !!profilo.amministratore
 
   async function carica() {
     const [ev, miei, ot, ta] = await Promise.all([
