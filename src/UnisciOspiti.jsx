@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli ospiti
-// v3.10.0 - 202611132100 (le partite di ogni ospite le conta il database, in una risposta sola)
+// v3.11.0 - 202611181900 («Si sono iscritti»: per nome e cognome anche scritti diversi, un tocco per unire)
 //
 // Rinominare, unire i doppioni e trasformare un ospite nell'account
 // con cui quella persona si è iscritta.
@@ -10,6 +10,7 @@ import { RichiesteDaApprovare } from './SeiTu.jsx'
 import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
+import { propostePerIscritto } from './somiglianze.js'
 
 const MOTIVI = {
   'numero BGA': 'stesso numero BGA',
@@ -101,6 +102,13 @@ async function partitePerOspite() {
   return conteggio
 }
 
+// I «non è lui» detti da questo telefono, nel caso il database non li
+// lasci rileggere: così non tornano a ogni apertura.
+const CHIAVE_ESCLUSI = 'primo-giocatore:non-e-lui'
+function esclusiSalvati() {
+  try { return JSON.parse(localStorage.getItem(CHIAVE_ESCLUSI) || '[]') } catch { return [] }
+}
+
 export default function UnisciOspiti({ profilo, onRichieste }) {
   const [ospiti, setOspiti] = useState([])
   const [daUnire, setDaUnire] = useState('')   // sparisce
@@ -113,18 +121,23 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   const [rinomina, setRinomina] = useState(null)      // { id, nome }
   const [collega, setCollega] = useState(null)        // { ospite, cerca }
   const [aperto, setAperto] = useState(null)          // l'ospite di cui si guardano le partite
+  const [esclusi, setEsclusi] = useState(() => new Set())   // «ospite|utente» già detti «non è lui»
 
   useEffect(() => { carica() }, [])
 
   async function carica() {
     try {
-      const [o, conteggio, pr] = await Promise.all([
+      const [o, conteggio, pr, no] = await Promise.all([
         tutteLeRighe(() => supabase.from('ospiti').select('*').order('nome')),
         partitePerOspite(),
         // Solo quello che la pagina usa (prima arrivava il profilo intero di tutti).
-        tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname, bga_username, bga_id').order('nome')),
+        tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname, bga_username, bga_id').order('nome')),
+        // Le coppie già escluse con «non è lui»: se non si leggono, pazienza.
+        supabase.from('richieste_collegamento').select('ospite_id, utente_id').eq('stato', 'rifiutata')
+          .then(({ data }) => data || [], () => []),
       ])
       setPersone(pr)
+      setEsclusi((prima) => new Set([...prima, ...esclusiSalvati(), ...no.map((r) => `${r.ospite_id}|${r.utente_id}`)]))
       // Quelli già collegati a un account, o uniti a un altro ospite,
       // non sono più ospiti da gestire.
       setOspiti(o.filter((x) => !x.utente_collegato && !x.unito_in)
@@ -136,46 +149,58 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     }
   }
 
-  // Ospiti che con ogni probabilità sono un iscritto: stesso numero BGA
-  // del suo profilo, oppure nome identico al suo nickname, al nome o al
-  // nome BGA (maiuscole, spazi e accenti non contano). Solo
-  // corrispondenze esatte e senza ambiguità: due account possibili = niente.
-  const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
-  const sembranoIscritti = (() => {
-    const perNome = new Map()
-    const perBga = new Map()
-    const aggiungi = (m, k, p) => { if (!k) return; if (!m.has(k)) m.set(k, new Set()); m.get(k).add(p.id) }
-    for (const p of persone) {
-      // Il nome conta solo se è nome e cognome: «Marco» da solo è di troppi.
-      const nomi = [p.nickname, p.bga_username, String(p.nome || '').trim().includes(' ') ? p.nome : null]
-      for (const n of nomi) { const k = piatto(n); if (k.length >= 4) aggiungi(perNome, k, p) }
-      if (p.bga_id) aggiungi(perBga, String(p.bga_id), p)
-    }
-    const out = []
-    for (const o of ospiti) {
-      const daBga = o.bga_id ? perBga.get(String(o.bga_id)) : null
-      const daNome = perNome.get(piatto(o.nome))
-      const scelto = daBga?.size === 1 ? [...daBga][0] : daNome?.size === 1 ? [...daNome][0] : null
-      if (!scelto) continue
-      const utente = persone.find((p) => p.id === scelto)
-      if (utente) out.push({ ospite: o, utente, perche: daBga?.size === 1 ? 'stesso numero BGA' : 'stesso nome' })
-    }
-    return out.sort((a, b) => b.ospite.partite - a.ospite.partite)
-  })()
+  // Iscritti che hanno già giocato come ospiti: stesso nome E cognome,
+  // anche scritti un po' diversi (somiglianze.js), stesso nick o stesso
+  // numero BGA. Chi organizza li vede tutti, gli altri solo gli ospiti
+  // che hanno inserito loro. Il nick che resta è quello dell'iscritto.
+  const organizza = !!(profilo?.organizzatore || profilo?.amministratore)
+  const proposte = propostePerIscritto(
+    ospiti.filter((o) => organizza || o.creato_da === profilo?.id), persone, esclusi)
 
-  async function collegaTutti() {
-    const n = sembranoIscritti.length
-    if (!confirm(`Collegare ${n} ospiti ai rispettivi account? Le loro partite passano agli account e le voci ospite spariscono.`)) return
-    setErrore(''); setMessaggio(''); setLavorando(true)
+  async function unisciAlIscritto(g, soloSicuri = false) {
+    const voci = g.ospiti
+    const nick = g.utente.nickname || g.utente.nome
+    if (!soloSicuri && !confirm(`${voci.map((x) => `«${x.ospite.nome}»`).join(', ')} ${voci.length === 1 ? 'è' : 'sono'} ${nick}?\n\nPartite, tavoli e disponibilità passano al suo account, con il suo nick.`)) return false
     let fatti = 0
-    for (const { ospite, utente } of sembranoIscritti) {
-      const { error } = await supabase.rpc('collega_ospite', { p_ospite: ospite.id, p_utente: utente.id })
+    for (const { ospite } of voci) {
+      const { error } = await supabase.rpc('riconosci_ospite', { p_ospite: ospite.id, p_utente: g.utente.id })
       if (error) { setErrore(`«${ospite.nome}»: ${error.message}`); break }
       fatti++
     }
+    return fatti
+  }
+
+  async function unisciUno(g) {
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    const fatti = await unisciAlIscritto(g)
     setLavorando(false)
-    if (fatti) setMessaggio(`${fatti} ospiti collegati al loro account.`)
-    carica()
+    if (fatti) { setMessaggio(`Fatto: ora è tutto di ${g.utente.nickname || g.utente.nome}.`); carica(); onRichieste?.() }
+  }
+
+  async function unisciTuttiSicuri() {
+    const sicuri = proposte.filter((g) => g.sicuro)
+    if (!confirm(`Unire ${sicuri.length} iscritti con i loro ospiti (nome e cognome uguali)?\n\n${sicuri.map((g) => `${g.ospiti.map((x) => x.ospite.nome).join(', ')} → ${g.utente.nickname || g.utente.nome}`).join('\n')}`)) return
+    setErrore(''); setMessaggio(''); setLavorando(true)
+    let fatti = 0
+    for (const g of sicuri) {
+      const n = await unisciAlIscritto(g, true)
+      if (n === false || n < g.ospiti.length) break
+      fatti += n
+    }
+    setLavorando(false)
+    if (fatti) setMessaggio(`${fatti} ospiti uniti ai loro iscritti.`)
+    carica(); onRichieste?.()
+  }
+
+  // «Non è lui»: la coppia non viene più proposta (né qui né in «Chi sono»).
+  async function nonELui(ospite, utente) {
+    setErrore(''); setLavorando(true)
+    const { error } = await supabase.rpc('ospite_non_e', { p_ospite: ospite.id, p_utenti: [utente.id] })
+    setLavorando(false)
+    if (error) { setErrore(error.message); return }
+    const coppia = `${ospite.id}|${utente.id}`
+    setEsclusi((s) => new Set(s).add(coppia))
+    try { localStorage.setItem(CHIAVE_ESCLUSI, JSON.stringify([...new Set([...esclusiSalvati(), coppia])].slice(-500))) } catch { /* pazienza */ }
   }
 
   async function salvaNome() {
@@ -257,31 +282,60 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <ChiSono onCambio={() => { carica(); onRichieste?.() }} />
-      <RichiesteDaApprovare profilo={profilo} onCambio={() => { carica(); onRichieste?.() }} />
-
-      {sembranoIscritti.length > 0 && (
+      {proposte.length > 0 && (
         <>
-          <h3 className="titolo-sezione">Sembrano iscritti <span className="conteggio">{sembranoIscritti.length}</span></h3>
-          <p className="aiuto">Ospiti con lo stesso nome o lo stesso numero BGA di un account. Collegandoli, le loro partite passano all&rsquo;account e il doppione sparisce.</p>
-          <ul className="elenco">
-            {sembranoIscritti.slice(0, 30).map(({ ospite, utente, perche }) => (
-              <li key={ospite.id}>
+          <h3 className="titolo-sezione">Si sono iscritti <span className="conteggio">{proposte.length}</span></h3>
+          <p className="aiuto">
+            Iscritti che avevano già giocato come ospiti: stesso nome e cognome, anche scritti un po&rsquo; diversi.
+            «Unisci» passa partite, tavoli e disponibilità all&rsquo;iscritto, che tiene il suo nick.
+            Se un nome non è lui, tocca «non è lui» e non te lo proponiamo più.
+          </p>
+          {proposte.filter((g) => g.sicuro).length > 1 && (
+            <button className="bottone" onClick={unisciTuttiSicuri} disabled={lavorando}>
+              {lavorando ? 'Unisco…' : `Unisci tutti quelli sicuri (${proposte.filter((g) => g.sicuro).length})`}
+            </button>
+          )}
+          <ul className="elenco unione-iscritti">
+            {proposte.slice(0, 40).map((g) => (
+              <li key={g.utente.id} style={{ display: 'block' }}>
                 <div className="nome-giocatore">
-                  <strong>{ospite.nome}</strong>
-                  <span className="anno block">{ospite.partite} {ospite.partite === 1 ? 'partita' : 'partite'} · è {utente.nickname || utente.nome}? ({perche})</span>
+                  <strong>{g.utente.nickname || g.utente.nome}</strong>
+                  <span className={`distintivo${g.sicuro ? '' : ' grigio'}`}>{g.sicuro ? 'sicuro' : 'da controllare'}</span>
+                  <span className="anno block">
+                    {[g.utente.nome, g.utente.cognome].filter(Boolean).join(' ')} · ha giocato come:
+                  </span>
                 </div>
-                <button className="bottone-piatto" onClick={() => diventaAccount(ospite, utente)} disabled={lavorando}>collega</button>
+                {g.ospiti.map(({ ospite, forza, conteso }) => (
+                  <div key={ospite.id} className="unione-ospite">
+                    <span>
+                      «{ospite.nome}» · {ospite.partite} {ospite.partite === 1 ? 'partita' : 'partite'}
+                      {forza < 2 ? ' · scritto un po’ diverso' : ''}{conteso ? ' · somiglia anche a un altro iscritto' : ''}
+                    </span>
+                    <span className="azioni-iscritto">
+                      {ospite.partite > 0 && (
+                        <button className="bottone-piatto" aria-expanded={aperto === ospite.id}
+                          onClick={() => setAperto(aperto === ospite.id ? null : ospite.id)}>
+                          {aperto === ospite.id ? 'nascondi' : 'vedi'}
+                        </button>
+                      )}
+                      <button className="bottone-piatto" onClick={() => nonELui(ospite, g.utente)} disabled={lavorando}>non è lui</button>
+                    </span>
+                    {aperto === ospite.id && <div className="ospite-partite-elenco"><PartiteOspite ospiteId={ospite.id} /></div>}
+                  </div>
+                ))}
+                <button className="bottone bottone-secondario" style={{ marginTop: '0.5rem' }}
+                  onClick={() => unisciUno(g)} disabled={lavorando}>
+                  Unisci a {g.utente.nickname || g.utente.nome}
+                </button>
               </li>
             ))}
           </ul>
-          {sembranoIscritti.length > 1 && (
-            <button className="bottone bottone-secondario" onClick={collegaTutti} disabled={lavorando}>
-              {lavorando ? 'Collego…' : `Collega tutti (${sembranoIscritti.length})`}
-            </button>
-          )}
         </>
       )}
+
+      <RichiesteDaApprovare profilo={profilo} onCambio={() => { carica(); onRichieste?.() }} />
+      <ChiSono escludi={new Set(proposte.flatMap((g) => g.ospiti.map((x) => x.ospite.id)))}
+        onCambio={() => { carica(); onRichieste?.() }} />
 
       {ospiti.length > 8 && (
         <input

@@ -1,5 +1,5 @@
 // Primo Giocatore - «Chi è questo ospite?»
-// v1.1.0 - 202611122100 («vedi le partite»: con chi e a cosa ha giocato quell'ospite, per capire chi è)
+// v1.2.0 - 202611181900 (non ripete gli ospiti già proposti in «Si sono iscritti»)
 //
 // Gli ospiti che somigliano a un iscritto ma non abbastanza da collegarli
 // da soli: solo il nome, un soprannome, un nome parziale, due omonimi.
@@ -80,7 +80,7 @@ export function PartiteOspite({ ospiteId }) {
   )
 }
 
-export default function ChiSono({ onCambio }) {
+export default function ChiSono({ onCambio, escludi }) {
   const [ospiti, setOspiti] = useState(null)
   const [quanti, setQuanti] = useState(PER_VOLTA)
   const [errore, setErrore] = useState('')
@@ -122,14 +122,16 @@ export default function ChiSono({ onCambio }) {
     onCambio?.()
   }
 
-  if (!ospiti || (ospiti.length === 0 && !messaggio && !errore)) return null
+  // Quelli già proposti in «Si sono iscritti» non si chiedono due volte.
+  const ospitiVisti = ospiti && escludi?.size ? ospiti.filter((o) => !escludi.has(o.ospite_id)) : ospiti
+  if (!ospitiVisti || (ospitiVisti.length === 0 && !messaggio && !errore)) return null
 
   return (
     <>
       <h3 className="titolo-sezione">
-        Chi sono questi ospiti? {ospiti.length > 0 && <span className="conteggio">{ospiti.length}</span>}
+        Chi sono questi ospiti? {ospitiVisti.length > 0 && <span className="conteggio">{ospitiVisti.length}</span>}
       </h3>
-      {ospiti.length > 0 && (
+      {ospitiVisti.length > 0 && (
         <p className="aiuto">
           Questi nomi somigliano a un iscritto, ma non abbastanza per esserne sicuri. Guarda le partite
           per capire chi è; se lo sai, tocca il suo nome: le partite passano al suo account. Se non è nessuno di loro, dillo e non
@@ -139,7 +141,7 @@ export default function ChiSono({ onCambio }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
       <ul className="elenco chi-sono">
-        {ospiti.slice(0, quanti).map((o) => (
+        {ospitiVisti.slice(0, quanti).map((o) => (
           <li key={o.ospite_id}>
             <div className="nome-giocatore">
               <strong>«{nomeIntero(o.nome, o.cognome)}»</strong>
@@ -170,9 +172,9 @@ export default function ChiSono({ onCambio }) {
           </li>
         ))}
       </ul>
-      {ospiti.length > quanti && (
+      {ospitiVisti.length > quanti && (
         <button type="button" className="bottone-piatto" onClick={() => setQuanti(quanti + PER_VOLTA)}>
-          Mostra altri ({ospiti.length - quanti})
+          Mostra altri ({ospitiVisti.length - quanti})
         </button>
       )}
     </>

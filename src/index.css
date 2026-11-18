@@ -2965,6 +2965,14 @@ a.contatto .contatto-valore { color: var(--blu); }
 .ospite-partite { display: block; font-size: 0.88rem; margin-top: 0.15rem; }
 .ospite-partite-elenco { flex: 1 0 100%; width: 100%; }
 
+/* Ospiti → «Si sono iscritti»: un iscritto e i nomi con cui ha giocato */
+.unione-ospite {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 0.3rem 0.6rem; padding: 0.35rem 0 0.35rem 0.8rem;
+  border-left: 2px solid var(--bordo); margin-top: 0.35rem;
+}
+.unione-ospite > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
 /* ---------------- Profilo → Info ---------------- */
 .info-testa { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.4rem; }
 .info-testa h2 { margin: 0; }
