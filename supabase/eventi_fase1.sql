@@ -1,5 +1,5 @@
 -- Primo Giocatore - eventi, fase 1 (database)
--- v1.0.0 - 202611181400
+-- v1.1.0 - 202611181600 (anche i partecipanti pubblicano tavoli nell'evento)
 -- Si può rilanciare senza danni: ogni passo sostituisce la versione
 -- precedente di sé stesso. Non cancella dati.
 --
@@ -125,14 +125,14 @@ create or replace function public.ids_eventi_miei(p_scrittura boolean)
     and (not p_scrittura or (not e.chiuso and (e.fine is null or public.oggi_roma() <= e.fine)))
 $f$;
 
--- Gli eventi aperti in cui posso pubblicare tavoli.
+-- Gli eventi aperti in cui posso pubblicare tavoli: chiunque partecipi
+-- (v1.1.0), più chi organizza l'evento.
 create or replace function public.ids_eventi_tavoli_miei()
  returns setof uuid language sql stable security definer set search_path to 'public' as $f$
   select e.id from eventi e
   where not e.chiuso and (e.fine is null or public.oggi_roma() <= e.fine)
     and (public.organizzo_evento(e.id)
-         or exists (select 1 from evento_ruoli r where r.evento_id = e.id
-                    and r.utente_id = auth.uid() and r.ruolo = 'dimostratore'))
+         or exists (select 1 from evento_ruoli r where r.evento_id = e.id and r.utente_id = auth.uid()))
 $f$;
 
 create or replace function public.ids_tavoli_eventi_miei(p_scrittura boolean)
@@ -307,8 +307,8 @@ create policy "solo soci cancellazione" on public.profili as restrictive for del
 
 -- Tavoli e iscrizioni: oggi li vede ogni account. Resta così per tutti
 -- tranne chi è solo partecipante, che vede quelli dei suoi eventi.
--- I tavoli di un evento li pubblicano solo i soci, chi organizza
--- l'evento e i suoi dimostratori.
+-- I tavoli di un evento li pubblicano i soci e chiunque partecipi
+-- all'evento finché è aperto, anche su approvazione.
 drop policy if exists "solo evento lettura" on public.tavoli;
 drop policy if exists "solo evento creazione" on public.tavoli;
 drop policy if exists "solo evento modifica" on public.tavoli;

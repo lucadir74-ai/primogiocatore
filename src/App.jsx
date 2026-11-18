@@ -47,6 +47,9 @@ const PAGINE_DA_PREPARARE = [
   ['profilo:giochi', GiochiDoppi, 'org'], ['profilo:ruoli', Organizzatori, 'org'], ['profilo:soci', Soci, 'soci'],
 ]
 import Benvenuto from './Benvenuto.jsx'
+import EventoIngresso from './EventoIngresso.jsx'
+import EventoPartecipante from './EventoPartecipante.jsx'
+import { codiceEventoInSospeso, dimenticaCodiceEvento, entraNellEvento } from './evento'
 import Condividi from './Condividi.jsx'
 import Home from './Home.jsx'
 import Info from './Info.jsx'
@@ -147,10 +150,13 @@ function linkWhatsApp({ nickname, nome, email }) {
   return `https://wa.me/${WHATSAPP_TANA}?text=${encodeURIComponent(righe.join('\n'))}`
 }
 
-function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
+// daEvento: si arriva dal link di un evento, aperto anche a chi non è
+// socio. Niente domanda «sei socio?» né controllo dell'email: se è un
+// socio il database lo riconosce lo stesso dall'email.
+function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
   const [modo, setModo] = useState(modoIniziale)   // entra | iscriviti | recupero
   // Iscrizione a passi: domanda → (no: WhatsApp) | (sì: email → dati)
-  const [passo, setPasso] = useState('domanda')   // domanda | no | email | dati
+  const [passo, setPasso] = useState(daEvento ? 'dati' : 'domanda')   // domanda | no | email | dati
   const [emailVerificata, setEmailVerificata] = useState(false)
   const [nonTrovata, setNonTrovata] = useState(false)
   const [nickname, setNickname] = useState('')
@@ -176,7 +182,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
   }
 
   function vaiA(nuovo) {
-    setModo(nuovo); setPasso('domanda'); setErrore(''); setOk(''); setNonTrovata(false); setEmailVerificata(false)
+    setModo(nuovo); setPasso(daEvento ? 'dati' : 'domanda'); setErrore(''); setOk(''); setNonTrovata(false); setEmailVerificata(false)
   }
 
   async function invia() {
@@ -189,7 +195,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
       setErrore('Servono email e password.')
       return
     }
-    if (modo === 'iscriviti' && !emailVerificata) {
+    if (modo === 'iscriviti' && !emailVerificata && !daEvento) {
       setErrore('L\u2019iscrizione è riservata ai soci della Tana: se non lo sei, scrivi a Dario su WhatsApp.')
       return
     }
@@ -245,6 +251,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto }) {
       </h2>
       <p className="sottotitolo">
         {modo === 'entra' ? 'Riprendi da dove eri rimasto.'
+          : modo === 'iscriviti' && daEvento ? 'Ti serve per iscriverti ai tavoli dell’evento e registrare le partite.'
           : modo === 'iscriviti' ? 'Ti serve per registrare le partite e iscriverti ai tavoli.'
           : 'Scrivi il tuo indirizzo: ti mando un collegamento per sceglierne una nuova.'}
       </p>
@@ -873,6 +880,10 @@ export default function App() {
   // Accesso riservato ai soci: null = sto controllando.
   const [ammesso, setAmmesso] = useState(null)
   const [orgTana, setOrgTana] = useState(false)
+  // Link di un evento (?e=CODICE) ancora da usare: si entra nell'evento
+  // appena c'è il profilo. avvisoEvento: l'esito, da mostrare una volta.
+  const [codiceEvento, setCodiceEvento] = useState(codiceEventoInSospeso)
+  const [avvisoEvento, setAvvisoEvento] = useState(null)   // { tipo, testo }
   const [pronto, setPronto] = useState(false)
   const [scheda, setScheda] = useState(() => leggiPercorso()?.scheda || 'home')
   // Tavolo da aprire subito arrivando dalla Home: { id, quando }.
@@ -886,6 +897,7 @@ export default function App() {
   const [cambioPassword, setCambioPassword] = useState(false)
   // Senza sessione: pagina di benvenuto, oppure accesso/iscrizione.
   const [ingresso, setIngresso] = useState(() => {
+    if (codiceEventoInSospeso()) return 'evento'
     try { return localStorage.getItem(CHIAVE_GIA_ENTRATO) ? 'entra' : 'benvenuto' } catch { return 'benvenuto' }
   })
   const [sezioneProfilo, setSezioneProfilo] = useState(() => {
@@ -1114,6 +1126,39 @@ export default function App() {
   }
   useEffect(() => { setAmmesso(null); controllaAccesso() }, [profilo?.id])
 
+  // Arrivati dal link di un evento: con il profilo pronto si entra
+  // nell'evento, poi si ricontrollano profilo e accesso. Senza rete il
+  // codice resta sul telefono e si riprova alla prossima apertura.
+  useEffect(() => {
+    if (!profilo?.id || !codiceEvento) return
+    let vivo = true
+    entraNellEvento(codiceEvento).then(
+      (r) => {
+        if (!vivo) return
+        dimenticaCodiceEvento()
+        setCodiceEvento(null)
+        setAvvisoEvento({ tipo: 'ok', testo: `Sei dentro l’evento ${r?.nome || ''}.`.replace(' .', '.') })
+        setRiprova((n) => n + 1)
+        controllaAccesso()
+      },
+      (e) => {
+        if (!vivo) return
+        setCodiceEvento(null)
+        if (!navigator.onLine) return   // il codice resta salvato
+        dimenticaCodiceEvento()
+        setAvvisoEvento({ tipo: 'errore', testo: traduciErrore(e) })
+      },
+    )
+    return () => { vivo = false }
+  }, [profilo?.id, codiceEvento])
+
+  // L'esito dell'ingresso resta in vista qualche secondo.
+  useEffect(() => {
+    if (!avvisoEvento) return
+    const t = setTimeout(() => setAvvisoEvento(null), 8000)
+    return () => clearTimeout(t)
+  }, [avvisoEvento])
+
   // La pagina aperta finisce nell'indirizzo e nella cronologia.
   const inApp = !!(sessione && profilo && !tavoloPubblico && !daBga)
   useEffect(() => {
@@ -1177,7 +1222,7 @@ export default function App() {
         <Marchio onClick={inApp ? vaiAllaHome : null} />
         <div className="tasti-testata">
           <Condividi />
-          {inApp && (
+          {inApp && ammesso !== false && (
             <button type="button" className={'tasto-condividi' + (scheda === 'profilo' ? ' attivo' : '')}
               aria-label="Profilo" title="Profilo" aria-current={scheda === 'profilo' ? 'page' : undefined}
               onClick={vaiAlProfilo}>
@@ -1196,6 +1241,10 @@ export default function App() {
       </header>
 
       <Aggiornamento />
+
+      {inApp && ammesso !== false && avvisoEvento && (
+        <div className="scheda"><Avviso tipo={avvisoEvento.tipo} testo={avvisoEvento.testo} /></div>
+      )}
 
       <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
       {tavoloPubblico ? (
@@ -1221,21 +1270,36 @@ export default function App() {
       ) : cambioPassword ? (
         <NuovaPassword fatto={() => setCambioPassword(false)} />
       ) : !sessione ? (
-        ingresso === 'benvenuto' ? (
+        ingresso === 'evento' && codiceEvento ? (
+          <EventoIngresso
+            codice={codiceEvento}
+            onIscriviti={() => setIngresso('iscriviti')}
+            onEntra={() => setIngresso('entra')}
+            onLascia={() => { setCodiceEvento(null); setIngresso('benvenuto') }}
+          />
+        ) : ingresso === 'benvenuto' ? (
           <Benvenuto
             onIscriviti={() => setIngresso('iscriviti')}
             onEntra={() => setIngresso('entra')}
             linkNonSocio={linkWhatsApp({})}
           />
         ) : (
-          <Accesso key={ingresso} modoIniziale={ingresso} onBenvenuto={() => setIngresso('benvenuto')} />
+          <Accesso key={ingresso} modoIniziale={ingresso} daEvento={Boolean(codiceEvento)}
+            onBenvenuto={() => setIngresso(codiceEvento ? 'evento' : 'benvenuto')} />
         )
       ) : !profilo ? (
         <div className="scheda">
           {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
         </div>
+      ) : codiceEvento ? (
+        <div className="scheda"><p>Entro nell&rsquo;evento&hellip;</p></div>
+      ) : ammesso === false && profilo.stato_socio === 'partecipante' ? (
+        <EventoPartecipante profilo={profilo} avviso={avvisoEvento?.tipo === 'ok' ? avvisoEvento.testo : ''} />
       ) : ammesso === false ? (   // mentre controlla si entra: i dati li protegge il database
-        <InAttesa profilo={profilo} onRicontrolla={controllaAccesso} />
+        <>
+          {avvisoEvento?.tipo === 'errore' && <div className="scheda"><Avviso tipo="errore" testo={avvisoEvento.testo} /></div>}
+          <InAttesa profilo={profilo} onRicontrolla={controllaAccesso} />
+        </>
       ) : profiloIncompleto(profilo) ? (
         <CompletaProfilo profilo={profilo} setProfilo={setProfilo} />
       ) : daBga ? (
