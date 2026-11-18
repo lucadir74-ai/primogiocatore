@@ -19,6 +19,10 @@ export const NOVITA = [
     versione: '4.33.0',
     data: '2026-11-18',
     voci: [
+      'Menu più semplice: in basso cinque tasti (Giocatori si apre da Statistiche, Contatti dalla Home)',
+      'Profilo riordinato in poche voci: Il mio profilo, Porta le tue partite, Da sistemare (ospiti, luoghi, giochi doppi), Persone (soci e ruoli), Eventi',
+      'Partite: solo l’elenco, con ricerca e filtro dal vivo / online; per gioco, giocatore e luogo c’è Statistiche',
+      'Gli avvisi in cima stanno in un riquadro solo',
       'Ospiti: nuova parte «Si sono iscritti», che trova chi ha giocato come ospite per nome e cognome, anche scritti un po’ diversi, e lo unisce con un tocco',
       'Ospiti e Luoghi: ognuno vede i tasti solo per quello che ha inserito lui; gli organizzatori per tutto',
       'Luoghi: l’unione di due luoghi la fa il database in un colpo solo',

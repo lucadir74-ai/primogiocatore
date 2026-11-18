@@ -10,11 +10,11 @@ import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import { leggiBozza } from './bozza'
 
+// Le partite per gioco, per giocatore e per luogo ci sono già in
+// Statistiche: qui resta solo l'elenco, con la ricerca e il filtro
+// dal vivo / online. Il codice delle altre viste resta, spento.
 const SEZIONI = [
   { id: 'partite', etichetta: 'Partite' },
-  { id: 'giochi', etichetta: 'Giochi' },
-  { id: 'giocatori', etichetta: 'Giocatori' },
-  { id: 'luoghi', etichetta: 'Luoghi' },
 ]
 
 // Un formattatore solo e le date già viste ricordate: toLocaleDateString
@@ -82,7 +82,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
   // sezione, stessa ricerca, stessa partita aperta.
   useEffect(() => {
     if (!ripristina) return
-    if (ripristina.sezione) setSezione(ripristina.sezione)
+    if (ripristina.sezione && SEZIONI.some((s) => s.id === ripristina.sezione)) setSezione(ripristina.sezione)
     if (ripristina.cerca != null) setCerca(ripristina.cerca)
     if (ripristina.dove) setDove(ripristina.dove)
     if (ripristina.aperta) setAperta(ripristina.aperta)
@@ -208,11 +208,9 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
         </button>
       )}
 
-      <h3 className="titolo-sezione">Storico</h3>
-
       {errore && <div className="avviso errore">{errore}</div>}
 
-      <BarraScorrevole><div className="sottoschede">
+      {SEZIONI.length > 1 && <BarraScorrevole><div className="sottoschede">
         {SEZIONI.map((s) => (
           <button
             key={s.id}
@@ -222,7 +220,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
             {s.etichetta}
           </button>
         ))}
-      </div></BarraScorrevole>
+      </div></BarraScorrevole>}
 
       {partite.length > 1 && (
         <input

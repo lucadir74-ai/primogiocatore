@@ -58,6 +58,9 @@ import CampoPassword from './CasellaPassword.jsx'
 import BarraScorrevole from './BarraScorrevole.jsx'
 
 // Le sezioni del profilo, una alla volta: senza, la pagina era lunghissima.
+// Ogni sezione ha il suo indirizzo (/profilo/ospiti...), ma nel menu sono
+// riunite in cinque voci al massimo: chi gioca soltanto ne vede due o tre.
+// Il terzo valore dice a chi tocca: true = solo a chi organizza.
 const SEZIONI_PROFILO = [
   ['profilo', 'Profilo'],
   ['dati', 'Dati e import'],
@@ -69,6 +72,16 @@ const SEZIONI_PROFILO = [
   ['eventi', 'Eventi', true], // chi organizza tutto, una Tana o un evento
   ['info', 'Info'],           // versione, autore e novità
 ]
+// Le voci del menu: [id, testo, sezioni che contiene]. La prima sezione
+// disponibile è quella che si apre toccando la voce.
+const VOCI_PROFILO = [
+  ['profilo', 'Il mio profilo', ['profilo', 'info']],
+  ['dati', 'Porta le tue partite', ['dati']],
+  ['sistema', 'Da sistemare', ['ospiti', 'luoghi', 'giochi']],
+  ['persone', 'Persone', ['soci', 'ruoli']],
+  ['eventi', 'Eventi', ['eventi']],
+]
+const vocePer = (sezione) => VOCI_PROFILO.find(([, , s]) => s.includes(sezione))?.[0] || 'profilo'
 const CHIAVE_SEZIONE = 'primo-giocatore:sezione-profilo'
 // Chi su questo telefono è già entrato una volta salta la pagina di benvenuto.
 const CHIAVE_GIA_ENTRATO = 'primo-giocatore:gia-entrato'
@@ -1045,6 +1058,22 @@ export default function App() {
     riconoscimi(profilo).then((n) => { if (n > 0) setRiconosciute(n) })
   }, [profilo?.id])
 
+  // Ospiti e luoghi inseriti da questa persona: se non ne ha, a chi gioca
+  // soltanto la voce «Da sistemare» non serve e non compare.
+  const [daSistemare, setDaSistemare] = useState(() => leggiAvvisi().daSistemare || 0)
+  useEffect(() => {
+    if (!profilo?.id || profilo.organizzatore || profilo.amministratore) return
+    Promise.all([
+      supabase.from('ospiti').select('id', { count: 'exact', head: true })
+        .eq('creato_da', profilo.id).is('utente_collegato', null),
+      supabase.from('luoghi').select('id', { count: 'exact', head: true }).eq('creato_da', profilo.id),
+    ]).then(([o, l]) => {
+      const n = (o.count || 0) + (l.count || 0)
+      setDaSistemare(n)
+      salvaAvvisi(profilo.id, { daSistemare: n })
+    }, () => {})
+  }, [profilo?.id])
+
   // Quanti ospiti aspettano che qualcuno dica chi sono: i dubbi sui nomi
   // (per chi li ha inseriti e per chi organizza) e le vecchie richieste.
   // I dubbi si contano una volta per apertura: guardano tutti gli ospiti.
@@ -1375,12 +1404,13 @@ export default function App() {
               ['tavoli', 'Tavoli'],
               ['statistiche', 'Statistiche'],
               ['giochi', 'Giochi'],
-              ['giocatori', 'Giocatori'],
-              ['contatti', 'Contatti'],
+              // Giocatori si apre da Statistiche, Contatti dalla Home:
+              // cinque tasti si leggono e si toccano meglio di sette.
             ].map(([id, etichetta]) => (
               <button
                 key={id}
-                className={scheda === id || (id === 'statistiche' && scheda === 'classifiche') || (id === 'storico' && scheda === 'partita') ? 'attiva' : ''}
+                className={scheda === id || (id === 'statistiche' && ['classifiche', 'giocatori'].includes(scheda))
+                  || (id === 'storico' && scheda === 'partita') || (id === 'home' && scheda === 'contatti') ? 'attiva' : ''}
                 onClick={() => {
                   if (id === 'partita') setPartitaId(null)
                   // Dal menu in basso si riparte da capo: il ritorno alla
@@ -1404,81 +1434,47 @@ export default function App() {
           <Prepara profilo={profilo} aperta={scheda === 'profilo' ? `profilo:${sezioneProfilo}` : scheda}
             pagine={pagineDaPreparare} />
 
-          {daBgg && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {daBgg.fatte > 0 && `Da BGG: ${daBgg.fatte} ${daBgg.fatte === 1 ? 'partita nuova' : 'partite nuove'}. `}
-                {daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Dati e import. `}
-                <button className="bottone-piatto" onClick={() => setDaBgg(null)}>ok</button>
-              </p>
-            </div>
-          )}
-
-          {scheda !== 'profilo' && sospeseBga > 0 && !avvisoBga?.inSospeso && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {sospeseBga === 1
-                  ? 'Una partita da BGA aspetta una tua scelta.'
-                  : `${sospeseBga} partite da BGA aspettano una tua scelta.`}{' '}
-                <button className="bottone-piatto"
-                  onClick={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}>Guarda</button>
-              </p>
-            </div>
-          )}
-
-          {avvisoBga && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {avvisoBga.nuove > 0 && `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}. `}
-                {avvisoBga.inSospeso > 0 && (
-                  <>
-                    {`Da BGA: ${avvisoBga.inSospeso === 1 ? 'una partita aspetta' : `${avvisoBga.inSospeso} partite aspettano`} una tua scelta; le altre sono già entrate. `}
-                    <button className="bottone-piatto"
-                      onClick={() => { setAvvisoBga(null); apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}>Guarda</button>{' '}
-                  </>
-                )}
-                {avvisoBga.scaduta && 'La sessione BGA è scaduta: ricollegala in Dati e import → Board Game Arena. '}
-                <button className="bottone-piatto" onClick={() => setAvvisoBga(null)}>ok</button>
-              </p>
-            </div>
-          )}
+          {/* Gli avvisi in un riquadro solo, una riga ciascuno: prima ne
+              potevano comparire fino a sette, uno sopra l'altro. */}
+          {(() => {
+            const vai = (sez) => { apriSezione(sez); setScheda('profilo'); window.scrollTo({ top: 0 }) }
+            const voci = []
+            if (daBgg) voci.push({ id: 'bgg', chiudi: () => setDaBgg(null), testo:
+              [daBgg.fatte > 0 && `Da BGG: ${daBgg.fatte} ${daBgg.fatte === 1 ? 'partita nuova' : 'partite nuove'}.`,
+               daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Porta le tue partite.`].filter(Boolean).join(' ') })
+            if (avvisoBga?.nuove > 0) voci.push({ id: 'bga-nuove', chiudi: () => setAvvisoBga(null),
+              testo: `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}.` })
+            const sospese = avvisoBga?.inSospeso || (scheda !== 'profilo' ? sospeseBga : 0)
+            if (sospese > 0) voci.push({ id: 'bga-sospese', guarda: () => { setAvvisoBga(null); vai('dati') },
+              testo: sospese === 1 ? 'Una partita da BGA aspetta una tua scelta.' : `${sospese} partite da BGA aspettano una tua scelta.` })
+            if (avvisoBga?.scaduta) voci.push({ id: 'bga-scaduta', guarda: () => { setAvvisoBga(null); vai('dati') },
+              testo: 'La sessione di Board Game Arena è scaduta: ricollegala.' })
+            if (riconosciute > 0) voci.push({ id: 'riconosciute', chiudi: () => setRiconosciute(0),
+              testo: riconosciute === 1 ? 'Abbiamo trovato 1 scheda ospite con il tuo nome: quelle partite ora sono tue.'
+                : `Abbiamo trovato ${riconosciute} schede ospite con il tuo nome: quelle partite ora sono tue.` })
+            if (scheda !== 'profilo' && daApprovare > 0) voci.push({ id: 'ospiti', guarda: () => vai('ospiti'),
+              testo: daApprovare === 1 ? 'C\u2019è un ospite da riconoscere: sai chi è?' : `Ci sono ${daApprovare} ospiti da riconoscere: sai chi sono?` })
+            if (scheda !== 'tavoli' && tavoliChiesti > 0) voci.push({ id: 'tavoli',
+              guarda: () => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) },
+              testo: tavoliChiesti === 1 ? 'Qualcuno ti chiede di organizzare un tavolo.' : `${tavoliChiesti} richieste di organizzare un tavolo.` })
+            if (voci.length === 0) return null
+            return (
+              <div className="scheda scheda-sottile da-fare">
+                {voci.length > 1 && <p className="da-fare-titolo">Da guardare</p>}
+                <ul>
+                  {voci.map((v) => (
+                    <li key={v.id}>
+                      <span>{v.testo}</span>
+                      {v.guarda && <button className="bottone-piatto" onClick={v.guarda}>Guarda</button>}
+                      {v.chiudi && <button className="bottone-piatto" onClick={v.chiudi}>ok</button>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
 
           <NomeBga profilo={profilo} quando={controlloBga} />
-
-          {riconosciute > 0 && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {riconosciute === 1
-                  ? 'Abbiamo trovato 1 scheda ospite con il tuo nome: quelle partite ora sono tue.'
-                  : `Abbiamo trovato ${riconosciute} schede ospite con il tuo nome: quelle partite ora sono tue.`}{' '}
-                <button className="bottone-piatto" onClick={() => setRiconosciute(0)}>ok</button>
-              </p>
-            </div>
-          )}
-
-          {scheda !== 'profilo' && daApprovare > 0 && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {daApprovare === 1
-                  ? 'C\u2019è un ospite da riconoscere: sai chi è?'
-                  : `Ci sono ${daApprovare} ospiti da riconoscere: sai chi sono?`}{' '}
-                <button className="bottone-piatto"
-                  onClick={() => { apriSezione('ospiti'); setScheda('profilo') }}>Guarda</button>
-              </p>
-            </div>
-          )}
-
-          {scheda !== 'tavoli' && tavoliChiesti > 0 && (
-            <div className="scheda scheda-sottile">
-              <p className="aiuto" style={{ margin: 0 }}>
-                {tavoliChiesti === 1
-                  ? 'Qualcuno ti chiede di organizzare un tavolo.'
-                  : `${tavoliChiesti} richieste di organizzare un tavolo.`}{' '}
-                <button className="bottone-piatto"
-                  onClick={() => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}>Guarda</button>
-              </p>
-            </div>
-          )}
 
           {scheda === 'home' && <Installa variante="avviso" />}
 
@@ -1491,6 +1487,7 @@ export default function App() {
               onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
               onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
               onDati={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}
+              onContatti={() => { setScheda('contatti'); window.scrollTo({ top: 0 }) }}
             />
           ) : scheda === 'partita' ? (
             <Partita
@@ -1550,6 +1547,7 @@ export default function App() {
               profilo={profilo}
               mira={mira}
               onClassifiche={() => { statoProssimo.current = { ritornoA: '/statistiche' }; setScheda('classifiche') }}
+              onGiocatori={() => { statoProssimo.current = { ritornoA: '/statistiche' }; setScheda('giocatori'); window.scrollTo({ top: 0 }) }}
               onModifica={(id, dove) => {
                 setRitorno(dove || null)
                 apriPartita(id)
@@ -1568,6 +1566,10 @@ export default function App() {
           ) : scheda === 'giocatori' ? (
             <Giocatori
               profilo={profilo}
+              onIndietro={() => {
+                if (window.history.state?.ritornoA === '/statistiche') window.history.back()
+                else setScheda('statistiche')
+              }}
               onStatistiche={(id) => {
                 setMira({ tipo: 'persona', id, quando: Date.now() })
                 setScheda('statistiche')
@@ -1577,13 +1579,41 @@ export default function App() {
             (() => {
               const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore || profilo.amministratore
                 || (id === 'soci' && orgTana) || (id === 'eventi' && (orgTana || orgEvento)))
-              const attiva = sezioni.some(([id]) => id === sezioneProfilo) ? sezioneProfilo : 'profilo'
+              const organizza = profilo.organizzatore || profilo.amministratore
+              // «Da sistemare» a chi gioca soltanto serve solo se ha inserito
+              // ospiti o luoghi suoi, o se c'è qualcosa da riconoscere.
+              const visibili = sezioni.filter(([id]) => organizza || !['ospiti', 'luoghi'].includes(id)
+                || daSistemare > 0 || daApprovare > 0)
+              const ids = visibili.map(([id]) => id)
+              const attiva = ids.includes(sezioneProfilo) ? sezioneProfilo : 'profilo'
+              const voci = VOCI_PROFILO
+                .map(([id, testo, dentro]) => [id, testo, dentro.filter((s) => ids.includes(s))])
+                .filter(([, , dentro]) => dentro.length > 0)
+              const voceAttiva = vocePer(attiva)
+              const dentro = voci.find(([id]) => id === voceAttiva)?.[2] || []
+              const NOMI_INTERNI = { profilo: 'I tuoi dati', info: 'Versione e novità' }
               return (
                 <>
                   <div className="menu-profilo">
-                    <MenuScorrevole etichetta="Sezioni del profilo" attiva={attiva} onScegli={apriSezione}
-                      voci={sezioni.map(([id, testo]) => [id, testo, id === 'ospiti' && daApprovare > 0])} />
+                    <MenuScorrevole etichetta="Sezioni del profilo" attiva={voceAttiva}
+                      onScegli={(v) => apriSezione(voci.find(([id]) => id === v)?.[2][0] || 'profilo')}
+                      voci={voci.map(([id, testo, d]) => [id, testo, d.includes('ospiti') && daApprovare > 0])} />
                   </div>
+
+                  {dentro.length > 1 && (
+                    <div className="scheda scheda-sottile sottomenu-profilo">
+                      <BarraScorrevole><div className="sottoschede">
+                        {dentro.map((s) => (
+                          <button key={s} className={attiva === s ? 'attiva' : ''}
+                            aria-current={attiva === s ? 'page' : undefined}
+                            onClick={() => apriSezione(s)}>
+                            {NOMI_INTERNI[s] || SEZIONI_PROFILO.find(([id]) => id === s)?.[1]}
+                            {s === 'ospiti' && daApprovare > 0 && <span className="stellina"> ●</span>}
+                          </button>
+                        ))}
+                      </div></BarraScorrevole>
+                    </div>
+                  )}
 
                   {attiva === 'profilo' ? (
                     <>

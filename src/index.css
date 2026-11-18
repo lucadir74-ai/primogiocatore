@@ -2965,6 +2965,18 @@ a.contatto .contatto-valore { color: var(--blu); }
 .ospite-partite { display: block; font-size: 0.88rem; margin-top: 0.15rem; }
 .ospite-partite-elenco { flex: 1 0 100%; width: 100%; }
 
+/* Avvisi in cima: un riquadro solo, una riga per avviso */
+.da-fare ul { list-style: none; margin: 0; padding: 0; }
+.da-fare li {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.6rem;
+  padding: 0.3rem 0; font-size: 0.92rem; color: var(--inchiostro-tenue);
+}
+.da-fare li + li { border-top: 1px solid var(--bordo); }
+.da-fare li > span { flex: 1 1 14rem; min-width: 0; }
+.da-fare-titolo { margin: 0 0 0.2rem; font-weight: 600; }
+.sottomenu-profilo { padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.home-contatti { width: 100%; margin-top: 1rem; }
+
 /* Ospiti → «Si sono iscritti»: un iscritto e i nomi con cui ha giocato */
 .unione-ospite {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;

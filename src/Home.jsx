@@ -48,7 +48,7 @@ function Icona({ d }) {
   )
 }
 
-export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati }) {
+export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati, onContatti }) {
   const [tavoli, setTavoli] = useState(() => (ricordo.id === profilo.id ? ricordo.tavoli : null))
   // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
   // importata (la lettura automatica parte solo dopo il primo import), o
@@ -233,7 +233,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
             {manca.includes('BGG') && 'La prima volta si importano a mano: poi si aggiornano da sole. '}
             {manca.includes('BGA') && 'Per BGA collega l\u2019account con la password: poi le partite arrivano da sole, anche a telefono spento.'}
           </span>
-          <button type="button" className="tasto-piccolo primario" onClick={onDati}>Vai a Dati e import</button>
+          <button type="button" className="tasto-piccolo primario" onClick={onDati}>Porta le tue partite</button>
         </div>
       )}
 
@@ -301,6 +301,17 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       )}
 
       <DallaTana />
+
+      {onContatti && (
+        <button type="button" className="home-riga home-contatti" onClick={onContatti}>
+          <Icona d="M4 6h16v12H4z M4 7l8 6 8-6" />
+          <span className="home-riga-testo">
+            <strong>Contatti della Tana</strong>
+            <span>telefono, WhatsApp, social, indirizzo</span>
+          </span>
+          <span className="home-azione">›</span>
+        </button>
+      )}
     </div>
   )
 }

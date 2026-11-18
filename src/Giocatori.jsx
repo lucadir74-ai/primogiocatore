@@ -22,7 +22,7 @@ const PER_PAGINA = 60
 
 const giorno = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 
-export default function Giocatori({ profilo, onStatistiche }) {
+export default function Giocatori({ profilo, onStatistiche, onIndietro }) {
   const ricordo = memoria?.utente === profilo.id ? memoria : null
   const [partite, setPartite] = useState(ricordo?.partite || [])
   const [mieiOspiti, setMieiOspiti] = useState(ricordo?.mieiOspiti || [])
@@ -167,6 +167,7 @@ export default function Giocatori({ profilo, onStatistiche }) {
 
   return (
     <div className="scheda">
+      {onIndietro && <button className="bottone-piatto" onClick={onIndietro}>← Statistiche</button>}
       <h2>Giocatori</h2>
       <p className="sottotitolo">
         {persone.length} persone con cui hai giocato: {quantiAccount} con account, {quantiOspiti} ospiti.

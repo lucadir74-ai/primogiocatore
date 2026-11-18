@@ -100,7 +100,7 @@ const identita = (x) => x.utente_id || x.ospiti?.utente_collegato || `ospite:${x
 const nomeDi = (x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti))
 const coloreDi = (x) => COLORI.find((c) => c.id === x.profili?.colore)?.hex || '#C9D1D8'
 
-export default function Statistiche({ profilo, onModifica, mira, onClassifiche }) {
+export default function Statistiche({ profilo, onModifica, mira, onClassifiche, onGiocatori }) {
   const inMemoria = archivioInMemoria(profilo.id)
   const [tuttePartite, setPartite] = useState(inMemoria || [])
   const [caricamento, setCaricamento] = useState(!inMemoria)
@@ -615,6 +615,14 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche }
             etichetta={tipo === 'persona' ? 'Scegli il giocatore' : tipo === 'gioco' ? 'Scegli il gioco' : 'Scegli il luogo'}
           />
         </div>
+      )}
+
+      {/* L'elenco di tutte le persone con cui si è giocato: prima aveva un
+          tasto suo nel menu in basso. */}
+      {tipo === 'persona' && onGiocatori && (
+        <button type="button" className="bottone-piatto" onClick={onGiocatori}>
+          Tutte le persone con cui hai giocato ›
+        </button>
       )}
 
       {partite.length === 0 ? (

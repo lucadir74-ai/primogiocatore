@@ -721,7 +721,7 @@ export default function Dati({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <h2>Porta qui giochi e partite</h2>
+      <h2>Porta qui le tue partite</h2>
       <p className="aiuto">
         La prima volta fai i passi in ordine, dall&rsquo;alto in basso: prima i giochi, poi le partite.
         Salta quelli che non ti servono. Dopo, giochi e partite nuove si aggiornano da soli.
@@ -826,8 +826,9 @@ export default function Dati({ profilo }) {
         </p>
       </Passo>
 
-      <ArchivioTelefono profilo={profilo} />
-      <RisposteLente />
+      {/* Strumenti tecnici: servono a chi assiste l'app, non a chi gioca. */}
+      {profilo.amministratore && <ArchivioTelefono profilo={profilo} />}
+      {profilo.amministratore && <RisposteLente />}
 
       <Sezione id="esporta" titolo="Esporta" nota="una copia delle tue partite">
         <button className="bottone" onClick={esportaJson} disabled={lavorando}>
