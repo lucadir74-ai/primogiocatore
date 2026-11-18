@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.3.0 - 202611131200 (partite in forma compatta, giochi letti una volta, di notte niente ricalcolo se nulla è cambiato)
+// v1.4.0 - 202611182200 (chi partecipa solo agli eventi non compare nella classifica della Tana)
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -171,6 +171,19 @@ export async function daRicalcolare(db, adesso = Date.now()) {
   }
 }
 
+// Gli account «partecipante» (solo eventi). Prima degli script degli
+// eventi la colonna non ha quel valore: insieme vuoto.
+async function soloPartecipanti(db) {
+  const ids = new Set()
+  for (let da = 0; ; da += PAGINA) {
+    const { data, error } = await db.from('profili').select('id')
+      .eq('stato_socio', 'partecipante').order('id').range(da, da + PAGINA - 1)
+    if (error) throw error
+    for (const p of data) ids.add(String(p.id))
+    if (data.length < PAGINA) return ids
+  }
+}
+
 // L'ora del database, non quella di Vercel: è con quella che vengono
 // segnate le partite cambiate.
 async function oraDelDatabase(db) {
@@ -215,7 +228,10 @@ export async function ricalcola(db) {
   const ora = new Date((await oraDelDatabase(db)) - MARGINE).toISOString()
   const { partite, compatta, byte } = await tutteLePartite(db)
   const pesi = await completaPesi(db, partite, inizio + TEMPO_PESI)
-  const righe = calcolaPrimeggio(partite)
+  // Chi partecipa solo a un evento (non è socio) gioca e conta come
+  // avversario, ma nella classifica della Tana non compare.
+  const soloEvento = await soloPartecipanti(db)
+  const righe = calcolaPrimeggio(partite, { inClassifica: (id) => !soloEvento.has(String(id)) })
 
   // Nome e colore vanno nella tabella: chi guarda la classifica può
   // non avere accesso al profilo di persone con cui non ha giocato.

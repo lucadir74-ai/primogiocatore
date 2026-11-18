@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il calcolo dell'IPG
-// v1.3.0 - 202610112300
+// v1.4.0 - 202611182200 (inClassifica e minGlobale: per la classifica della Tana e per quella degli eventi)
 //
 // Primeggio è il sistema di classifica; IPG (Indice Primo Giocatore)
 // è il numero di ciascuno, per gioco e globale.
@@ -103,7 +103,18 @@ export function posti(righe) {
 //             partecipazioni: [{ utente_id, ospite_id, punteggio_totale,
 //                                posizione, vincitore, ospiti: { utente_collegato } }] }]
 // Restituisce le righe della tabella ipg (solo account).
-export function calcolaPrimeggio(partite) {
+//
+// opzioni.inClassifica(id): quali account compaiono nelle righe (v1.4.0).
+// Gli altri giocano lo stesso, e contano come avversari per tutti, ma non
+// hanno righe né posti: nella classifica della Tana chi partecipa solo a
+// un evento non compare, e i posti restano senza buchi.
+// opzioni.minGlobale: partite per entrare nella classifica generale
+// (in un evento di tre giorni ne bastano poche).
+// opzioni.ancheOspiti: righe anche per gli ospiti senza account, con
+// profilo_id «ospite:<id>» (la classifica di un evento li mostra).
+export function calcolaPrimeggio(partite, opzioni = {}) {
+  const inClassifica = opzioni.inClassifica || (() => true)
+  const minGlobale = opzioni.minGlobale ?? MIN_PARTITE_GLOBALE
   // Copie di lavoro: le partecipazioni vengono modificate qui sotto.
   // Fra le copie della stessa partita si tiene quella con più account
   // collegati (a parità, la più vecchia), e gli account presenti solo
@@ -156,7 +167,7 @@ export function calcolaPrimeggio(partite) {
   for (const [gioco, tab] of perGioco) {
     const qui = []
     for (const [k, v] of tab) {
-      if (!eAccount(k)) continue
+      if ((!eAccount(k) && !opzioni.ancheOspiti) || !inClassifica(k)) continue
       const ipg = ipgDa(v.r)
       qui.push({ profilo_id: k, gioco_id: gioco, ipg, mu: v.r.mu, sigma: v.r.sigma, partite: v.partite, vittorie: v.vittorie })
       const g = globale.get(k) || { somma: 0, pesoTot: 0, partite: 0, vittorie: 0 }
@@ -180,7 +191,7 @@ export function calcolaPrimeggio(partite) {
     profilo_id: k, gioco_id: '', ipg: Math.round(g.somma / g.pesoTot),
     mu: null, sigma: null, partite: g.partite, vittorie: g.vittorie,
   }))
-  glob.filter((r) => r.partite >= MIN_PARTITE_GLOBALE)
+  glob.filter((r) => r.partite >= minGlobale)
     .sort((a, b) => b.ipg - a.ipg)
     .forEach((r, i) => { r.posizione = i + 1 })
   righeIpg.push(...glob)

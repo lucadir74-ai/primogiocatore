@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.5.0 - 202611151200 (in fondo, la spiegazione completa del calcolo dell'IPG)
+// v1.6.0 - 202611182200 (scheda Eventi: la classifica di ogni evento)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -12,7 +12,12 @@
 // - la ricerca di un gioco la fa il database, al massimo 100 risultati;
 // - le righe di un gioco o di un giocatore solo quando se ne apre la scheda.
 
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { eventiVisibili, statoEvento, dateEvento } from './evento'
+
+// La classifica degli eventi porta con sé il calcolo del Primeggio: si
+// scarica solo se la si apre.
+const ClassificaEvento = lazy(() => import('./ClassificaEvento.jsx'))
 import { COLORI } from './supabase'
 import { ipgGenerale, ipgGioco, ipgPersona, giochiClassifiche, giochiSenzaNome } from './ipgDati'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -97,6 +102,16 @@ export default function Classifiche({ profilo, onIndietro }) {
   const [trovati, setTrovati] = useState({ q: '', giochi: [], errore: '' })
   const [giocoAperto, setGiocoAperto] = useState(null)
   const [personaAperta, setPersonaAperta] = useState(null)
+  // Gli eventi già cominciati: ognuno ha la sua classifica.
+  const [eventi, setEventi] = useState([])
+  const [eventoScelto, setEventoScelto] = useState('')
+  useEffect(() => {
+    eventiVisibili().then((lista) => {
+      const partiti = lista.filter((e) => statoEvento(e) !== 'in_arrivo')
+      setEventi(partiti)
+      setEventoScelto((x) => x || partiti[0]?.id || '')
+    })
+  }, [])
 
   useEffect(() => {
     let vivo = true
@@ -265,12 +280,29 @@ export default function Classifiche({ profilo, onIndietro }) {
       {errore && <div className="avviso errore">{errore}</div>}
 
       <BarraScorrevole><div className="sottoschede">
-        {[['generale', 'Generale'], ['giochi', 'Per gioco']].map(([id, et]) => (
+        {[['generale', 'Generale'], ['giochi', 'Per gioco'], ...(eventi.length ? [['eventi', 'Eventi']] : [])].map(([id, et]) => (
           <button key={id} className={vista === id ? 'attiva' : ''} onClick={() => setVista(id)}>{et}</button>
         ))}
       </div></BarraScorrevole>
 
-      {caricamento ? (
+      {vista === 'eventi' ? (
+        <>
+          {eventi.length > 1 && (
+            <div className="campo">
+              <label htmlFor="cl-evento">Evento</label>
+              <select id="cl-evento" value={eventoScelto} onChange={(e) => setEventoScelto(e.target.value)}>
+                {eventi.map((e) => <option key={e.id} value={e.id}>{e.nome} · {dateEvento(e)}</option>)}
+              </select>
+            </div>
+          )}
+          {eventi.length === 1 && <p className="sottotitolo">{eventi[0].nome} · {dateEvento(eventi[0])}</p>}
+          {eventi.find((e) => e.id === eventoScelto) && (
+            <Suspense fallback={<p>Un attimo&hellip;</p>}>
+              <ClassificaEvento evento={eventi.find((e) => e.id === eventoScelto)} profilo={profilo} />
+            </Suspense>
+          )}
+        </>
+      ) : caricamento ? (
         <p className="aiuto">Carico le classifiche…</p>
       ) : tutti.length === 0 && primiGiochi.length === 0 ? (
         <p className="aiuto">Le classifiche non sono ancora state calcolate.</p>
