@@ -1,0 +1,124 @@
+// Primo Giocatore - versioni e novità
+// v1.0.0 - 202611181200
+//
+// L'elenco che si legge in Profilo → Info, dalla versione più recente.
+// A ogni uscita: una voce nuova in cima e lo stesso numero in package.json
+// (è da lì che l'app prende la versione che mostra).
+
+import { version } from '../package.json'
+
+export const VERSIONE = version
+
+export const FIRMA = {
+  nome: 'Luca Di Russo',
+  soprannome: 'lucadir',
+}
+
+export const NOVITA = [
+  {
+    versione: '4.32.0',
+    data: '2026-11-18',
+    voci: [
+      'Nuova sezione Info nel Profilo: versione dell’app, autore e novità di ogni uscita',
+      'Calendario delle serate: orari a bottoni come nei tavoli',
+      'Appello delle serate: Sì / Forse / No accanto a ogni dimostratore',
+      'Classifiche e Statistiche: la spiegazione completa del calcolo dell’IPG',
+      'Partita: durata scritta in ore e minuti',
+      'Ospiti: sotto ogni ospite si aprono le sue partite e il cognome si vede ovunque',
+      'Invio a BGG: gli ospiti partono con nome e cognome',
+    ],
+  },
+  {
+    versione: '4.31.1',
+    data: '2026-11-14',
+    voci: [
+      'Home: dal menu in basso ogni pagina si apre dall’inizio, con tavoli e IPG già a posto',
+    ],
+  },
+  {
+    versione: '4.31.0',
+    data: '2026-11-14',
+    voci: [
+      'Apertura senza attese: accesso e profilo dal telefono, poi si aggiornano dalla rete',
+      'Classifiche per gioco: nell’elenco anche la propria posizione, «è 1° su N»',
+      'Statistiche: tasto per le Classifiche con la propria posizione in Primeggio',
+    ],
+  },
+  {
+    versione: '4.30.0',
+    data: '2026-11-13',
+    voci: [
+      'Versione nuova dell’app: si propone invece di ricaricare la pagina da sola',
+      'Avviso «server in ritardo» ed elenco delle risposte lente in Dati e import',
+      'Primeggio e Classifiche più leggeri da caricare',
+      'Ricerca nello storico delle partite',
+      '«Rifai l’ultima» solo per le partite dal vivo; niente Modifica sulle partite arrivate da BGA',
+    ],
+  },
+  {
+    versione: '4.29.0',
+    data: '2026-11-13',
+    voci: [
+      'Richieste con tempo massimo: l’app non resta più bloccata ad aspettare',
+      'Schermata d’errore con il tasto «Ricarica»',
+      'Profilo non più riletto a ogni ritorno all’app',
+    ],
+  },
+  {
+    versione: '4.28.1',
+    data: '2026-11-12',
+    voci: [
+      'Avvisi delle richieste riletti al massimo una volta al minuto',
+    ],
+  },
+  {
+    versione: '4.28.0',
+    data: '2026-11-12',
+    voci: [
+      'Ospiti riconosciuti da soli con nick o nome e cognome; i dubbi li conferma chi li ha inseriti',
+      'Ospiti da riconoscere: mai per il solo nome di battesimo, con «vedi le partite» per capire chi è',
+      'Ricerca veloce anche con migliaia di ospiti',
+      'Home: il riquadro «Prossimi tavoli», con quanti hanno ancora posto',
+      'Tavoli: schede compatte che si aprono al tocco, pronte anche per eventi con tanti tavoli',
+      'Contatti: un’icona per ogni tipo e il tipo «Indirizzo», che apre la mappa',
+      'Senza rete si rivedono anche contatti e ospiti da riconoscere',
+    ],
+  },
+  {
+    versione: '4.27.0',
+    data: '2026-11-12',
+    voci: [
+      'Pagina «Partite»: nuova partita e storico insieme',
+      'Contatti della Tana, anche nella barra in basso',
+      'Dati e import: procedura guidata in quattro passi',
+    ],
+  },
+  {
+    versione: '4.26.0',
+    data: '2026-11-10',
+    voci: [
+      'Si apre e si consulta anche senza rete: Tavoli, Giochi, Giocatori, Classifiche e Profilo',
+      'Partita senza rete: giochi e giocatori già pronti, e ciò che scrivi parte da solo quando torna la rete',
+      'Guida per installare l’app su iPhone',
+      'Niente doppioni: avviso se la partita è già registrata',
+      'Cosa manca su BGG: confronto con l’archivio e invio delle partite mancanti',
+      'Tavoli: luogo «Tana dei Goblin Roma» e ore 20:45 già messi, note accanto al titolo',
+      'Pagine più veloci grazie all’archivio sul telefono',
+    ],
+  },
+  {
+    versione: '4.25.1',
+    data: '2026-11-03',
+    voci: [
+      'Dalla Home si va a Dati e import per il primo import',
+      'Scheda iscritto: spiega perché le partite BGA importate sono meno di quelle del profilo',
+    ],
+  },
+  {
+    versione: '4.25.0',
+    data: '2026-11-03',
+    voci: [
+      'Home nella barra in fondo; «Esci» solo nel Profilo',
+    ],
+  },
+]
