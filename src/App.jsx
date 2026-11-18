@@ -225,10 +225,18 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
       }
 
       if (modo === 'iscriviti') {
+        // Dal link di un evento, il collegamento di conferma riporta il
+        // codice: chi lo apre in un altro browser (quello di Gmail, per
+        // esempio) entra lo stesso nell'evento. Se l'indirizzo non è fra
+        // quelli ammessi da Supabase, si torna alla pagina principale.
+        const codice = daEvento ? codiceEventoInSospeso() : null
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { nome: nome.trim(), cognome: cognome.trim(), citta: citta.trim(), nickname: nickname.trim() } },
+          options: {
+            data: { nome: nome.trim(), cognome: cognome.trim(), citta: citta.trim(), nickname: nickname.trim() },
+            ...(codice ? { emailRedirectTo: `${window.location.origin}/?e=${encodeURIComponent(codice)}` } : {}),
+          },
         })
         if (error) throw error
         if (data.session) return
@@ -762,8 +770,9 @@ function bgaDalLink() {
 
 // Con l'accesso riservato ai soci acceso, chi non risulta socio vede
 // solo questo finché un organizzatore della Tana non decide.
-function InAttesa({ profilo, onRicontrolla }) {
+function InAttesa({ profilo, onRicontrolla, onCodiceEvento }) {
   const escluso = profilo.stato_socio === 'escluso'
+  const [codice, setCodice] = useState('')
   return (
     <div className="scheda">
       <h2>{escluso ? 'Accesso non disponibile' : 'Iscrizione in attesa'}</h2>
@@ -782,6 +791,24 @@ function InAttesa({ profilo, onRicontrolla }) {
         </>
       )}
       <button className="bottone" onClick={onRicontrolla}>Ricontrolla</button>
+
+      {/* Chi si è iscritto per un evento ma ha perso il codice per strada
+          (conferma dell'email aperta in un altro browser) lo scrive qui. */}
+      {!escluso && onCodiceEvento && (
+        <div className="campo evento-codice">
+          <label htmlFor="codice-evento">Sei qui per un evento? Scrivi il suo codice</label>
+          <div className="riga-trova">
+            <input id="codice-evento" value={codice} autoCapitalize="characters" autoComplete="off"
+              onChange={(e) => setCodice(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && codice.trim()) onCodiceEvento(codice) }}
+              placeholder="Es. 4V7YAY9T" />
+            <button type="button" className="bottone bottone-secondario" disabled={!codice.trim()}
+              onClick={() => onCodiceEvento(codice)}>Entra</button>
+          </div>
+          <p className="aiuto">Lo trovi sotto il QR, sulla locandina, o chiedilo a chi organizza.</p>
+        </div>
+      )}
+
       <button className="bottone bottone-secondario" onClick={() => supabase.auth.signOut()}>Esci</button>
     </div>
   )
@@ -1303,7 +1330,8 @@ export default function App() {
       ) : ammesso === false ? (   // mentre controlla si entra: i dati li protegge il database
         <>
           {avvisoEvento?.tipo === 'errore' && <div className="scheda"><Avviso tipo="errore" testo={avvisoEvento.testo} /></div>}
-          <InAttesa profilo={profilo} onRicontrolla={controllaAccesso} />
+          <InAttesa profilo={profilo} onRicontrolla={controllaAccesso}
+            onCodiceEvento={(c) => { setAvvisoEvento(null); setCodiceEvento(String(c).trim().toUpperCase().replace(/[^A-Z0-9]/g, '')) }} />
         </>
       ) : profiloIncompleto(profilo) ? (
         <CompletaProfilo profilo={profilo} setProfilo={setProfilo} />
