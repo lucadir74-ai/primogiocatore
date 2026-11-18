@@ -1,5 +1,9 @@
 // Primo Giocatore - Tavoli
-// v2.27.0 - 202611131900 (si leggono i tavoli da oggi in poi e gli ultimi passati, non più tutti da sempre)
+// v2.28.0 - 202611181900 (tavoli degli eventi: con «evento» si vedono e si pubblicano solo quelli dell'evento)
+//
+// evento: aperta dentro un evento (l'app di chi partecipa), solo i
+// tavoli di quell'evento. soloEvento: chi non è socio, che il luogo non
+// lo sceglie (non può crearne) e usa quello dell'evento.
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
@@ -17,6 +21,7 @@ import SceltaQuando from './SceltaQuando.jsx'
 import { trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import { eventiVisibili, eventoAperto, inizioPropostoEvento, linkTavolo } from './evento'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -39,7 +44,14 @@ const VUOTO = {
 
 const RAGGI = [5, 10, 25]
 
-export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste }) {
+export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste, evento = null, soloEvento = false }) {
+  // Gli eventi che vedo: per scegliere l'evento di un tavolo nuovo e per
+  // il codice nelle locandine dei tavoli degli eventi.
+  const [eventi, setEventi] = useState(evento ? [evento] : [])
+  useEffect(() => { if (!evento) eventiVisibili().then(setEventi) }, [evento?.id])
+  const eventiAperti = eventi.filter(eventoAperto)
+  const eventoDi = (id) => eventi.find((e) => e.id === id) || null
+  const possoPubblicare = !evento || eventoAperto(evento)
   const [giroRichieste, setGiroRichieste] = useState(0)   // per ricaricare le richieste di tavolo
   const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
@@ -97,8 +109,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
   }
   // Gli ultimi passati, dal più recente: { data, count, error }.
-  const leggiPassati = (oggi) => supabase.from('tavoli')
-    .select(CAMPI_TAVOLO, { count: 'exact' })
+  const dellEvento = (q) => (evento ? q.eq('evento_id', evento.id) : q)
+  const leggiPassati = (oggi) => dellEvento(supabase.from('tavoli')
+    .select(CAMPI_TAVOLO, { count: 'exact' }))
     .lt('inizio', oggi)
     .order('inizio', { ascending: false }).order('id')
     .range(0, passatiDaLeggere.current - 1)
@@ -109,7 +122,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     setCaricamento(true)
     const oggi = mezzanotte()
     const [t, pa, pr, lu, se, po] = await Promise.all([
-      tutte(() => supabase.from('tavoli').select(CAMPI_TAVOLO).gte('inizio', oggi).order('inizio', { ascending: true })),
+      tutte(() => dellEvento(supabase.from('tavoli').select(CAMPI_TAVOLO)).gte('inizio', oggi).order('inizio', { ascending: true })),
       leggiPassati(oggi),
       tutte(() => supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome')),
       tutte(() => supabase.from('luoghi').select('nome').order('nome')),
@@ -153,8 +166,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     const sera = new Date()
     sera.setHours(20, 45, 0, 0)
     if (sera.getTime() <= Date.now()) sera.setDate(sera.getDate() + 1)
-    const inizio = perCampo(sera)
-    setModulo({ ...VUOTO, inizio, luogo: LUOGO_TANA })
+    // Dentro un evento: il luogo dell'evento, e un orario dei suoi giorni.
+    const inizio = perCampo(evento ? inizioPropostoEvento(evento) : sera)
+    setModulo({ ...VUOTO, inizio, luogo: evento ? (evento.luogo_nome || '') : LUOGO_TANA, evento_id: evento?.id || null })
     setLuogoNoto(null)
     caricaDisponibili(inizio)
     setMessaggio('')
@@ -197,6 +211,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       chiusura_iscrizioni: t.chiusura_iscrizioni ? perCampo(t.chiusura_iscrizioni) : '',
       pubblicato: t.pubblicato,
       posizione: null,
+      evento_id: t.evento_id || null,
     })
     setLuogoNoto(null)
     caricaDisponibili(perCampo(t.inizio))
@@ -340,6 +355,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           ? new Date(modulo.chiusura_iscrizioni).toISOString() : null,
         pubblicato: modulo.pubblicato,
         visibilita: modulo.pubblicato ? 'pubblico' : 'gruppo',
+        evento_id: evento ? evento.id : (modulo.evento_id || null),
       }
 
       let tavoloId = modulo.id
@@ -557,6 +573,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           gioco_id: t.gioco_id,
           luogo_id: t.luogo_id,
           tavolo_id: t.id,
+          evento_id: t.evento_id || null,
           giocata_il: t.inizio,
           tipo_punteggio: gioco?.tipo_punteggio || 'punti',
           registrata_da: profilo.id,
@@ -666,7 +683,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   }, [luogoModulo])
 
   function condividi(t) {
-    const link = `${window.location.origin}/?t=${t.id}`
+    const link = linkTavolo(t.id, eventoDi(t.evento_id)?.codice)
     const testo =
       `${t.titolo || t.giochi?.nome} — ${quando(t.inizio)}` +
       `${t.luoghi?.nome ? ` presso ${nomeLuogo(t.luoghi, null)}` : ''}\n${link}`
@@ -700,7 +717,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
   if (caricamento) return <div className="scheda"><p>Carico i tavoli&hellip;</p></div>
 
-  if (locandina) return <Locandina tavolo={locandina} onChiudi={() => setLocandina(null)} />
+  if (locandina) return <Locandina tavolo={locandina} codiceEvento={eventoDi(locandina.evento_id)?.codice}
+    onChiudi={() => setLocandina(null)} />
 
   // La scheda del tavolo è la stessa che vede chi arriva dal link:
   // così ci si iscrive senza uscire dall'app, e chi organizza vede
@@ -957,6 +975,31 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             }} />
         </div>
 
+        {/* Fuori da un evento chi organizza sceglie se il tavolo ne fa parte. */}
+        {!evento && (eventiAperti.length > 0 || modulo.evento_id) && (
+          <div className="campo">
+            <label htmlFor="t-evento">Evento</label>
+            <select id="t-evento" value={modulo.evento_id || ''}
+              onChange={(e) => {
+                const ev = eventoDi(e.target.value)
+                setModulo((m) => ({ ...m, evento_id: ev?.id || null, luogo: ev?.luogo_nome || m.luogo }))
+              }}>
+              <option value="">Nessuno: tavolo della Tana</option>
+              {[...eventiAperti, ...(modulo.evento_id && !eventiAperti.some((x) => x.id === modulo.evento_id) && eventoDi(modulo.evento_id) ? [eventoDi(modulo.evento_id)] : [])]
+                .map((ev) => <option key={ev.id} value={ev.id}>{ev.nome}</option>)}
+            </select>
+            {modulo.evento_id && <p className="aiuto">Lo vedono anche i partecipanti dell&rsquo;evento che non sono soci.</p>}
+          </div>
+        )}
+
+        {soloEvento ? (
+          evento?.luogo_nome && (
+            <div className="campo">
+              <label>Dove</label>
+              <p className="indirizzo-scelto"><strong>{evento.luogo_nome}</strong></p>
+            </div>
+          )
+        ) : (
         <div className="campo">
           <label htmlFor="t-luogo">Dove</label>
           <input id="t-luogo" value={modulo.luogo}
@@ -966,8 +1009,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             {luoghiNoti.map((n) => <option key={n} value={n} />)}
           </datalist>
         </div>
+        )}
 
-        {luogoModulo && luogoNoto && (
+        {luogoModulo && luogoNoto && !soloEvento && (
           <div className="campo">
             <label htmlFor="t-indirizzo">Indirizzo</label>
             {luogoNoto.ha_posizione && !modulo.posizione ? (
@@ -1249,6 +1293,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             <span className="anno">
               {conTitoli && !prima ? '' : `${quando(t.inizio)} · `}
               {luogo}{eCasa(t) ? ' · casa privata' : ''}
+              {!evento && t.evento_id && eventoDi(t.evento_id) ? ` · ${eventoDi(t.evento_id).nome}` : ''}
               {d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : ''}
             </span>
           </span>
@@ -1325,9 +1370,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
   return (
     <div className="scheda">
-      <h2>Tavoli</h2>
+      <h2>{evento ? `Tavoli · ${evento.nome}` : 'Tavoli'}</h2>
 
-      {(profilo.dimostratore || profilo.organizzatore) && (
+      {!evento && (profilo.dimostratore || profilo.organizzatore) && (
         <BarraScorrevole><div className="sottoschede">
           <button className={sezione === 'tavoli' ? 'attiva' : ''} onClick={() => setSezione('tavoli')}>
             Tavoli
@@ -1340,16 +1385,22 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
       {sezione === 'calendario' ? <Serate profilo={profilo} /> : <>
 
-      <p className="sottotitolo">Serate aperte a cui ci si può iscrivere.</p>
+      <p className="sottotitolo">
+        {!evento ? 'Serate aperte a cui ci si può iscrivere.'
+          : possoPubblicare ? 'I tavoli dell’evento: iscriviti, oppure pubblicane uno tuo.'
+          : 'L’evento è concluso: i tavoli restano da consultare.'}
+      </p>
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <RichiesteTavolo aggiorna={giroRichieste}
-        onOrganizza={organizzaRichiesta}
-        onApriTavolo={(id) => setAperto({ id })} />
+      {!evento && (
+        <RichiesteTavolo aggiorna={giroRichieste}
+          onOrganizza={organizzaRichiesta}
+          onApriTavolo={(id) => setAperto({ id })} />
+      )}
 
-      <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>
+      {possoPubblicare && <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>}
 
       {!miaPosizione ? (
         <div className="cerca-vicini">

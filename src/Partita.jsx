@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.26.0 - 202611101800 (avviso se la partita sembra già registrata, da te o da un altro del tavolo; ospite già presente riconosciuto anche col nome scritto intero)
+// v4.27.0 - 202611181900 (partite degli eventi: dentro un evento ne fanno parte; fuori, se ce n'è uno in corso, si può segnare)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -15,6 +15,7 @@ import { leggiBozza, scriviBozza, cancellaBozza } from './bozza'
 import { LUOGO_TANA } from './luoghiNome'
 import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
 import { salvaOAccoda, collezioneConModifiche } from './modifiche'
+import { eventiVisibili, mieiEventi, statoEvento } from './evento'
 
 const LIMITE_NOMI = 12
 
@@ -30,8 +31,30 @@ function perCampo(d) {
   return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`
 }
 
-export default function Partita({ profilo, partitaId, finitaModifica }) {
+// evento: aperta dentro un evento, la partita ne fa parte. soloEvento:
+// chi non è socio, che non sceglie il luogo (usa quello dell'evento).
+// Fuori da un evento, se ce n'è uno in corso si può segnare che la
+// partita ne fa parte: conta anche per la sua classifica.
+export default function Partita({ profilo, partitaId, finitaModifica, evento = null, soloEvento = false }) {
   const modifica = Boolean(partitaId)
+  const [eventiInCorso, setEventiInCorso] = useState(evento ? [evento] : [])
+  const [eventoId, setEventoId] = useState(evento?.id || null)
+  const eventoScelto = eventiInCorso.find((e) => e.id === eventoId) || evento
+  useEffect(() => {
+    if (evento) return
+    let vivo = true
+    Promise.all([eventiVisibili(), mieiEventi(profilo.id).catch(() => [])]).then(([tutti, miei]) => {
+      if (!vivo) return
+      const inCorso = tutti.filter((e) => statoEvento(e) === 'in_corso')
+      setEventiInCorso(inCorso)
+      // Partita nuova durante un evento a cui partecipo: già segnata.
+      if (!modifica) {
+        const mio = inCorso.find((e) => miei.some((m) => m.id === e.id))
+        if (mio) { setEventoId((x) => x || mio.id); if (mio.luogo_nome) setLuogo((l) => (l === LUOGO_TANA ? mio.luogo_nome : l)) }
+      }
+    })
+    return () => { vivo = false }
+  }, [evento?.id])
 
   const [catalogo, setCatalogo] = useState([])
   const [persone, setPersone] = useState([])
@@ -42,7 +65,8 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
   const [gioco, setGioco] = useState(null)
   const [filtro, setFiltro] = useState('')
   const [righe, setRighe] = useState([])
-  const [luogo, setLuogo] = useState(LUOGO_TANA)
+  const luogoIniziale = evento ? (evento.luogo_nome || '') : LUOGO_TANA
+  const [luogo, setLuogo] = useState(luogoIniziale)
   const [note, setNote] = useState('')
   const [esitoCoop, setEsitoCoop] = useState('vinta')
   const [quando, setQuando] = useState(perCampo(new Date()))
@@ -195,7 +219,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
     const { data, error } = await supabase
       .from('partite')
       .select(`
-        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop,
+        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, evento_id,
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
           id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
@@ -210,6 +234,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
 
     setGioco(data.giochi)
     setLuogo(data.luoghi?.nome || '')
+    setEventoId(data.evento_id || null)
     setNote(data.note || '')
     setQuando(perCampo(data.giocata_il))
     setMinuti(data.durata_minuti ? String(data.durata_minuti) : '')
@@ -611,7 +636,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
       : inTesta.map((r) => r.chiave)
 
   function azzera() {
-    setGioco(null); setRighe([]); setNote(''); setLuogo(LUOGO_TANA)
+    setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setSegnapuntiAperto(false)
     setRipresa(false)
@@ -642,6 +667,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
         nuovo_id: partitaId ? null : crypto.randomUUID(),
         gioco_id: gioco.id,
         luogo,
+        evento_id: evento ? evento.id : (eventoId || null),
         giocata_il: new Date(quando).toISOString(),
         durata_minuti: minuti ? Number(minuti) : null,
         tipo_punteggio: tipo,
@@ -915,6 +941,28 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
             </div>
           </div>
 
+          {!evento && (eventiInCorso.length > 0 || eventoId) && (
+            <label className="consenso">
+              <input type="checkbox" checked={Boolean(eventoId)}
+                onChange={(e) => {
+                  const ev = e.target.checked ? eventiInCorso[0] : null
+                  setEventoId(ev?.id || null)
+                  if (ev?.luogo_nome) setLuogo(ev.luogo_nome)
+                }} />
+              <span>
+                Partita dell&rsquo;evento {eventoScelto?.nome || eventiInCorso[0]?.nome || ''}: conta anche per la sua classifica
+              </span>
+            </label>
+          )}
+
+          {soloEvento ? (
+            evento?.luogo_nome && (
+              <div className="campo">
+                <label>Dove</label>
+                <p className="indirizzo-scelto"><strong>{evento.luogo_nome}</strong></p>
+              </div>
+            )
+          ) : (
           <div className="campo">
             <label htmlFor="luogo">Dove</label>
             <input id="luogo" value={luogo} onChange={(e) => setLuogo(e.target.value)}
@@ -923,6 +971,7 @@ export default function Partita({ profilo, partitaId, finitaModifica }) {
               {luoghiNoti.map((n) => <option key={n} value={n} />)}
             </datalist>
           </div>
+          )}
 
           <div className="campo">
             <label htmlFor="minuti">Timer</label>

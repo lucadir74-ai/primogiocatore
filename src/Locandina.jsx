@@ -1,5 +1,5 @@
 // Primo Giocatore - locandina del tavolo
-// v4.19.0 - 202611011100 (le case si vedono come «Casa di …»: la locandina la legge chiunque)
+// v4.20.0 - 202611181900 (tavoli degli eventi: il codice porta anche nell'evento)
 //
 // Un foglio A5 da stampare e appoggiare sul tavolo vero: chi passa
 // inquadra il codice e si iscrive, senza che nessuno debba spiegare
@@ -8,6 +8,7 @@
 import { nomeLuogo } from './luoghiNome'
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
+import { linkTavolo } from './evento'
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -15,11 +16,14 @@ const quando = (d) =>
     hour: '2-digit', minute: '2-digit',
   })
 
-export default function Locandina({ tavolo, onChiudi }) {
+// codiceEvento: tavolo di un evento. Il codice inquadrato fa entrare
+// anche nell'evento, così chi non è socio si iscrive al tavolo e
+// all'evento in un passaggio solo.
+export default function Locandina({ tavolo, onChiudi, codiceEvento = null }) {
   const [codice, setCodice] = useState(null)
   const [errore, setErrore] = useState('')
 
-  const link = `${window.location.origin}/?t=${tavolo.id}`
+  const link = linkTavolo(tavolo.id, codiceEvento)
 
   useEffect(() => {
     QRCode.toDataURL(link, {

@@ -86,6 +86,9 @@ export async function scriviPartita(supabase, profilo, dati) {
     tipo_punteggio: dati.tipo_punteggio,
     esito_coop: dati.esito_coop,
     note: dati.note,
+    // Solo se l'app lo manda: le partite rimaste in coda da prima non
+    // toccano l'evento di quelle già salvate.
+    ...(dati.evento_id !== undefined ? { evento_id: dati.evento_id } : {}),
     impronta: impronta({
       giocoId: dati.gioco_id,
       giocataIl: dati.giocata_il,

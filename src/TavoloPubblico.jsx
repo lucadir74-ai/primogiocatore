@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.10.0 - 202611030300 (tavolo e iscritti da tavolo_pubblico: senza account si vede solo il tavolo del link)
+// v4.11.0 - 202611181900 (tavoli degli eventi: tasto per creare l'account dell'evento)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -17,7 +17,10 @@ const quando = (d) =>
     hour: '2-digit', minute: '2-digit',
   })
 
-export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
+// codiceEvento: arrivati dalla locandina di un tavolo di un evento.
+// Chi ha l'account entra nell'evento da solo (lo fa App.jsx); chi non ce
+// l'ha può iscriversi senza, oppure crearne uno per l'evento.
+export default function TavoloPubblico({ tavoloId, sessione, profilo, codiceEvento = null }) {
   const [tavolo, setTavolo] = useState(null)
   const [posizione, setPosizione] = useState(null)   // dal database: esatta solo se puoi vederla
   const [iscritti, setIscritti] = useState([])
@@ -305,6 +308,12 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo }) {
               Non serve un account. Se ne crei uno, però, ritrovi le tue partite e le
               tue statistiche.
             </p>
+          )}
+          {!sessione && codiceEvento && (
+            <a className="bottone bottone-secondario" href={`/?e=${encodeURIComponent(codiceEvento)}`}
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+              Crea un account per l&rsquo;evento
+            </a>
           )}
         </>
       )}

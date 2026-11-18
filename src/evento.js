@@ -44,17 +44,45 @@ export async function entraNellEvento(codice) {
   return data
 }
 
+const CAMPI_EVENTO = 'id, nome, inizio, fine, chiuso, codice, luogo_id, luoghi ( nome )'
+const conLuogo = (e) => ({ ...e, luogo_nome: e.luoghi?.nome || '' })
+
 // Gli eventi in cui ho un ruolo, i più recenti prima.
 export async function mieiEventi(utenteId) {
   const { data, error } = await supabase
     .from('evento_ruoli')
-    .select('ruolo, eventi ( id, nome, inizio, fine, chiuso, codice )')
+    .select(`ruolo, eventi ( ${CAMPI_EVENTO} )`)
     .eq('utente_id', utenteId)
   if (error) throw error
   return (data || [])
     .filter((r) => r.eventi)
-    .map((r) => ({ ...r.eventi, ruolo: r.ruolo }))
+    .map((r) => ({ ...conLuogo(r.eventi), ruolo: r.ruolo }))
     .sort((a, b) => String(b.inizio || '').localeCompare(String(a.inizio || '')))
+}
+
+// Tutti gli eventi che vedo (i soci li vedono tutti, i partecipanti i
+// loro). Senza lo script degli eventi: elenco vuoto, il resto va.
+export async function eventiVisibili() {
+  const { data, error } = await supabase.from('eventi').select(CAMPI_EVENTO).order('inizio', { ascending: false })
+  if (error) return []
+  return (data || []).map(conLuogo)
+}
+
+// Il link della locandina di un tavolo: per i tavoli di un evento porta
+// anche il codice, così chi lo inquadra entra pure nell'evento.
+export const linkTavolo = (tavoloId, codiceEvento) =>
+  `${window.location.origin}/?t=${tavoloId}${codiceEvento ? `&e=${encodeURIComponent(pulito(codiceEvento))}` : ''}`
+
+// Inizio proposto per un tavolo dell'evento: fra un'ora, ma non prima
+// del primo giorno (alle 15).
+export function inizioPropostoEvento(ev) {
+  const fra = new Date(Date.now() + 3600000)
+  fra.setMinutes(0, 0, 0)
+  if (ev?.inizio) {
+    const primo = new Date(`${ev.inizio}T15:00:00`)
+    if (fra < primo) return primo
+  }
+  return fra
 }
 
 const oggi = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' })   // AAAA-MM-GG

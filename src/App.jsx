@@ -1249,7 +1249,7 @@ export default function App() {
       <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
       {tavoloPubblico ? (
         <>
-          <TavoloPubblico tavoloId={tavoloPubblico} sessione={sessione} profilo={profilo} />
+          <TavoloPubblico tavoloId={tavoloPubblico} sessione={sessione} profilo={profilo} codiceEvento={codiceEvento} />
           <div className="scheda">
             <p className="aiuto">
               Questo è un tavolo di Primo Giocatore.{' '}
