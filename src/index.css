@@ -3012,3 +3012,6 @@ a.contatto .contatto-valore { color: var(--blu); }
 .qr-schermo { position: fixed; inset: 0; z-index: 50; background: #fff; color: #131C26; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); text-align: center; }
 .qr-schermo img { width: min(86vw, 70vh); height: auto; }
 .qr-schermo-titolo { font-family: var(--display); font-size: 1.5rem; font-weight: 700; margin: 0; }
+.evento-link { text-align: left; }
+.evento-link-testo { white-space: normal; word-break: break-all; }
+.evento-link .anno { margin: 0; }

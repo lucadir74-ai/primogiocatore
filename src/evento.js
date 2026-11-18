@@ -35,7 +35,7 @@ export const linkEvento = (codice) => `${window.location.origin}/?e=${encodeURIC
 export async function leggiEventoDaCodice(codice) {
   const { data, error } = await supabase.rpc('evento_da_codice', { p_codice: codice })
   if (error) throw error
-  return data   // null se il codice non esiste
+  return conGiorni(data)   // null se il codice non esiste
 }
 
 export async function entraNellEvento(codice) {
@@ -44,8 +44,13 @@ export async function entraNellEvento(codice) {
   return data
 }
 
+// Le date dell'evento come AAAA-MM-GG. Se nel database le colonne sono
+// «data e ora» arrivano come 2027-01-22T00:00:00+00:00: si tiene il giorno.
+const soloGiorno = (d) => (d ? String(d).slice(0, 10) : d)
+export const conGiorni = (e) => (e ? { ...e, inizio: soloGiorno(e.inizio), fine: soloGiorno(e.fine) } : e)
+
 const CAMPI_EVENTO = 'id, nome, inizio, fine, chiuso, codice, tana_id, luogo_id, luoghi ( nome )'
-const conLuogo = (e) => ({ ...e, luogo_nome: e.luoghi?.nome || '' })
+const conLuogo = (e) => ({ ...conGiorni(e), luogo_nome: e.luoghi?.nome || '' })
 
 // Gli eventi in cui ho un ruolo, i più recenti prima.
 export async function mieiEventi(utenteId) {
@@ -79,7 +84,7 @@ export function inizioPropostoEvento(ev) {
   const fra = new Date(Date.now() + 3600000)
   fra.setMinutes(0, 0, 0)
   if (ev?.inizio) {
-    const primo = new Date(`${ev.inizio}T15:00:00`)
+    const primo = new Date(`${soloGiorno(ev.inizio)}T15:00:00`)
     if (fra < primo) return primo
   }
   return fra
@@ -87,17 +92,18 @@ export function inizioPropostoEvento(ev) {
 
 const oggi = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' })   // AAAA-MM-GG
 
-export const eventoAperto = (ev) => !ev.chiuso && (!ev.fine || oggi() <= ev.fine)
+export const eventoAperto = (ev) => !ev.chiuso && (!ev.fine || oggi() <= soloGiorno(ev.fine))
 
 // Per l'etichetta: «In arrivo», «In corso» o «Concluso».
 export const statoEvento = (ev) =>
-  !eventoAperto(ev) ? 'concluso' : ev.inizio && oggi() < ev.inizio ? 'in_arrivo' : 'in_corso'
+  !eventoAperto(ev) ? 'concluso' : ev.inizio && oggi() < soloGiorno(ev.inizio) ? 'in_arrivo' : 'in_corso'
 
 const giorno = (d, conMese = true) =>
   new Date(d + 'T12:00:00').toLocaleDateString('it-IT', conMese ? { day: 'numeric', month: 'long', year: 'numeric' } : { day: 'numeric' })
 
 // «22–24 gennaio 2027», «30 gennaio – 2 febbraio 2027», «22 gennaio 2027».
-export function dateEvento(ev) {
+export function dateEvento(evento) {
+  const ev = conGiorni(evento)
   if (!ev?.inizio) return ''
   if (!ev.fine || ev.fine === ev.inizio) return giorno(ev.inizio)
   const [ai, mi] = ev.inizio.split('-')
