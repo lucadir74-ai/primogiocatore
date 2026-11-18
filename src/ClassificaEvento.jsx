@@ -1,5 +1,5 @@
 // Primo Giocatore - classifica di un evento
-// v1.0.0 - 202611182200
+// v1.1.0 - 202611182230 (si apre su «Più vittorie»)
 //
 // Solo le partite dell'evento, con tutti quelli che le hanno giocate:
 // soci, partecipanti e ospiti senza account. Si calcola qui, al
@@ -15,14 +15,16 @@ import BarraScorrevole from './BarraScorrevole.jsx'
 // In tre giorni si giocano poche partite: per entrare in classifica ne bastano 3.
 export const MIN_PARTITE_EVENTO = 3
 
-const VISTE = [['ipg', 'Classifica'], ['vittorie', 'Più vittorie'], ['partite', 'Più partite'], ['giochi', 'Giochi']]
+// Prima le vittorie: si capiscono subito. L'IPG dell'evento, con poche
+// partite, può mettere davanti chi ne ha vinte meno (pesa avversari e giochi).
+const VISTE = [['vittorie', 'Più vittorie'], ['ipg', 'IPG evento'], ['partite', 'Più partite'], ['giochi', 'Giochi']]
 const partiteTesto = (n) => `${n} ${n === 1 ? 'partita' : 'partite'}`
 const vinteTesto = (n) => `${n} ${n === 1 ? 'vinta' : 'vinte'}`
 
 export default function ClassificaEvento({ evento, profilo }) {
   const [dati, setDati] = useState(null)
   const [errore, setErrore] = useState('')
-  const [vista, setVista] = useState('ipg')
+  const [vista, setVista] = useState('vittorie')
 
   useEffect(() => {
     setDati(null); setErrore('')
