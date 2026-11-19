@@ -5,6 +5,7 @@
 import { durataLeggibile } from './durata'
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
+import { NomeVero } from './nomiIscritti'
 import { ipgGenerale, ipgPersona, ipgGioco, dimenticaIpg } from './ipgDati'
 import { unisciCondivise } from './condivise'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
@@ -51,6 +52,7 @@ function ClassificaPrimeggio({ righe, vaiAlGiocatore, profilo }) {
           <span className="pallino" style={{ background: COLORI.find((c) => c.id === r.colore)?.hex || '#C9D1D8' }} aria-hidden="true" />
           <div className="nome-giocatore">
             <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(r.profilo_id)}>{r.nome}</button>
+            <NomeVero id={r.profilo_id} nick={r.nome} />
             <span className="anno block">{r.partite} {r.partite === 1 ? 'partita' : 'partite'}</span>
           </div>
           <span className="punti-finali">{r.ipg}</span>
@@ -867,6 +869,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
             <span className="pallino" style={{ background: a.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
               <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(a.chiave)}>{a.nome}</button>
+              <NomeVero id={a.chiave} nick={a.nome} />
               <span className="anno block">{a.insieme} {a.insieme === 1 ? 'partita' : 'partite'} insieme</span>
             </div>
             <span className={`bilancio${a.sue > a.altrui ? ' avanti' : a.sue < a.altrui ? ' indietro' : ''}`}>
@@ -1030,6 +1033,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                           <div className="nome-giocatore">
                             <strong>{nomeDiRiga(x)}</strong>
                             {x.ospite_id && <span className="anno"> ospite</span>}
+                            {!x.ospite_id && <NomeVero id={x.utente_id} nick={nomeDiRiga(x)} />}
                             {(x.ruolo || x.ordine_turno != null) && (
                               <span className="anno block fazione-nota">
                                 {x.ruolo}
@@ -1165,6 +1169,7 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
               <span className="pallino" style={{ background: g.colore }} aria-hidden="true" />
               <div className="nome-giocatore">
                 <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
+                <NomeVero id={g.chiave} nick={g.nome} />
                 <span className="anno block">
                   {g.partite} {g.partite === 1 ? 'giocata' : 'giocate'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
                 </span>
@@ -1284,6 +1289,7 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
             <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
             <div className="nome-giocatore">
               <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
+              <NomeVero id={p.chiave} nick={p.nome} />
             </div>
             <span className="anno">{p.n}</span>
           </li>
@@ -1352,6 +1358,7 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
                 <span className="pallino" style={{ background: p.colore }} aria-hidden="true" />
                 <div className="nome-giocatore">
                   <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(p.chiave)}>{p.nome}</button>
+                  <NomeVero id={p.chiave} nick={p.nome} />
                   <span className="anno block">
                     {p.competitive} {p.competitive === 1 ? 'partita' : 'partite'} · {p.vinte} {p.vinte === 1 ? 'vinta' : 'vinte'}
                   </span>

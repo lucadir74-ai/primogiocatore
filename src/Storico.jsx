@@ -4,7 +4,8 @@
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { supabase, nomeOspite, COLORI, daMostrare, tutteLeRighe } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
+import { useNomiIscritti, nomeIntero, NomeVero } from './nomiIscritti'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -49,21 +50,12 @@ function testoDi(p, nomi) {
   if (t === undefined || t.nomi !== nomi) {
     t = { nomi, testo: [p.giochi?.nome, p.luoghi?.nome, p.note,
       ...(p.partecipazioni || []).flatMap((x) => (x.profili
-        ? [daMostrare(x.profili), nomi?.get(x.utente_id)]
+        ? [daMostrare(x.profili), nomeIntero(nomi, x.utente_id)]
         : [nomeOspite(x.ospiti)]))]
       .filter(Boolean).map(piatto).join('|') }
     testiPartite.set(p, t)
   }
   return t.testo
-}
-
-// Nome e cognome di tutti gli iscritti, letti una volta sola.
-let nomiIscritti = null
-function leggiNomiIscritti() {
-  nomiIscritti ||= tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome'))
-    .then((r) => new Map(r.map((x) => [x.id, [x.nome, x.cognome].filter(Boolean).join(' ')])))
-    .catch(() => { nomiIscritti = null; return null })   // pazienza: si cerca come prima
-  return nomiIscritti
 }
 
 // Trovata se c'è tutto il testo scritto attaccato («dario a» → «darioa»)
@@ -97,16 +89,9 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
   // Dal vivo / online, come nelle Statistiche. Vale per tutte le sezioni.
   const [dove, setDove] = useState('tutte')   // tutte | vivo | online
   const [errore, setErrore] = useState('')
-  const [nomi, setNomi] = useState(null)   // id iscritto → «nome cognome»
+  const nomi = useNomiIscritti()   // nome e cognome veri: per cercare e per «Irene R.»
 
   useEffect(() => { carica() }, [])
-  // Servono solo per cercare: si chiedono alla prima lettera scritta.
-  useEffect(() => {
-    if (!cerca.trim() || nomi) return
-    let vivo = true
-    leggiNomiIscritti().then((m) => { if (vivo && m) setNomi(m) })
-    return () => { vivo = false }
-  }, [cerca, nomi])
   useEffect(() => { setQuante(PER_PAGINA) }, [cerca, sezione, dove])
 
   // Al ritorno da una modifica si riprende da dove si era: stessa
@@ -365,6 +350,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                         <div className="nome-giocatore">
                           <strong>{c.nome}</strong>
                           {c.ospite && <span className="anno"> ospite</span>}
+                          {!c.ospite && <NomeVero id={par.utente_id} nick={c.nome} />}
                           {(par.ruolo || par.ordine_turno != null) && (
                             <span className="anno block fazione-nota">
                               {par.ruolo}
