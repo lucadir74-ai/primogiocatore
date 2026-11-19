@@ -76,8 +76,8 @@ const SEZIONI_PROFILO = [
 // disponibile è quella che si apre toccando la voce.
 const VOCI_PROFILO = [
   ['profilo', 'Il mio profilo', ['profilo', 'info']],
-  ['dati', 'Porta le tue partite', ['dati']],
-  ['sistema', 'Da sistemare', ['ospiti', 'luoghi', 'giochi']],
+  ['dati', 'Importa', ['dati']],
+  ['sistema', 'Doppioni', ['ospiti', 'luoghi', 'giochi']],
   ['persone', 'Persone', ['soci', 'ruoli']],
   ['eventi', 'Eventi', ['eventi']],
 ]
@@ -1059,7 +1059,7 @@ export default function App() {
   }, [profilo?.id])
 
   // Ospiti e luoghi inseriti da questa persona: se non ne ha, a chi gioca
-  // soltanto la voce «Da sistemare» non serve e non compare.
+  // soltanto la voce «Doppioni» non serve e non compare.
   const [daSistemare, setDaSistemare] = useState(() => leggiAvvisi().daSistemare || 0)
   useEffect(() => {
     if (!profilo?.id || profilo.organizzatore || profilo.amministratore) return
@@ -1441,7 +1441,7 @@ export default function App() {
             const voci = []
             if (daBgg) voci.push({ id: 'bgg', chiudi: () => setDaBgg(null), testo:
               [daBgg.fatte > 0 && `Da BGG: ${daBgg.fatte} ${daBgg.fatte === 1 ? 'partita nuova' : 'partite nuove'}.`,
-               daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Porta le tue partite.`].filter(Boolean).join(' ') })
+               daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Importa.`].filter(Boolean).join(' ') })
             if (avvisoBga?.nuove > 0) voci.push({ id: 'bga-nuove', chiudi: () => setAvvisoBga(null),
               testo: `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}.` })
             const sospese = avvisoBga?.inSospeso || (scheda !== 'profilo' ? sospeseBga : 0)
@@ -1580,7 +1580,7 @@ export default function App() {
               const sezioni = SEZIONI_PROFILO.filter(([id, , soloOrg]) => !soloOrg || profilo.organizzatore || profilo.amministratore
                 || (id === 'soci' && orgTana) || (id === 'eventi' && (orgTana || orgEvento)))
               const organizza = profilo.organizzatore || profilo.amministratore
-              // «Da sistemare» a chi gioca soltanto serve solo se ha inserito
+              // «Doppioni» a chi gioca soltanto serve solo se ha inserito
               // ospiti o luoghi suoi, o se c'è qualcosa da riconoscere.
               const visibili = sezioni.filter(([id]) => organizza || !['ospiti', 'luoghi'].includes(id)
                 || daSistemare > 0 || daApprovare > 0)

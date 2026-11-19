@@ -721,7 +721,7 @@ export default function Dati({ profilo }) {
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
 
-      <h2>Porta qui le tue partite</h2>
+      <h2>Importa le tue partite</h2>
       <p className="aiuto">
         La prima volta fai i passi in ordine, dall&rsquo;alto in basso: prima i giochi, poi le partite.
         Salta quelli che non ti servono. Dopo, giochi e partite nuove si aggiornano da soli.

@@ -91,7 +91,7 @@ export function segnalibroBga(origine, base = {}) {
     "const dati={tipo:'pg-bga-dati',giocatore:id,nome:nome,tavoli:tavoli,completo:!fino};",
     'const testo=JSON.stringify(dati);',
     "const ricorda=()=>{M.set('pgBgaFino',String(Math.max(ultimo,Number(M.get('pgBgaFino')||0))))};",
-    "const C=$('#pgC');C.style.display='inline-block';C.onclick=()=>{navigator.clipboard.writeText(testo).then(()=>{ricorda();alert('Copiato: incollalo in Primo Giocatore, sezione Porta le tue partite')},()=>prompt('Copia questo testo',testo))};",
+    "const C=$('#pgC');C.style.display='inline-block';C.onclick=()=>{navigator.clipboard.writeText(testo).then(()=>{ricorda();alert('Copiato: incollalo in Primo Giocatore, sezione Importa')},()=>prompt('Copia questo testo',testo))};",
     "const url=PG+'/?bga=1#bga='+encodeURIComponent(testo);",
     "if(url.length<1800000){const A=$('#pgA');A.href=url;A.style.display='inline-block';A.onclick=()=>{ricorda();S('Aperto Primo Giocatore: continua lì. Puoi chiudere questo riquadro.')};S((fino?tavoli.length+' partite recenti: quelle già importate verranno saltate':tavoli.length+' partite lette')+'. Tocca «Apri in Primo Giocatore».')}",
     "else S(tavoli.length+' partite lette: sono troppe per un collegamento, tocca «Copia i dati» e incollale nell’app.')",

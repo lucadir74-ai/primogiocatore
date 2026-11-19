@@ -233,7 +233,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
             {manca.includes('BGG') && 'La prima volta si importano a mano: poi si aggiornano da sole. '}
             {manca.includes('BGA') && 'Per BGA collega l\u2019account con la password: poi le partite arrivano da sole, anche a telefono spento.'}
           </span>
-          <button type="button" className="tasto-piccolo primario" onClick={onDati}>Porta le tue partite</button>
+          <button type="button" className="tasto-piccolo primario" onClick={onDati}>Importa</button>
         </div>
       )}
 
