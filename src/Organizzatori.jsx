@@ -186,11 +186,10 @@ export default function Organizzatori({ profilo }) {
       ) : (
         <ul className="elenco">
           {elenco.map((p) => (
-            <li key={p.id}>
-              <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
+            <li key={p.id} className="riga-iscritto">
+              <button type="button" className="voce-scelta" onClick={() => setAperto(p.id)}>
                 <div className="nome-giocatore">
                   <strong>{daMostrare(p)}</strong>
-                  {eNuovo(p) && <span className="distintivo verde">Nuovo</span>}
                   {p.amministratore && <span className="distintivo">Amministratore</span>}
                   {p.organizzatore && <span className="distintivo">Organizzatore</span>}
                   {p.dimostratore && <span className="distintivo">Dimostratore</span>}
@@ -200,7 +199,7 @@ export default function Organizzatori({ profilo }) {
                   </span>
                 </div>
               </button>
-              <span className="azioni-iscritto">
+              {(!p.dimostratore || !p.organizzatore || (sonoAmm && !p.amministratore)) && <span className="azioni-iscritto">
                 {!p.dimostratore && (
                   <button className="bottone-piatto" onClick={() => cambia(p.id, 'dimostratore', true)}>
                     dimostratore
@@ -216,7 +215,7 @@ export default function Organizzatori({ profilo }) {
                     amministratore
                   </button>
                 )}
-              </span>
+              </span>}
             </li>
           ))}
         </ul>

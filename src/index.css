@@ -1577,6 +1577,10 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 .voce-scelta:hover, .voce-scelta:active { background: var(--carta); }
 .voce-scelta:disabled { opacity: 0.55; cursor: default; }
 .voce-scelta .voce-testo { min-width: 0; }
+
+/* Persone: nome e data sopra, ruoli da assegnare sotto, in una riga sola */
+.elenco li.riga-iscritto { flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 0.6rem; }
+.riga-iscritto .azioni-iscritto { margin-top: 0; padding: 0 0.3rem; row-gap: 0.3rem; }
 .voce-scelta .copertina { flex: 0 0 auto; }
 .copertina-vuota { display: inline-block; background: var(--carta); }
 
