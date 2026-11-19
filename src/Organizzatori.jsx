@@ -4,9 +4,11 @@
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import SchedaIscritto from './SchedaIscritto'
+import { NomeVero, nomeBreve, useNomiIscritti } from './nomiIscritti'
 
 export default function Organizzatori({ profilo }) {
   const [persone, setPersone] = useState([])
+  const nomi = useNomiIscritti()   // «Irene R.» accanto al nick
   const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
@@ -112,6 +114,7 @@ export default function Organizzatori({ profilo }) {
                       <div className="nome-giocatore">
                         <strong>{daMostrare(p)}</strong>
                         {p.id === profilo.id && <span className="anno"> · tu</span>}
+                        <NomeVero id={p.id} nick={daMostrare(p)} />
                       </div>
                     </button>
                     {p.id !== profilo.id && (
@@ -135,6 +138,7 @@ export default function Organizzatori({ profilo }) {
                   <div className="nome-giocatore">
                     <strong>{daMostrare(p)}</strong>
                     {p.id === profilo.id && <span className="anno"> · tu</span>}
+                    <NomeVero id={p.id} nick={daMostrare(p)} />
                   </div>
                 </button>
                 {p.id !== profilo.id && (
@@ -156,7 +160,10 @@ export default function Organizzatori({ profilo }) {
               {dimostratori.map((p) => (
                 <li key={p.id}>
                   <button type="button" className="voce-scelta" style={{ flex: 1, minWidth: 0 }} onClick={() => setAperto(p.id)}>
-                    <div className="nome-giocatore"><strong>{daMostrare(p)}</strong></div>
+                    <div className="nome-giocatore">
+                      <strong>{daMostrare(p)}</strong>
+                      <NomeVero id={p.id} nick={daMostrare(p)} />
+                    </div>
                   </button>
                   <button className="bottone-piatto pericolo" onClick={() => cambia(p.id, 'dimostratore', false)}>
                     revoca
@@ -194,8 +201,9 @@ export default function Organizzatori({ profilo }) {
                   {p.organizzatore && <span className="distintivo">Organizzatore</span>}
                   {p.dimostratore && <span className="distintivo">Dimostratore</span>}
                   <span className="anno block">
-                    {p.creato_il ? new Date(p.creato_il).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
-                    {p.citta ? `${p.creato_il ? ' · ' : ''}${p.citta}` : ''}
+                    {[nomeBreve(nomi, p.id, daMostrare(p)),
+                      p.creato_il ? new Date(p.creato_il).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+                      p.citta].filter(Boolean).join(' · ')}
                   </span>
                 </div>
               </button>
