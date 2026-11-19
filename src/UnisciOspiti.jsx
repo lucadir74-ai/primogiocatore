@@ -10,7 +10,7 @@ import { RichiesteDaApprovare } from './SeiTu.jsx'
 import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
-import { propostePerIscritto } from './somiglianze.js'
+import { propostePerIscritto, cercaPersone } from './somiglianze.js'
 
 const MOTIVI = {
   'numero BGA': 'stesso numero BGA',
@@ -381,20 +381,27 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                 <strong>{o.nome}</strong>
                 <span className="anno block">Con quale account si è iscritto?</span>
                 <input className="campo-cerca" value={collega.cerca} autoFocus
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setCollega({ ...collega, cerca: e.target.value })}
-                  placeholder="Cerca il suo account" />
-                <div className="pastiglie-persone">
-                  {persone
-                    .filter((p) => (p.nickname || p.nome || '').toLowerCase()
-                      .includes(collega.cerca.trim().toLowerCase()))
-                    .slice(0, 8)
-                    .map((p) => (
-                      <button key={p.id} className="pastiglia-nome"
-                        onClick={() => diventaAccount(o, p)} disabled={lavorando}>
-                        {p.nickname || p.nome}
-                      </button>
-                    ))}
-                </div>
+                  placeholder="Nick, nome o cognome" />
+                {(() => {
+                  const trovati = cercaPersone(persone, collega.cerca)
+                  if (!trovati.length) return <p className="aiuto">Nessun iscritto con questo nome, nick o cognome.</p>
+                  return (
+                    <div className="pastiglie-persone">
+                      {trovati.map((p) => {
+                        const intero = [p.nome, p.cognome].filter(Boolean).join(' ')
+                        const nick = p.nickname || intero
+                        return (
+                          <button key={p.id} className="pastiglia-nome"
+                            onClick={() => diventaAccount(o, p)} disabled={lavorando}>
+                            {nick}{intero && intero !== nick ? <span className="anno"> · {intero}</span> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
                 <button className="bottone-piatto" onClick={() => setCollega(null)}>annulla</button>
               </div>
             ) : (
@@ -415,7 +422,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                   <button className="bottone-piatto"
                     onClick={() => setRinomina({ id: o.id, nome: o.nome })}>rinomina</button>
                   <button className="bottone-piatto"
-                    onClick={() => setCollega({ ospite: o, cerca: '' })}>si è iscritto</button>
+                    onClick={() => setCollega({ ospite: o, cerca: o.nome })}>si è iscritto</button>
                 </span>
                 {aperto === o.id && <div className="ospite-partite-elenco"><PartiteOspite ospiteId={o.id} /></div>}
               </>

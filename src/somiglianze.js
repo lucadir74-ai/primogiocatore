@@ -15,6 +15,28 @@ export function parole(t) {
 }
 export const piatto = (t) => parole(t).join('')
 
+// Cerca un iscritto scrivendo come lo si conosce: nick, nome, cognome, in
+// qualsiasi ordine («irene ragni», «ragni», «syli»). Prima chi ha più
+// parole in comune; basta una parola per comparire.
+export function cercaPersone(persone, testo, quanti = 8) {
+  const cercate = parole(testo)
+  if (!cercate.length) return persone.slice(0, quanti)
+  const tutto = piatto(testo)
+  return persone
+    .map((p) => {
+      const sue = parole([p.nickname, p.nome, p.cognome].filter(Boolean).join(' '))
+      let punti = cercate.filter((w) => sue.some((s) => s.startsWith(w) || (w.length >= 3 && s.includes(w)))).length
+      // Il nick scritto tutto attaccato o con spazi («syli ael»).
+      if (tutto.length >= 3 && piatto(p.nickname).includes(tutto)) punti = Math.max(punti, cercate.length)
+      return { p, punti }
+    })
+    .filter((x) => x.punti > 0)
+    .sort((a, b) => b.punti - a.punti
+      || String(a.p.nickname || a.p.nome || '').localeCompare(String(b.p.nickname || b.p.nome || ''), 'it'))
+    .slice(0, quanti)
+    .map((x) => x.p)
+}
+
 // Quante lettere cambiare per passare da una parola all'altra.
 function distanza(a, b) {
   if (Math.abs(a.length - b.length) > 2) return 9
