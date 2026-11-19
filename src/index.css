@@ -385,6 +385,12 @@ body {
 
 .avviso.errore { border-color: var(--rosso); color: var(--rosso); }
 .avviso.ok     { border-color: var(--verde); color: var(--verde); }
+.avviso.attenzione { border-color: var(--giallo); color: var(--giallo); }
+/* Collegare un ospite a un account: la scheda di conferma */
+.conferma-collega { width: 100%; display: flex; flex-direction: column; gap: 0.45rem; }
+.conferma-collega .avviso { margin: 0; }
+.conferma-collega-tasti { gap: 0.6rem; margin-top: 0.2rem; }
+.conferma-collega-tasti .bottone { width: auto; flex: 1 1 9rem; margin: 0; }
 
 /* ---------- Elenchi ---------- */
 

@@ -10,7 +10,7 @@ import { RichiesteDaApprovare } from './SeiTu.jsx'
 import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
-import { propostePerIscritto, cercaPersone } from './somiglianze.js'
+import { propostePerIscritto, cercaPersone, avvisiCollegamento } from './somiglianze.js'
 
 const MOTIVI = {
   'numero BGA': 'stesso numero BGA',
@@ -90,6 +90,77 @@ function UnioniFatte({ onCambio }) {
   )
 }
 
+// I collegamenti ospite → account fatti dopo lo script
+// collegamenti_annullabili.sql, con «annulla» se erano sbagliati.
+function CollegamentiFatti({ onCambio, versione }) {
+  const [righe, setRighe] = useState(null)
+  const [manca, setManca] = useState(false)
+  const [cerca, setCerca] = useState('')
+  const [errore, setErrore] = useState('')
+  const [messaggio, setMessaggio] = useState('')
+  const [lavorando, setLavorando] = useState(false)
+
+  async function carica() {
+    const { data, error } = await supabase.rpc('elenco_collegamenti')
+    if (error) {
+      if (/elenco_collegamenti/.test(error.message || '')) setManca(true)
+      else setErrore(error.message)
+      setRighe([])
+    } else setRighe(data || [])
+  }
+  useEffect(() => { carica() }, [versione])
+
+  async function annulla(c) {
+    setErrore(''); setMessaggio('')
+    if (!confirm(`«${c.ospite}» non è ${c.account}?\n\nLe partite, i tavoli e le disponibilità tornano all'ospite «${c.ospite}», e non ti verrà più proposto come ${c.account}.`)) return
+    setLavorando(true)
+    const { data, error } = await supabase.rpc('annulla_collegamento', { p_id: c.id })
+    setLavorando(false)
+    if (error) { setErrore(error.message); return }
+    setMessaggio(`«${c.ospite}» è di nuovo un ospite: ${data || 0} ${data === 1 ? 'partita tornata' : 'partite tornate'}.`)
+    carica()
+    onCambio?.()
+  }
+
+  if (righe === null) return <p className="aiuto">Carico…</p>
+  if (manca) return <p className="aiuto">Per poter annullare i collegamenti serve lo script collegamenti_annullabili.sql nel database.</p>
+  const q = cerca.trim().toLowerCase()
+  const elenco = q ? righe.filter((c) => `${c.ospite} ${c.account} ${c.account_nome}`.toLowerCase().includes(q)) : righe
+  const quando = (t) => new Date(t).toLocaleString('it-IT', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div>
+      <p className="aiuto">
+        Gli ospiti collegati a un account. Se uno era sbagliato tocca «annulla»: tutto torna
+        all&rsquo;ospite e non te lo proponiamo più. Valgono i collegamenti fatti da oggi in poi.
+      </p>
+      {errore && <div className="avviso errore">{errore}</div>}
+      {messaggio && <div className="avviso ok">{messaggio}</div>}
+      {righe.length > 8 && (
+        <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)}
+          placeholder="Cerca un nome" aria-label="Cerca fra i collegamenti" />
+      )}
+      {elenco.length === 0 ? (
+        <p className="aiuto">{q ? 'Nessun collegamento con questo nome.' : 'Nessun collegamento da mostrare.'}</p>
+      ) : (
+        <ul className="elenco elenco-scorrevole">
+          {elenco.slice(0, 80).map((c) => (
+            <li key={c.id}>
+              <div className="nome-giocatore">
+                <strong>«{c.ospite}» → {c.account}</strong>
+                <span className="anno block">
+                  {c.account_nome && c.account_nome !== c.account ? `${c.account_nome} · ` : ''}
+                  {c.partite} {c.partite === 1 ? 'partita' : 'partite'} · {quando(c.quando)} · {c.fatta_da}
+                </span>
+              </div>
+              <button className="bottone-piatto" onClick={() => annulla(c)} disabled={lavorando}>annulla</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // Quante partite ha ogni ospite. Il conto lo fa il database e arriva in
 // una risposta sola (script partite_per_ospite.sql); senza lo script si
 // leggono come prima tutte le partecipazioni e si contano qui.
@@ -122,6 +193,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   const [collega, setCollega] = useState(null)        // { ospite, cerca }
   const [aperto, setAperto] = useState(null)          // l'ospite di cui si guardano le partite
   const [esclusi, setEsclusi] = useState(() => new Set())   // «ospite|utente» già detti «non è lui»
+  const [collegamentiVersione, setCollegamentiVersione] = useState(0)   // ricarica «Collegamenti fatti»
 
   useEffect(() => { carica() }, [])
 
@@ -175,7 +247,10 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
     setErrore(''); setMessaggio(''); setLavorando(true)
     const fatti = await unisciAlIscritto(g)
     setLavorando(false)
-    if (fatti) { setMessaggio(`Fatto: ora è tutto di ${g.utente.nickname || g.utente.nome}.`); carica(); onRichieste?.() }
+    if (fatti) {
+      setMessaggio(`Fatto: ora è tutto di ${g.utente.nickname || g.utente.nome}. Se era sbagliato, lo annulli da «Collegamenti fatti».`)
+      carica(); onRichieste?.(); setCollegamentiVersione((v) => v + 1)
+    }
   }
 
   async function unisciTuttiSicuri() {
@@ -230,17 +305,17 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
   async function diventaAccount(ospite, utente) {
     setErrore(''); setMessaggio('')
     const nomeUtente = utente.nickname || utente.nome
-    if (!confirm(`«${ospite.nome}» è ${nomeUtente}? Le sue ${ospite.partite} partite, i tavoli e le disponibilità passano a quell'account e la voce ospite sparisce.`)) return
-
+    // La conferma è la scheda con avvisi e partite (sopra): qui si collega e basta.
     setLavorando(true)
     // riconosci_ospite (riconoscimento_fase4.sql): controlla chi può farlo
     // e chiude le richieste «sono io» rimaste aperte su quell'ospite.
     const { error } = await supabase.rpc('riconosci_ospite', { p_ospite: ospite.id, p_utente: utente.id })
     setLavorando(false)
     if (error) { setErrore(error.message); return }
-    setMessaggio(`«${ospite.nome}» ora è ${nomeUtente}.`)
+    setMessaggio(`«${ospite.nome}» ora è ${nomeUtente}. Se era sbagliato, lo annulli da «Collegamenti fatti».`)
     setCollega(null)
     carica()
+    setCollegamentiVersione((v) => v + 1)
   }
 
   async function unisci() {
@@ -319,6 +394,8 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                     <span>
                       «{ospite.nome}» · {ospite.partite} {ospite.partite === 1 ? 'partita' : 'partite'}
                       {forza < 2 ? ' · scritto un po’ diverso' : ''}{conteso ? ' · somiglia anche a un altro iscritto' : ''}
+                      {avvisiCollegamento(ospite, g.utente).filter((a) => a.forte)
+                        .map((a) => <span key={a.testo} className="block avviso-pareggio">{a.testo}</span>)}
                     </span>
                     <span className="azioni-iscritto">
                       {ospite.partite > 0 && (
@@ -363,7 +440,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
         />
       )}
 
-      <ul className="elenco elenco-scorrevole">
+      {/* Mentre si collega un ospite la lista si allunga: la scheda di
+          conferma deve vedersi tutta, tasti compresi. */}
+      <ul className={`elenco${collega?.scelto ? '' : ' elenco-scorrevole'}`}>
         {elenco.slice(0, 60).map((o) => (
           <li key={o.id}>
             {rinomina?.id === o.id ? (
@@ -376,6 +455,43 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                   <button className="bottone-piatto" onClick={() => setRinomina(null)}>annulla</button>
                 </span>
               </>
+            ) : collega?.ospite?.id === o.id && collega.scelto ? (
+              // Prima di collegare: cosa non torna nel nome e quali partite passano.
+              (() => {
+                const p = collega.scelto
+                const nick = p.nickname || [p.nome, p.cognome].filter(Boolean).join(' ')
+                const intero = [p.nome, p.cognome].filter(Boolean).join(' ')
+                const avvisi = avvisiCollegamento(o, p)
+                const forte = avvisi.some((a) => a.forte)
+                return (
+                  <div className="nome-giocatore conferma-collega"
+                    ref={(el) => { if (el && !el.dataset.visto) { el.dataset.visto = '1'; el.scrollIntoView({ block: 'start', behavior: 'smooth' }) } }}>
+                    <strong>«{o.nome}» è {nick}{intero && intero !== nick ? ` (${intero})` : ''}?</strong>
+                    {avvisi.length > 0 && (
+                      <div className={`avviso ${forte ? 'errore' : 'attenzione'}`}>
+                        {forte && <div><strong>Attenzione: forse è un&rsquo;altra persona.</strong></div>}
+                        {avvisi.map((a) => <div key={a.testo}>{a.testo}</div>)}
+                      </div>
+                    )}
+                    <span className="anno block">
+                      {o.partite > 0
+                        ? `Passano a ${nick} ${o.partite === 1 ? 'questa partita' : `queste ${o.partite} partite`}, con tavoli e disponibilità. Controlla che ci fosse davvero:`
+                        : `Nessuna partita da spostare: il nome «${o.nome}» verrà riconosciuto come ${nick}.`}
+                    </span>
+                    {o.partite > 0 && <div className="ospite-partite-elenco"><PartiteOspite ospiteId={o.id} /></div>}
+                    <span className="azioni-iscritto conferma-collega-tasti">
+                      <button className={`bottone ${forte ? 'bottone-secondario' : ''}`}
+                        onClick={() => diventaAccount(o, p)} disabled={lavorando}>
+                        {lavorando ? 'Collego…' : `Sì, è ${nick}`}
+                      </button>
+                      <button className="bottone bottone-secondario"
+                        onClick={() => setCollega({ ...collega, scelto: null })} disabled={lavorando}>
+                        No, cambia
+                      </button>
+                    </span>
+                  </div>
+                )
+              })()
             ) : collega?.ospite?.id === o.id ? (
               <div className="nome-giocatore">
                 <strong>{o.nome}</strong>
@@ -394,7 +510,7 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
                         const nick = p.nickname || intero
                         return (
                           <button key={p.id} className="pastiglia-nome"
-                            onClick={() => diventaAccount(o, p)} disabled={lavorando}>
+                            onClick={() => setCollega({ ...collega, scelto: p })} disabled={lavorando}>
                             {nick}{intero && intero !== nick ? <span className="anno"> · {intero}</span> : null}
                           </button>
                         )
@@ -460,6 +576,10 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
         ti sbagli, l&rsquo;unione si annulla da «Unioni fatte».
       </p>
       </>)}
+
+      <Sezione id="ospiti-collegamenti" titolo="Collegamenti fatti" nota="annullabili">
+        <CollegamentiFatti versione={collegamentiVersione} onCambio={() => { carica(); onRichieste?.() }} />
+      </Sezione>
 
       {organizza && (
         <Sezione id="ospiti-unioni" titolo="Unioni fatte" nota="separa chi è diverso">

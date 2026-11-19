@@ -135,6 +135,41 @@ export function somiglianza(ospite, p) {
   return meglio
 }
 
+// Prima di collegare un ospite a un account: cosa non torna. Ogni avviso
+// è { forte, testo }; forte = quasi certamente un'altra persona.
+// Nessun avviso se nome e cognome (o nick, o numero BGA) sono uguali.
+export function avvisiCollegamento(ospite, p) {
+  if (!ospite || !p) return []
+  if (somiglianza(ospite, p) === 2) return []
+  const avvisi = []
+  const { g } = preparaOspite(ospite)
+  const { n, c } = preparaPersona(p)
+  const parlanti = String([ospite.nome, ospite.cognome].filter(Boolean).join(' ')).trim().split(/\s+/)
+
+  if (ospite.bga_id && p.bga_id && String(ospite.bga_id) !== String(p.bga_id)) {
+    avvisi.push({ forte: true, testo: 'Su Board Game Arena sono due giocatori diversi (numeri BGA diversi).' })
+  } else if (ospite.bga_id) {
+    avvisi.push({ forte: false, testo: 'Questo nome viene da Board Game Arena: controlla che il giocatore di quei tavoli sia proprio questa persona.' })
+  }
+
+  if (g.length < 2) {
+    avvisi.push({ forte: false, testo: `C'è solo «${parlanti.join(' ')}», senza cognome: potrebbe essere un'altra persona con lo stesso nome.` })
+  } else if (!c) {
+    avvisi.push({ forte: false, testo: 'L’account non ha il cognome: non si può confrontare.' })
+  } else {
+    const restoOspite = g.slice(1)
+    const cognomeOk = g.some((w, i) => i > 0 && cognomeSimile(w, c)) || cognomeSimile(restoOspite.join(''), c)
+      || cognomeSimile(g[0], c)
+    if (!cognomeOk) {
+      avvisi.push({ forte: true, testo: `Il cognome non corrisponde: qui «${parlanti.slice(1).join(' ')}», nell’account «${[p.cognome].filter(Boolean).join(' ') || c}».` })
+    }
+  }
+  if (g.length && n.length && !nomeSimile(g[0], n) && !g.some((w) => nomeSimile(w, n))) {
+    avvisi.push({ forte: true, testo: `Il nome non corrisponde: qui «${parlanti[0]}», nell’account «${p.nome || ''}».` })
+  }
+  return avvisi
+}
+
 // Per ogni iscritto, gli ospiti che sembrano lui. `no` è l'insieme delle
 // coppie già escluse («ospite|utente»). I più sicuri e con più partite prima.
 export function propostePerIscritto(ospiti, persone, no = new Set()) {
