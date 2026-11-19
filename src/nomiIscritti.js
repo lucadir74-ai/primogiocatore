@@ -42,13 +42,15 @@ export const nomeIntero = (m, id) => {
 
 const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
 
-// «Irene R.»: solo se dice qualcosa in più del nick (Giacomo → Giacomo no).
+// «Irene R.»: solo se dice qualcosa in più del nick. Nick «Giacomo» con
+// cognome Rossi → «Giacomo R.» (l'iniziale serve a distinguerlo); senza
+// cognome, o se il nick è già nome e cognome, niente.
 export function nomeBreve(m, id, nick) {
   const x = m?.get(id)
   if (!x?.nome) return ''
   const breve = x.cognome ? `${x.nome} ${x.cognome[0].toUpperCase()}.` : x.nome
   const n = piatto(nick)
-  if (n && (n === piatto(x.nome) || n === piatto(`${x.nome}${x.cognome}`) || n === piatto(breve))) return ''
+  if (n && (n === piatto(breve) || n === piatto(`${x.nome}${x.cognome}`))) return ''
   return breve
 }
 
