@@ -4,7 +4,7 @@
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
+import { supabase, nomeOspite, COLORI, daMostrare, tutteLeRighe } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -41,16 +41,39 @@ const piatto = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^
 // Il testo in cui cercare, una volta per partita: prima si ricostruiva per
 // tutto l'archivio a ogni lettera scritta. I pezzi restano separati da un
 // segno che nella ricerca non può esserci.
+// Degli iscritti si cercano anche nome e cognome veri («irene ragni» trova
+// Syliael): l'archivio porta solo il nick, quindi arrivano a parte (nomi).
 const testiPartite = new WeakMap()
-function testoDi(p) {
+function testoDi(p, nomi) {
   let t = testiPartite.get(p)
-  if (t === undefined) {
-    t = [p.giochi?.nome, p.luoghi?.nome, p.note,
-      ...(p.partecipazioni || []).map((x) => (x.profili ? daMostrare(x.profili) : nomeOspite(x.ospiti)))]
-      .filter(Boolean).map(piatto).join('|')
+  if (t === undefined || t.nomi !== nomi) {
+    t = { nomi, testo: [p.giochi?.nome, p.luoghi?.nome, p.note,
+      ...(p.partecipazioni || []).flatMap((x) => (x.profili
+        ? [daMostrare(x.profili), nomi?.get(x.utente_id)]
+        : [nomeOspite(x.ospiti)]))]
+      .filter(Boolean).map(piatto).join('|') }
     testiPartite.set(p, t)
   }
-  return t
+  return t.testo
+}
+
+// Nome e cognome di tutti gli iscritti, letti una volta sola.
+let nomiIscritti = null
+function leggiNomiIscritti() {
+  nomiIscritti ||= tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome'))
+    .then((r) => new Map(r.map((x) => [x.id, [x.nome, x.cognome].filter(Boolean).join(' ')])))
+    .catch(() => { nomiIscritti = null; return null })   // pazienza: si cerca come prima
+  return nomiIscritti
+}
+
+// Trovata se c'è tutto il testo scritto attaccato («dario a» → «darioa»)
+// o se c'è ogni parola, in qualsiasi ordine («ragni irene»).
+function trova(testo, scritto) {
+  const tutto = piatto(scritto)
+  if (!tutto) return true
+  if (testo.includes(tutto)) return true
+  const parole = String(scritto).split(/\s+/).map(piatto).filter(Boolean)
+  return parole.length > 1 && parole.every((w) => testo.includes(w))
 }
 
 export default function Storico({ profilo, onModifica, onApri, onNuova, ripristina }) {
@@ -74,8 +97,16 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
   // Dal vivo / online, come nelle Statistiche. Vale per tutte le sezioni.
   const [dove, setDove] = useState('tutte')   // tutte | vivo | online
   const [errore, setErrore] = useState('')
+  const [nomi, setNomi] = useState(null)   // id iscritto → «nome cognome»
 
   useEffect(() => { carica() }, [])
+  // Servono solo per cercare: si chiedono alla prima lettera scritta.
+  useEffect(() => {
+    if (!cerca.trim() || nomi) return
+    let vivo = true
+    leggiNomiIscritti().then((m) => { if (vivo && m) setNomi(m) })
+    return () => { vivo = false }
+  }, [cerca, nomi])
   useEffect(() => { setQuante(PER_PAGINA) }, [cerca, sezione, dove])
 
   // Al ritorno da una modifica si riprende da dove si era: stessa
@@ -187,9 +218,10 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
 
   // La ricerca segue la scrittura senza bloccarla: l'elenco si aggiorna
   // un attimo dopo l'ultima lettera.
-  const q = piatto(useDeferredValue(cerca))
-  const contiene = (t) => piatto(t).includes(q)
-  const filtrate = useMemo(() => (!q ? scelte : scelte.filter((p) => testoDi(p).includes(q))), [partite, dove, q])
+  const scritto = useDeferredValue(cerca)
+  const q = piatto(scritto)
+  const contiene = (t) => trova(piatto(t), scritto)
+  const filtrate = useMemo(() => (!q ? scelte : scelte.filter((p) => trova(testoDi(p, nomi), scritto))), [partite, dove, scritto, nomi])
 
   const filtraNome = (righe) => (!q ? righe : righe.filter((r) => contiene(r.nome)))
 
