@@ -1,5 +1,5 @@
 // Primo Giocatore - classifica di un evento
-// v1.1.0 - 202611182230 (si apre su «Più vittorie»)
+// v1.2.0 - 202611202300 (il campione di un gioco si conta solo nelle partite competitive)
 //
 // Solo le partite dell'evento, con tutti quelli che le hanno giocate:
 // soci, partecipanti e ospiti senza account. Si calcola qui, al
@@ -45,7 +45,8 @@ export default function ClassificaEvento({ evento, profilo }) {
       g.partite++
       for (const x of p.partecipazioni || []) {
         const k = x.utente_id || x.ospiti?.utente_collegato || (x.ospite_id ? `ospite:${x.ospite_id}` : null)
-        if (k && x.vincitore) g.vincitori.set(k, (g.vincitori.get(k) || 0) + 1)
+        // Il campione di un gioco si fa nelle competitive: una cooperativa la vincono tutti.
+        if (k && x.vincitore && p.tipo_punteggio !== 'coop') g.vincitori.set(k, (g.vincitori.get(k) || 0) + 1)
       }
       giochi.set(p.giochi.id, g)
     }

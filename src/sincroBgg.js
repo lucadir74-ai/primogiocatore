@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da BoardGameGeek
-// v1.10.0 - 202611030900 (import a blocchi di 100: da 2 chiamate a partita a 2 per blocco; ospiti nuovi creati tutti insieme)
+// v1.11.0 - 202611202300 (le partite dei giochi segnati cooperativi entrano cooperative, vinte o perse da tutti)
 //
 // La strada per le partite di BG Stats (e di Board Game Arena, che BG
 // Stats importa) è BGG: BG Stats le pubblica lì, questo le porta qui.
@@ -199,6 +199,14 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
   const unici = [...new Map(conGioco.map((p) => [p.gioco.bgg_id, p.gioco])).values()]
   const giochi = await assicuraGiochi(unici.map((g) => ({ bgg_id: g.bgg_id, nome: g.nome || 'Senza nome' })))
   const idGioco = new Map(giochi.map((g) => [g.bgg_id, g.id]))
+  // Prima entravano tutte «a punti», anche quelle dei giochi cooperativi,
+  // e qualcuno risultava vincitore di una partita giocata insieme.
+  const giocoCoop = new Set(giochi.filter((g) => g.tipo_punteggio === 'coop').map((g) => g.bgg_id))
+  // BGG segna la vittoria giocatore per giocatore: in una cooperativa
+  // basta che risulti vinta per uno, e allora l'hanno vinta tutti.
+  const esitoCoop = (p) => (giocoCoop.has(p.gioco.bgg_id)
+    ? (p.giocatori.some((g) => g.vincitore) ? 'vinta' : 'persa')
+    : null)
 
   // Anche gli ospiti già collegati a un account: vedi mappaOspitiPerNome.
   const esistenti = await ospitiPerImport()
@@ -274,19 +282,21 @@ export async function importaPartiteBgg({ partite, utente, profiloId, avanzament
     luogo_id: p.luogo ? luoghi.get(p.luogo.toLowerCase()) : null,
     giocata_il: `${p.data}T20:00:00`,
     durata_minuti: p.durata_minuti,
-    tipo_punteggio: 'punti',
+    tipo_punteggio: esitoCoop(p) ? 'coop' : 'punti',
+    esito_coop: esitoCoop(p),
     note: p.note,
     chiave_esterna: `bgg:${p.bgg_play_id}`,
     impronta: impronta({ giocoId: idGioco.get(p.gioco.bgg_id), giocataIl: p.data, punteggi: p.giocatori.map((g) => g.punteggio) }),
     registrata_da: profiloId,
   })
   const righeGiocatori = (p, partitaId) => {
+    const coop = esitoCoop(p)
     const righe = giocatoriDi(p).map(({ g, utente: u, ospite }) => ({
       partita_id: partitaId,
       utente_id: u || null,
       ospite_id: ospite ? ospiti.get(ospite.toLowerCase()) : null,
       punteggio_totale: g.punteggio,
-      vincitore: g.vincitore,
+      vincitore: coop ? coop === 'vinta' : g.vincitore,
       ordine_turno: g.posizione,
       primo_giocatore: g.posizione === 1,
     }))

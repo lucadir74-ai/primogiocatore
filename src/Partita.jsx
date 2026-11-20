@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.27.0 - 202611181900 (partite degli eventi: dentro un evento ne fanno parte; fuori, se ce n'è uno in corso, si può segnare)
+// v4.28.0 - 202611202300 (cooperativa o competitiva si sceglie partita per partita; le cooperative possono avere il punteggio di squadra)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -69,6 +69,12 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   const [luogo, setLuogo] = useState(luogoIniziale)
   const [note, setNote] = useState('')
   const [esitoCoop, setEsitoCoop] = useState('vinta')
+  // Cooperativa o no: di base lo dice il gioco, ma vale per la singola
+  // partita (null = come il gioco). Serve per i giochi segnati male nel
+  // catalogo e per quelli che si giocano in tutti e due i modi.
+  const [coopScelta, setCoopScelta] = useState(null)
+  // Nelle cooperative il punteggio, se c'è, è uno per tutto il tavolo.
+  const [punteggioSquadra, setPunteggioSquadra] = useState('')
   const [quando, setQuando] = useState(perCampo(new Date()))
   const [minuti, setMinuti] = useState('')
   const [vincitoreScelto, setVincitoreScelto] = useState(null)
@@ -111,6 +117,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (b.quando) setQuando(b.quando)
     if (b.minuti) setMinuti(b.minuti)
     if (b.esitoCoop) setEsitoCoop(b.esitoCoop)
+    if (typeof b.coop === 'boolean') setCoopScelta(b.coop)
+    if (b.punteggioSquadra) setPunteggioSquadra(b.punteggioSquadra)
     if (b.vincitoreScelto) setVincitoreScelto(b.vincitoreScelto)
     setAccumulati(b.accumulati || 0)
     setAvviatoIl(b.avviatoIl || null)
@@ -125,9 +133,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (!gioco && righe.length === 0 && !accumulati && !avviatoIl) { cancellaBozza(); return }
     scriviBozza({
       gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto,
-      accumulati, avviatoIl,
+      coop: coopScelta, punteggioSquadra, accumulati, avviatoIl,
     })
-  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, accumulati, avviatoIl, modifica])
+  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, accumulati, avviatoIl, modifica])
 
   useEffect(() => {
     function aggiorna() {
@@ -239,6 +247,14 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setQuando(perCampo(data.giocata_il))
     setMinuti(data.durata_minuti ? String(data.durata_minuti) : '')
     setEsitoCoop(data.esito_coop || 'vinta')
+    // Conta com'è stata registrata la partita, non come è segnato il gioco oggi.
+    const coop = data.tipo_punteggio === 'coop'
+    setCoopScelta(coop)
+    // Punteggio di squadra: lo stesso per tutti. Se arrivano punteggi
+    // diversi (da un import) restano quelli di ognuno.
+    const punteggi = [...new Set((data.partecipazioni || [])
+      .map((p) => p.punteggio_totale).filter((v) => v != null).map(Number))]
+    setPunteggioSquadra(coop && punteggi.length === 1 ? String(punteggi[0]) : '')
     setRighe(
       (data.partecipazioni || []).map((p) => ({
         chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
@@ -318,6 +334,18 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setCatalogo((c) => c.map((x) => (x.id === gioco.id ? { ...x, usa_fazioni: valore } : x)))
   }
 
+  // Cooperativo o competitivo per il gioco, cioè per le prossime partite:
+  // come le fazioni, lo cambia chi l'ha inserito o un organizzatore.
+  async function cambiaCoopGioco(coop) {
+    setErrore('')
+    const tipoNuovo = coop ? 'coop' : 'punti'
+    const { error } = await supabase.from('giochi').update({ tipo_punteggio: tipoNuovo }).eq('id', gioco.id)
+    if (error) { setErrore(error.message); return }
+    setGioco((g) => ({ ...g, tipo_punteggio: tipoNuovo }))
+    setCatalogo((c) => c.map((x) => (x.id === gioco.id ? { ...x, tipo_punteggio: tipoNuovo } : x)))
+    setCoopScelta(null)
+  }
+
   // Butta via la partita che si sta scrivendo. Se c'è già qualcosa da
   // perdere chiede conferma, perché non si torna indietro.
   function annullaPartita() {
@@ -331,6 +359,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
   function scegliGioco(g) {
     setGioco(g)
+    setCoopScelta(null)
     setFiltro('')
     setErrore('')
     if (righe.length === 0) {
@@ -579,7 +608,11 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
   const primo = righe.find((r) => r.ordine === 1)
 
-  const tipo = gioco?.tipo_punteggio || 'punti'
+  const tipoGioco = gioco?.tipo_punteggio || 'punti'
+  const giocoCoop = tipoGioco === 'coop'
+  const cooperativa = coopScelta ?? giocoCoop
+  // Un gioco cooperativo giocato da avversari si segna a punti.
+  const tipo = cooperativa ? 'coop' : giocoCoop ? 'punti' : tipoGioco
 
   // Ordine: prima il punteggio, poi il valore di spareggio, poi la
   // scelta fatta a mano. Chi resta davvero pari condivide la posizione.
@@ -638,6 +671,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
+    setCoopScelta(null); setPunteggioSquadra('')
     setSegnapuntiAperto(false)
     setRipresa(false)
     setCercaGiocatore('')
@@ -677,7 +711,11 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           utente_id: r.utente_id || null,
           ospite_id: r.ospite_id || null,
           ruolo: gioco.usa_fazioni ? (r.ruolo?.trim() || null) : null,
-          punteggio_totale: r.punteggio === '' ? null : Number(r.punteggio),
+          // Nelle cooperative il punteggio di squadra vale per tutti; se
+          // manca restano quelli di ognuno (es. arrivati da un import).
+          punteggio_totale: tipo === 'coop' && punteggioSquadra !== ''
+            ? Number(punteggioSquadra)
+            : r.punteggio === '' ? null : Number(r.punteggio),
           spareggio: r.spareggio === '' ? null : Number(r.spareggio),
           posizione: tipo === 'coop' ? null : r.pos,
           vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
@@ -926,6 +964,22 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                   {miaCollezione.has(gioco.id) ? 'togli dalla collezione' : 'è mio'}
                 </button>
               </p>
+              <label className="spunta-fazioni">
+                <input
+                  type="checkbox"
+                  checked={cooperativa}
+                  onChange={(e) => setCoopScelta(e.target.checked)}
+                />
+                partita cooperativa
+              </label>
+              {cooperativa !== giocoCoop && possoImpostare(gioco) && (
+                <p className="aiuto">
+                  <button className="bottone-piatto" onClick={() => cambiaCoopGioco(cooperativa)}>
+                    {cooperativa ? 'segna il gioco come cooperativo' : 'segna il gioco come competitivo'}
+                  </button>
+                  {' '}anche per le prossime partite
+                </p>
+              )}
               {possoImpostare(gioco) ? (
                 <label className="spunta-fazioni">
                   <input
@@ -1208,6 +1262,18 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                 <option value="vinta">Vinta da tutti</option>
                 <option value="persa">Persa da tutti</option>
               </select>
+            </div>
+          )}
+
+          {tipo === 'coop' && righe.length > 0 && (
+            <div className="campo">
+              <label htmlFor="punteggio-squadra">
+                Punteggio di squadra <span className="anno">facoltativo</span>
+              </label>
+              <input id="punteggio-squadra" type="number" inputMode="numeric"
+                value={punteggioSquadra}
+                onChange={(e) => setPunteggioSquadra(e.target.value)}
+                placeholder="Per i giochi che lo danno, come Hanabi" />
             </div>
           )}
 

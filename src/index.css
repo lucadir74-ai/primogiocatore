@@ -714,6 +714,7 @@ body {
   color: var(--verde);
   margin-top: 0.1rem;
 }
+.riga-vincitore.persa { color: var(--inchiostro-tenue); }
 
 .freccia {
   font-family: var(--display);

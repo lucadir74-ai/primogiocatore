@@ -1,5 +1,5 @@
 // Primo Giocatore - intermediario verso BoardGameGeek
-// v1.13.0 - 202611012300 (azione=nomi: i titoli alternativi da BGG, per riconoscere le edizioni italiane)
+// v1.14.0 - 202611202300 (dettagli: i giochi con la meccanica «Cooperative Game» arrivano già cooperativi)
 //
 // Il browser chiama questo indirizzo, questo chiama BGG.
 // Serve perché BGG risponde in XML, limita la frequenza delle richieste
@@ -194,6 +194,11 @@ function semplificaGioco(item) {
     immagine_url: item.thumbnail ?? item.image ?? null,
     immagine_grande: item.image ?? item.thumbnail ?? null,
     tipo: item.type ?? 'boardgame',
+    // «Cooperative Game» (2023) fra le meccaniche: il gioco nasce
+    // cooperativo. Conta solo per i giochi nuovi (quelli già presenti
+    // restano come sono) e ogni partita può comunque dire il contrario.
+    tipo_punteggio: elenco(item.link).some((l) => l?.type === 'boardgamemechanic' && String(l.id) === '2023')
+      ? 'coop' : undefined,
   }
 }
 

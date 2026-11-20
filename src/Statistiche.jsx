@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.25.0 - 202611151200 (sotto la classifica Primeggio, la spiegazione completa del calcolo dell'IPG)
+// v3.26.0 - 202611202300 (le cooperative vinte si contano a parte anche gioco per gioco, per giocatore e per fazione)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { durataLeggibile } from './durata'
@@ -13,6 +13,7 @@ import CercaScegli from './CercaScegli.jsx'
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import SpiegaIpg from './SpiegaIpg.jsx'
+import { punteggioSquadra } from './cooperativa'
 
 // L'istogramma chiedeva il nome del mese due volte per ogni partita, e
 // ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
@@ -38,6 +39,29 @@ function mediana(numeri) {
 }
 
 const MIN_CLASSIFICA = 5
+
+// Vinte e attese contano solo le competitive; le cooperative vinte vanno
+// a parte. Prima finivano nelle stesse «vinte» e gonfiavano il rapporto
+// con l'atteso, che le cooperative le esclude.
+const contiVuoti = () => ({ competitive: 0, vinte: 0, attese: 0, coop: 0, coopVinte: 0 })
+function contaEsito(v, p, riga) {
+  if (p.tipo_punteggio === 'coop') {
+    v.coop++
+    if (p.esito_coop === 'vinta') v.coopVinte++
+    return
+  }
+  const n = (p.partecipazioni || []).length
+  v.competitive++
+  if (riga?.vincitore) v.vinte++
+  if (n > 0) v.attese += 1 / n
+}
+// «3 vinte», «2 vinte insieme» per le cooperative: le due cose non si sommano.
+function fraseVinte(g) {
+  const parti = []
+  if (g.competitive || !g.coop) parti.push(`${g.vinte} ${g.vinte === 1 ? 'vinta' : 'vinte'}`)
+  if (g.coop) parti.push(`${g.coopVinte} ${g.coopVinte === 1 ? 'vinta' : 'vinte'} insieme`)
+  return parti.join(' · ')
+}
 // Le stesse soglie del calcolo sul server (src/primeggioCalcolo.js).
 const MIN_GIOCO = 5
 const MIN_GLOBALE = 20
@@ -311,11 +335,9 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
     for (const p of sue) {
       if (!p.giochi) continue
       const r = suaRiga(p)
-      const v = perGioco.get(p.giochi.id) || { id: p.giochi.id, nome: p.giochi.nome, partite: 0, competitive: 0, vinte: 0, attese: 0, punteggi: [], fazioni: new Map() }
+      const v = perGioco.get(p.giochi.id) || { id: p.giochi.id, nome: p.giochi.nome, partite: 0, ...contiVuoti(), punteggi: [], fazioni: new Map() }
       v.partite++
-      if (p.tipo_punteggio !== 'coop') v.competitive++
-      if (r.vincitore) v.vinte++
-      if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
+      contaEsito(v, p, r)
       if (r.punteggio_totale != null) v.punteggi.push(r.punteggio_totale)
       const f = (r.ruolo || '').trim()
       if (f) {
@@ -390,15 +412,17 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
 
     for (const p of sue) {
       const punteggi = (p.partecipazioni || []).map((x) => x.punteggio_totale).filter((v) => v != null)
-      tuttiPunteggi.push(...punteggi)
-      if (punteggi.length > 1) scarti.push(Math.max(...punteggi) - Math.min(...punteggi))
+      // Il punteggio di squadra di una cooperativa conta una volta, non
+      // una per giocatore, e non c'è distacco fra chi ha giocato insieme.
+      const squadra = punteggioSquadra(p)
+      tuttiPunteggi.push(...(squadra != null ? [squadra] : punteggi))
+      if (p.tipo_punteggio !== 'coop' && punteggi.length > 1) scarti.push(Math.max(...punteggi) - Math.min(...punteggi))
 
       for (const x of p.partecipazioni || []) {
         const k = identita(x)
-        const v = giocatori.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), partite: 0, vinte: 0, attese: 0, punteggi: [] }
+        const v = giocatori.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), partite: 0, ...contiVuoti(), punteggi: [] }
         v.partite++
-        if (x.vincitore) v.vinte++
-        if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
+        contaEsito(v, p, x)
         if (x.punteggio_totale != null) v.punteggi.push(x.punteggio_totale)
         giocatori.set(k, v)
       }
@@ -410,10 +434,9 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
       for (const x of p.partecipazioni || []) {
         const f = (x.ruolo || '').trim()
         if (!f) continue
-        const v = fazioni.get(f.toLowerCase()) || { nome: f, partite: 0, vinte: 0, attese: 0, punteggi: [] }
+        const v = fazioni.get(f.toLowerCase()) || { nome: f, partite: 0, ...contiVuoti(), punteggi: [] }
         v.partite++
-        if (x.vincitore) v.vinte++
-        if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
+        contaEsito(v, p, x)
         if (x.punteggio_totale != null) v.punteggi.push(x.punteggio_totale)
         fazioni.set(f.toLowerCase(), v)
       }
@@ -488,9 +511,12 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
         const k = identita(x)
         const v = persone.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), n: 0, competitive: 0, vinte: 0, attese: 0 }
         v.n++
-        if (p.tipo_punteggio !== 'coop') v.competitive++
-        if (x.vincitore) v.vinte++
-        if (p.tipo_punteggio !== 'coop' && quanti(p) > 0) v.attese += 1 / quanti(p)
+        // Le cooperative vinte non sono vittorie su qualcuno: fuori dal rapporto con l'atteso.
+        if (p.tipo_punteggio !== 'coop') {
+          v.competitive++
+          if (x.vincitore) v.vinte++
+          if (quanti(p) > 0) v.attese += 1 / quanti(p)
+        }
         persone.set(k, v)
       }
     }
@@ -846,7 +872,7 @@ function SchedaPersona({ d, ipg, ipgGioco, inClassifica, istogramma, vaiAlGioco,
                   {g.nome}
                 </button>
                 <span className="anno block">
-                  {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
+                  {g.partite} {g.partite === 1 ? 'partita' : 'partite'} · {fraseVinte(g)}
                   {r != null ? ` · ${r.toFixed(2)}× atteso` : ''}
                 </span>
                 {rip && <span className="anno block">{rip}</span>}
@@ -995,6 +1021,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
               return (b.punteggio_totale ?? -Infinity) - (a.punteggio_totale ?? -Infinity)
             })
             const vincitori = classifica.filter((x) => x.vincitore).map(nomeDiRiga)
+            const squadra = punteggioSquadra(p)
 
             return (
               <div className={`riga-partita${apertaQui ? ' aperta' : ''}`} key={p.id}>
@@ -1011,11 +1038,12 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                     )}
                     <span className="anno">
                       {(p.partecipazioni || []).length} giocatori
-                      {vincitori.length
-                        ? p.tipo_punteggio === 'coop'
-                          ? p.esito_coop === 'vinta' ? ' · vinta insieme' : ' · persa insieme'
-                          : ` · vince ${vincitori.join(', ')}`
-                        : ''}
+                      {/* Una cooperativa persa non ha vincitori: l'esito si scrive lo stesso. */}
+                      {p.tipo_punteggio === 'coop'
+                        ? p.esito_coop
+                          ? `${p.esito_coop === 'vinta' ? ' · vinta insieme' : ' · persa insieme'}${squadra != null ? ` · ${squadra} punti` : ''}`
+                          : ''
+                        : vincitori.length ? ` · vince ${vincitori.join(', ')}` : ''}
                     </span>
                   </div>
                   <span className="freccia" aria-hidden="true">{apertaQui ? '−' : '+'}</span>
@@ -1042,7 +1070,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                               </span>
                             )}
                           </div>
-                          {x.punteggio_totale != null && (
+                          {x.punteggio_totale != null && squadra == null && (
                             <span className="punti-finali">{x.punteggio_totale}</span>
                           )}
                         </li>
@@ -1171,7 +1199,7 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
                 <button className="nome-cliccabile" onClick={() => vaiAlGiocatore(g.chiave)}>{g.nome}</button>
                 <NomeVero id={g.chiave} nick={g.nome} />
                 <span className="anno block">
-                  {g.partite} {g.partite === 1 ? 'giocata' : 'giocate'} · {g.vinte} {g.vinte === 1 ? 'vinta' : 'vinte'}
+                  {g.partite} {g.partite === 1 ? 'giocata' : 'giocate'} · {fraseVinte(g)}
                 </span>
                 {rip && <span className="anno block">{rip}</span>}
               </div>
@@ -1231,7 +1259,7 @@ function SchedaGioco({ d, io, classifica, mioIpg, nome, istogramma, profilo, onM
                   <div className="nome-giocatore">
                     <strong>{f.nome}</strong>
                     <span className="anno block">
-                      {f.partite} {f.partite === 1 ? 'volta' : 'volte'} · {f.vinte} vinte
+                      {f.partite} {f.partite === 1 ? 'volta' : 'volte'} · {fraseVinte(f)}
                     </span>
                     {rip && <span className="anno block">{rip}</span>}
                   </div>
