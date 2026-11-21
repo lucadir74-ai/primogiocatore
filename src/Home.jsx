@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.7.0 - 202611202300 (rifai l'ultima: cooperativa o no come l'ultima volta)
+// v1.8.0 - 202611211000 (rifai l'ultima passa da rivincita.js, come il tasto dello Storico)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -10,7 +10,8 @@ import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, daBga } from './archivio'
 import { unisciCondivise } from './condivise'
-import { leggiBozza, scriviBozza } from './bozza'
+import { leggiBozza } from './bozza'
+import { preparaRivincita } from './rivincita'
 import { copertinaTavolo } from './immagini'
 import DallaTana from './DallaTana.jsx'
 
@@ -136,19 +137,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     setPreparo(true)
     setErrore('')
     try {
-      const { data: gioco, error } = await supabase.from('giochi').select('*').eq('id', ultima.giochi.id).single()
-      if (error) throw error
-      const righe = [...(ultima.partecipazioni || [])]
-        .sort((a, b) => (a.ordine_turno ?? 99) - (b.ordine_turno ?? 99))
-        .map((x) => ({
-          chiave: x.utente_id ? `u-${x.utente_id}` : `o-${x.ospite_id}`,
-          ...(x.utente_id ? { utente_id: x.utente_id } : { ospite_id: x.ospite_id }),
-          nome: nomeDi(x),
-          punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
-        }))
-      // Cooperativa o no come l'ultima volta, anche se il gioco dice altro.
-      scriviBozza({ gioco, righe, luogo: ultima.luoghi?.nome || '', rifatta: true, accumulati: 0, avviatoIl: null,
-        coop: ultima.tipo_punteggio === 'coop' })
+      await preparaRivincita(ultima)
       onNuovaPartita()
     } catch (e) {
       setErrore('Non riesco a preparare la partita: ' + (e.message || 'riprova.'))

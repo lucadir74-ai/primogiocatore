@@ -1,5 +1,5 @@
 // Primo Giocatore - riepilogo a fine partita
-// v1.0.0 - 202610160200
+// v1.1.0 - 202611211000 (tasto per rifare la partita con gli stessi giocatori)
 //
 // Appena registrata una partita a punti, per ogni giocatore al tavolo:
 // il suo miglior punteggio a quel gioco con quel numero di giocatori e
@@ -34,7 +34,7 @@ function Distintivo({ e, cosa }) {
   return null
 }
 
-export default function RiepilogoPartita({ profilo, partitaId, giocoId, giocoNome, onChiudi }) {
+export default function RiepilogoPartita({ profilo, partitaId, giocoId, giocoNome, onChiudi, onRifai = null }) {
   const [stato, setStato] = useState({ caricamento: true, errore: '', dati: null })
 
   useEffect(() => {
@@ -116,7 +116,10 @@ export default function RiepilogoPartita({ profilo, partitaId, giocoId, giocoNom
         </>
       )}
 
-      <button className="bottone" onClick={onChiudi}>Nuova partita</button>
+      {onRifai && (
+        <button className="bottone rifai-stessi" onClick={onRifai}>Ripeti tavolo</button>
+      )}
+      <button className={onRifai ? 'bottone bottone-secondario' : 'bottone'} onClick={onChiudi}>Nuova partita</button>
     </div>
   )
 }

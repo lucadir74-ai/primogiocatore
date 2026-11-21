@@ -365,6 +365,17 @@ body {
 
 .bottone-stretto { width: auto; padding: 0.7rem 1.1rem; }
 
+/* Ripeti tavolo (stesso gioco, stessi giocatori): dopo la registrazione e nel riepilogo */
+.rifai-stessi { margin-bottom: 1rem; }
+.rifai-stessi .sotto-tasto {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--testo);
+  font-weight: 500;
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
 .riga-fondo {
   margin-top: 1.2rem;
   text-align: center;
@@ -744,7 +755,7 @@ body {
 .riga-ospite { margin-top: 0.5rem; }
 .riga-ospite input { flex: 1; }
 
-.azioni-partita { display: flex; gap: 1rem; }
+.azioni-partita { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
 
 /* ---------- Spareggio ---------- */
 .mini.spareggio {
