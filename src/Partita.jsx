@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.28.0 - 202611202300 (cooperativa o competitiva si sceglie partita per partita; le cooperative possono avere il punteggio di squadra)
+// v4.29.0 - 202611210200 (cooperative: punteggio di squadra oppure punti a testa, accanto a ogni nome)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -75,6 +75,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   const [coopScelta, setCoopScelta] = useState(null)
   // Nelle cooperative il punteggio, se c'è, è uno per tutto il tavolo.
   const [punteggioSquadra, setPunteggioSquadra] = useState('')
+  // Oppure punti a testa, accanto a ogni nome: per le cooperative dove
+  // ognuno ha il suo punteggio (e per quelle importate così).
+  const [puntiATesta, setPuntiATesta] = useState(false)
   const [quando, setQuando] = useState(perCampo(new Date()))
   const [minuti, setMinuti] = useState('')
   const [vincitoreScelto, setVincitoreScelto] = useState(null)
@@ -119,6 +122,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (b.esitoCoop) setEsitoCoop(b.esitoCoop)
     if (typeof b.coop === 'boolean') setCoopScelta(b.coop)
     if (b.punteggioSquadra) setPunteggioSquadra(b.punteggioSquadra)
+    if (b.puntiATesta) setPuntiATesta(true)
     if (b.vincitoreScelto) setVincitoreScelto(b.vincitoreScelto)
     setAccumulati(b.accumulati || 0)
     setAvviatoIl(b.avviatoIl || null)
@@ -133,9 +137,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (!gioco && righe.length === 0 && !accumulati && !avviatoIl) { cancellaBozza(); return }
     scriviBozza({
       gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto,
-      coop: coopScelta, punteggioSquadra, accumulati, avviatoIl,
+      coop: coopScelta, punteggioSquadra, puntiATesta, accumulati, avviatoIl,
     })
-  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, accumulati, avviatoIl, modifica])
+  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, puntiATesta, accumulati, avviatoIl, modifica])
 
   useEffect(() => {
     function aggiorna() {
@@ -250,11 +254,12 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     // Conta com'è stata registrata la partita, non come è segnato il gioco oggi.
     const coop = data.tipo_punteggio === 'coop'
     setCoopScelta(coop)
-    // Punteggio di squadra: lo stesso per tutti. Se arrivano punteggi
-    // diversi (da un import) restano quelli di ognuno.
+    // Punteggio di squadra: lo stesso per tutti. Se sono diversi si
+    // riapre con i punti a testa.
     const punteggi = [...new Set((data.partecipazioni || [])
       .map((p) => p.punteggio_totale).filter((v) => v != null).map(Number))]
     setPunteggioSquadra(coop && punteggi.length === 1 ? String(punteggi[0]) : '')
+    setPuntiATesta(coop && punteggi.length > 1)
     setRighe(
       (data.partecipazioni || []).map((p) => ({
         chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
@@ -332,6 +337,15 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (error) { setErrore(error.message); return }
     setGioco((g) => ({ ...g, usa_fazioni: valore }))
     setCatalogo((c) => c.map((x) => (x.id === gioco.id ? { ...x, usa_fazioni: valore } : x)))
+  }
+
+  // Dai punti a testa al punteggio di squadra: se erano tutti uguali
+  // diventa quello; se erano diversi si chiede, perché si perdono.
+  function tornaASquadra() {
+    const valori = [...new Set(righe.map((r) => r.punteggio).filter((v) => v !== ''))]
+    if (valori.length > 1 && !window.confirm('I punti a testa sono diversi fra loro e non verranno salvati. Usare un punteggio solo per la squadra?')) return
+    setPunteggioSquadra(valori.length === 1 ? valori[0] : '')
+    setPuntiATesta(false)
   }
 
   // Cooperativo o competitivo per il gioco, cioè per le prossime partite:
@@ -671,7 +685,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
-    setCoopScelta(null); setPunteggioSquadra('')
+    setCoopScelta(null); setPunteggioSquadra(''); setPuntiATesta(false)
     setSegnapuntiAperto(false)
     setRipresa(false)
     setCercaGiocatore('')
@@ -711,10 +725,10 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           utente_id: r.utente_id || null,
           ospite_id: r.ospite_id || null,
           ruolo: gioco.usa_fazioni ? (r.ruolo?.trim() || null) : null,
-          // Nelle cooperative il punteggio di squadra vale per tutti; se
-          // manca restano quelli di ognuno (es. arrivati da un import).
-          punteggio_totale: tipo === 'coop' && punteggioSquadra !== ''
-            ? Number(punteggioSquadra)
+          // Nelle cooperative il punteggio di squadra vale per tutti (vuoto:
+          // nessun punteggio); con i punti a testa ognuno ha il suo.
+          punteggio_totale: tipo === 'coop' && !puntiATesta
+            ? (punteggioSquadra === '' ? null : Number(punteggioSquadra))
             : r.punteggio === '' ? null : Number(r.punteggio),
           spareggio: r.spareggio === '' ? null : Number(r.spareggio),
           posizione: tipo === 'coop' ? null : r.pos,
@@ -1187,7 +1201,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                     )}
                   </div>
 
-                  {tipo !== 'coop' && (
+                  {(tipo !== 'coop' || puntiATesta) && (
                     <input
                       className="mini" type="number" inputMode="numeric"
                       aria-label={`Punteggio di ${r.nome}`}
@@ -1265,16 +1279,37 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
             </div>
           )}
 
-          {tipo === 'coop' && righe.length > 0 && (
+          {tipo === 'coop' && righe.length > 0 && !puntiATesta && (
             <div className="campo">
               <label htmlFor="punteggio-squadra">
-                Punteggio di squadra <span className="anno">facoltativo</span>
+                Punteggio di squadra <span className="anno">(facoltativo)</span>
               </label>
               <input id="punteggio-squadra" type="number" inputMode="numeric"
                 value={punteggioSquadra}
                 onChange={(e) => setPunteggioSquadra(e.target.value)}
-                placeholder="Per i giochi che lo danno, come Hanabi" />
+                placeholder="Uno per tutti, come in Hanabi" />
+              <p className="aiuto">
+                <button className="bottone-piatto" onClick={() => {
+                  // Il punteggio di squadra già scritto parte per tutti.
+                  if (punteggioSquadra !== '') {
+                    setRighe((rs) => rs.map((r) => (r.punteggio === '' ? { ...r, punteggio: punteggioSquadra } : r)))
+                  }
+                  setPuntiATesta(true)
+                }}>
+                  punti a testa
+                </button>
+                {' '}se ognuno ha il suo punteggio
+              </p>
             </div>
+          )}
+
+          {tipo === 'coop' && righe.length > 0 && puntiATesta && (
+            <p className="aiuto">
+              Punti a testa: scrivili accanto a ogni nome. In una cooperativa non fanno classifica.{' '}
+              <button className="bottone-piatto" onClick={tornaASquadra}>
+                un punteggio solo per la squadra
+              </button>
+            </p>
           )}
 
           <details className="altri-dettagli">

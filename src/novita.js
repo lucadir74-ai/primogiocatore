@@ -21,7 +21,7 @@ export const NOVITA = [
     voci: [
       'Partita: «partita cooperativa» si sceglie partita per partita, anche se il gioco nel catalogo dice altro (per i giochi segnati male e per quelli che si giocano in tutti e due i modi)',
       'Chi ha inserito il gioco, o un organizzatore, da lì lo può segnare cooperativo o competitivo anche per le prossime partite',
-      'Cooperative: si può segnare il punteggio di squadra, facoltativo',
+      'Cooperative: si può segnare il punteggio di squadra (facoltativo), oppure i punti a testa accanto a ogni nome',
       'Storico e Statistiche: le cooperative perse mostrano «persa insieme» (prima non si vedeva niente) e il punteggio di squadra una volta sola',
       'Statistiche: le cooperative vinte si contano a parte anche gioco per gioco, per giocatore e per fazione, e non gonfiano più il confronto con l’atteso',
       'Giochi nuovi da BGG con la meccanica «Cooperative Game»: nascono già cooperativi',
