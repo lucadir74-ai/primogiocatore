@@ -1,10 +1,13 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.4.0 - 202611190000 (le cose di tutte le Tane: solo l'amministratore dell'app)
+// v1.5.0 - 202611211800 (importa CSV: anche «sostituisci tutto l'elenco»)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo l'amministratore dell'app.
 // - Aggiungi socio: il modulo veloce per ogni nuovo iscritto.
-// - Importa CSV: aggiunge o aggiorna, non cancella mai.
+// - Importa CSV: aggiunge o aggiorna; oppure sostituisce l'elenco della
+//   Tana (chi non è nel file viene tolto, senza tenere copie vecchie).
+//   Dal file si leggono solo nickname, nome, cognome, email e tana: le
+//   altre colonne non arrivano mai al database.
 // - Non nell'elenco: gli account che non risultano soci, da decidere.
 // - Elenco soci, con ricerca e rimozione.
 // - Organizzatori delle Tane.
@@ -222,18 +225,32 @@ export default function Soci({ profilo }) {
         return o
       }).filter((o) => o.email || o.nome || o.nickname)
       const nuoveTane = [...new Set(dati.map((o) => o.tana).filter((t) => t && !tane.some((x) => x.nome === t)))]
-      setCsv({ dati, colonne: colonne.filter(Boolean), nome: file.name, nuoveTane })
+      const ignorate = righe[0].filter((h, i) => h.trim() && !colonne[i]).map((h) => h.trim())
+      setCsv({ dati, colonne: colonne.filter(Boolean), ignorate, nome: file.name, nuoveTane, modo: 'aggiungi' })
     } catch (err) {
       setErrore(`Non riesco a leggere «${file.name}»: ${err?.message || err}`)
     }
   }
 
+  // Con «sostituisci»: i soci della Tana scelta la cui email non è nel file.
+  const daTogliere = useMemo(() => {
+    if (!csv) return []
+    const nelFile = new Set(csv.dati.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean))
+    return soci.filter((s) => s.tana_id === tana && !nelFile.has(String(s.email || '').trim().toLowerCase()))
+  }, [csv, soci, tana])
+
   function importaCsv() {
+    const sostituisci = csv.modo === 'sostituisci'
+    if (sostituisci && daTogliere.length > 0 && !confirm(
+      `Sostituire l’elenco di ${nomeTana(tana)}? ${daTogliere.length === 1 ? '1 socio non è nel file e verrà tolto' : `${daTogliere.length} soci non sono nel file e verranno tolti`}: chi ha un account tornerà in attesa, le partite restano. Il vecchio elenco non viene conservato.`)) return
     esegui(async () => {
-      const { data, error } = await supabase.rpc('importa_soci', { p_righe: csv.dati, p_tana: tana })
-      if (error) throw new Error(`Importazione non riuscita: ${error.message}`)
+      const { data, error } = await supabase.rpc(sostituisci ? 'sostituisci_soci' : 'importa_soci', { p_righe: csv.dati, p_tana: tana })
+      if (error) {
+        if (sostituisci && /sostituisci_soci/.test(error.message)) throw new Error('Al database manca lo script privacy_fase1.sql: va eseguito una volta in Supabase.')
+        throw new Error(`Importazione non riuscita: ${error.message}`)
+      }
       setCsv(null)
-      return `Importati: ${data.nuovi} nuovi, ${data.aggiornati} aggiornati${data.scartati ? `, ${data.scartati} scartati (email non valida o Tana che non gestisci)` : ''}.`
+      return `Importati: ${data.nuovi} nuovi, ${data.aggiornati} aggiornati${data.scartati ? `, ${data.scartati} scartati (email non valida o Tana che non gestisci)` : ''}${sostituisci ? `, ${data.tolti ?? 0} tolti perché non più nel file` : ''}.`
     })
   }
 
@@ -318,10 +335,11 @@ export default function Soci({ profilo }) {
         <p className="aiuto">Se ha già un account con questa email, diventa socio subito.</p>
       </Sezione>
 
-      <Sezione id="soci-csv" titolo="Importa da CSV" nota="aggiunge o aggiorna, non cancella">
+      <Sezione id="soci-csv" titolo="Importa da CSV" nota="aggiungi o sostituisci">
         <p className="aiuto">
-          File CSV o Excel. Colonne riconosciute: nickname, nome, cognome, mail (o email), tana (anche «Tana di riferimento»).
-          Nel CSV il separatore può essere punto e virgola, virgola o tabulazione. Chi è già nell&rsquo;elenco viene aggiornato; chi manca nel file non viene tolto.
+          File CSV o Excel. Si leggono solo nickname, nome, cognome, mail (o email) e tana (anche «Tana di riferimento»):
+          le altre colonne (indirizzo, telefono, data di nascita…) vengono scartate e non arrivano all&rsquo;app.
+          Nel CSV il separatore può essere punto e virgola, virgola o tabulazione.
           {taneMie.length > 1 && ' Le righe senza Tana vanno in quella scelta in alto.'}
         </p>
         {!csv ? (
@@ -329,8 +347,33 @@ export default function Soci({ profilo }) {
         ) : (
           <>
             <p className="aiuto">
-              <strong>{csv.nome}</strong>: {csv.dati.length} righe. Colonne trovate: {csv.colonne.join(', ')}.
+              <strong>{csv.nome}</strong>: {csv.dati.length} righe. Colonne lette: {csv.colonne.join(', ')}.
+              {csv.ignorate.length > 0 && ` Scartate: ${csv.ignorate.join(', ')}.`}
             </p>
+            <fieldset style={{ border: 0, padding: 0, margin: '0.5rem 0' }}>
+              <legend className="aiuto"><strong>Come importare</strong></legend>
+              <label className="sei-tu-scelta">
+                <input type="radio" name="soci-modo" checked={csv.modo === 'aggiungi'} onChange={() => setCsv({ ...csv, modo: 'aggiungi' })} />
+                <span>Aggiungi o aggiorna<span className="anno block">Chi manca nel file resta nell&rsquo;elenco.</span></span>
+              </label>
+              <label className="sei-tu-scelta">
+                <input type="radio" name="soci-modo" checked={csv.modo === 'sostituisci'} onChange={() => setCsv({ ...csv, modo: 'sostituisci' })} />
+                <span>Sostituisci tutto l&rsquo;elenco di {nomeTana(tana)}<span className="anno block">Chi non è nel file viene tolto. Il vecchio elenco non viene conservato.</span></span>
+              </label>
+            </fieldset>
+            {csv.modo === 'sostituisci' && (
+              daTogliere.length === 0 ? (
+                <p className="aiuto">Nessun socio di {nomeTana(tana)} verrà tolto: sono tutti nel file.</p>
+              ) : (
+                <div className="avviso errore">
+                  {daTogliere.length === 1 ? 'Verrà tolto 1 socio' : `Verranno tolti ${daTogliere.length} soci`} di {nomeTana(tana)} che non {daTogliere.length === 1 ? 'è' : 'sono'} nel file
+                  {daTogliere.length <= 10
+                    ? `: ${daTogliere.map((s) => s.nickname || `${s.nome || ''} ${s.cognome || ''}`.trim() || s.email).join(', ')}.`
+                    : `, fra cui ${daTogliere.slice(0, 10).map((s) => s.nickname || `${s.nome || ''} ${s.cognome || ''}`.trim() || s.email).join(', ')}…`}
+                  {' '}Chi ha un account tornerà in attesa; le partite restano.
+                </div>
+              )
+            )}
             {csv.nuoveTane.length > 0 && (
               <div className="avviso errore">
                 Tane non riconosciute: {csv.nuoveTane.join(', ')}. {globale ? 'Verranno create come Tane nuove: se è un errore di scrittura, correggi il file.' : 'Quelle righe verranno scartate.'}
@@ -344,7 +387,9 @@ export default function Soci({ profilo }) {
                 </li>
               ))}
             </ul>
-            <button className="bottone" onClick={importaCsv} disabled={lavoro}>Importa {csv.dati.length} soci</button>
+            <button className="bottone" onClick={importaCsv} disabled={lavoro || !tana}>
+              {csv.modo === 'sostituisci' ? `Sostituisci con ${csv.dati.length} soci` : `Importa ${csv.dati.length} soci`}
+            </button>
             <button className="bottone bottone-secondario" onClick={() => setCsv(null)}>Annulla</button>
           </>
         )}

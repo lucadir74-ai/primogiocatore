@@ -20,7 +20,7 @@ export default function Organizzatori({ profilo }) {
     try {
       const righe = await tutteLeRighe(() => supabase
         .from('profili')
-        .select('id, nome, cognome, nickname, citta, organizzatore, dimostratore, amministratore, creato_il')
+        .select('id, nome, cognome, nickname, organizzatore, dimostratore, amministratore, creato_il')
         .order('nome'))
       setPersone(righe)
     } catch (e) {
@@ -203,7 +203,7 @@ export default function Organizzatori({ profilo }) {
                   <span className="anno block">
                     {[nomeBreve(nomi, p.id, daMostrare(p)),
                       p.creato_il ? new Date(p.creato_il).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
-                      p.citta].filter(Boolean).join(' · ')}
+                    ].filter(Boolean).join(' · ')}
                   </span>
                 </div>
               </button>

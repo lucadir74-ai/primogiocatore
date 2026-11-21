@@ -177,7 +177,6 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
   const [nickname, setNickname] = useState('')
   const [nome, setNome] = useState('')
   const [cognome, setCognome] = useState('')
-  const [citta, setCitta] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [attesa, setAttesa] = useState(false)
@@ -214,8 +213,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
       setErrore('L\u2019iscrizione è riservata ai soci della Tana: se non lo sei, scrivi a Dario su WhatsApp.')
       return
     }
-    if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim() || !cognome.trim() || !citta.trim())) {
-      setErrore('Servono nickname, nome, cognome e città: aiutano a riconoscerti nelle partite degli altri.')
+    if (modo === 'iscriviti' && (!nickname.trim() || !nome.trim() || !cognome.trim())) {
+      setErrore('Servono nickname, nome e cognome: aiutano a riconoscerti nelle partite degli altri.')
       return
     }
     if (modo === 'iscriviti' && password.length < 8) {
@@ -247,7 +246,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
           email,
           password,
           options: {
-            data: { nome: nome.trim(), cognome: cognome.trim(), citta: citta.trim(), nickname: nickname.trim() },
+            data: { nome: nome.trim(), cognome: cognome.trim(), nickname: nickname.trim() },
             ...(codice ? { emailRedirectTo: `${window.location.origin}/?e=${encodeURIComponent(codice)}` } : {}),
           },
         })
@@ -356,11 +355,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
             <label htmlFor="cognome">Cognome</label>
             <input id="cognome" value={cognome} onChange={(e) => setCognome(e.target.value)} autoComplete="family-name" />
           </div>
-          <div className="campo">
-            <label htmlFor="citta">Città</label>
-            <input id="citta" value={citta} onChange={(e) => setCitta(e.target.value)} autoComplete="address-level2" />
-            <p className="aiuto">Nome e cognome servono a riconoscerti se qualcuno ti ha già inserito come ospite nelle sue partite.</p>
-          </div>
+          <p className="aiuto">Nome e cognome servono a riconoscerti se qualcuno ti ha già inserito come ospite nelle sue partite.</p>
         </>
       )}
 
@@ -483,11 +478,12 @@ function NuovaPassword({ fatto }) {
 
 /* ---------------- Profilo ---------------- */
 
-// Nome, cognome, soprannome e città sono obbligatori: servono a
-// riconoscere le persone fra gli ospiti delle partite degli altri e a
-// non perdere informazioni nelle statistiche.
+// Nome, cognome e soprannome sono obbligatori: servono a riconoscere le
+// persone fra gli ospiti delle partite degli altri e a non perdere
+// informazioni nelle statistiche. La città non si chiede più (privacy:
+// solo i dati che servono al gioco).
 function profiloIncompleto(p) {
-  return !p.nome?.trim() || !p.cognome?.trim() || !p.nickname?.trim() || !p.citta?.trim()
+  return !p.nome?.trim() || !p.cognome?.trim() || !p.nickname?.trim()
 }
 
 // Chi si era iscritto prima trova nome e cognome in un campo solo:
@@ -504,15 +500,14 @@ function CompletaProfilo({ profilo, setProfilo }) {
   const [nome, setNome] = useState(iniziale.nome)
   const [cognome, setCognome] = useState(iniziale.cognome)
   const [nickname, setNickname] = useState(profilo.nickname || '')
-  const [citta, setCitta] = useState(profilo.citta || '')
   const [errore, setErrore] = useState('')
   const [attesa, setAttesa] = useState(false)
 
   async function salva() {
     setErrore('')
-    const dati = { nome: nome.trim(), cognome: cognome.trim(), nickname: nickname.trim(), citta: citta.trim() }
-    if (!dati.nome || !dati.cognome || !dati.nickname || !dati.citta) {
-      setErrore('Compila tutti e quattro i campi.')
+    const dati = { nome: nome.trim(), cognome: cognome.trim(), nickname: nickname.trim() }
+    if (!dati.nome || !dati.cognome || !dati.nickname) {
+      setErrore('Compila tutti e tre i campi.')
       return
     }
     setAttesa(true)
@@ -526,7 +521,7 @@ function CompletaProfilo({ profilo, setProfilo }) {
     <div className="scheda">
       <h2>Completa il profilo</h2>
       <p className="sottotitolo">
-        Da ora nome, cognome e città sono obbligatori: servono a riconoscerti nelle partite
+        Nome e cognome sono obbligatori: servono a riconoscerti nelle partite
         in cui altri ti hanno inserito come ospite. Controlla che siano giusti.
       </p>
       <Avviso tipo="errore" testo={errore} />
@@ -540,11 +535,7 @@ function CompletaProfilo({ profilo, setProfilo }) {
       </div>
       <div className="campo">
         <label htmlFor="c-cognome">Cognome</label>
-        <input id="c-cognome" value={cognome} onChange={(e) => setCognome(e.target.value)} autoComplete="family-name" />
-      </div>
-      <div className="campo">
-        <label htmlFor="c-citta">Città</label>
-        <input id="c-citta" value={citta} onChange={(e) => setCitta(e.target.value)} autoComplete="address-level2"
+        <input id="c-cognome" value={cognome} onChange={(e) => setCognome(e.target.value)} autoComplete="family-name"
           onKeyDown={(e) => e.key === 'Enter' && salva()} />
       </div>
       <button className="bottone" onClick={salva} disabled={attesa}>
@@ -565,7 +556,7 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
   // prima finiva subito in tutta l'app, e uscendo senza salvare il nick
   // nuovo restava in giro fino alla riapertura, senza essere salvato.
   const [profilo, setBozza] = useState(salvato)
-  const CAMPI = ['nome', 'cognome', 'nickname', 'citta', 'colore', 'bgg_username', 'bga_username', 'collezione_condivisa']
+  const CAMPI = ['nome', 'cognome', 'nickname', 'colore', 'bgg_username', 'bga_username', 'collezione_condivisa']
   const diversi = (a, b) => CAMPI.some((k) => (a[k] ?? '') !== (b[k] ?? ''))
   const cambiato = diversi(profilo, salvato)
   // Se il profilo cambia altrove (es. il nome BGA collegato da Dati) e qui
@@ -585,8 +576,8 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
   async function salva() {
     setErrore('')
     setOk('')
-    if (!profilo.nome?.trim() || !profilo.cognome?.trim() || !profilo.nickname?.trim() || !profilo.citta?.trim()) {
-      setErrore('Nome, cognome, soprannome e città non possono restare vuoti.')
+    if (!profilo.nome?.trim() || !profilo.cognome?.trim() || !profilo.nickname?.trim()) {
+      setErrore('Nome, cognome e soprannome non possono restare vuoti.')
       return
     }
     setSalvataggio(true)
@@ -595,7 +586,6 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
         nome: profilo.nome.trim(),
         cognome: profilo.cognome.trim(),
         nickname: profilo.nickname?.trim() || null,
-        citta: profilo.citta?.trim() || null,
         colore: profilo.colore || null,
         bgg_username: profilo.bgg_username?.trim() || null,
         bga_username: profilo.bga_username?.trim() || null,
@@ -642,11 +632,6 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
         <label htmlFor="p-nick">Soprannome</label>
         <input id="p-nick" value={profilo.nickname || ''} onChange={(e) => aggiorna('nickname', e.target.value)} />
         <p className="aiuto">Deve essere diverso da quello di ogni altro giocatore.</p>
-      </div>
-
-      <div className="campo">
-        <label htmlFor="p-citta">Città</label>
-        <input id="p-citta" value={profilo.citta || ''} onChange={(e) => aggiorna('citta', e.target.value)} />
       </div>
 
       <label className="sei-tu-scelta">

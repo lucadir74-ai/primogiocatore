@@ -129,7 +129,6 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
               <ul className="elenco">
                 {(p.nome || p.cognome) && <Riga etichetta="Nome e cognome" valore={[p.nome, p.cognome].filter(Boolean).join(' ')} />}
                 <Riga etichetta="Email" valore={s.email ? <a href={`mailto:${s.email}`}>{s.email}</a> : '—'} />
-                <Riga etichetta="Città" valore={p.citta || 'non indicata'} tono={p.citta ? null : 'no'} />
                 <Riga etichetta="Iscritto il" valore={giorno(p.creato_il) || '—'} />
                 <Riga etichetta="Ultimo accesso" valore={giorno(s.ultimo_accesso) || 'mai'} />
                 {(p.organizzatore || orgTana) && p.stato_socio !== 'socio'

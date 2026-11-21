@@ -16,6 +16,15 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.36.0',
+    data: '2026-11-21',
+    voci: [
+      'Privacy: la città non si chiede più, né all’iscrizione né nel profilo; quelle già salvate vengono cancellate',
+      'Soci: importando il CSV si può «sostituire tutto l’elenco» della Tana; prima di confermare si vede chi verrà tolto',
+      'Soci: dal file si leggono solo nickname, nome, cognome, email e Tana; le altre colonne vengono scartate',
+    ],
+  },
+  {
     versione: '4.35.0',
     data: '2026-11-21',
     voci: [
