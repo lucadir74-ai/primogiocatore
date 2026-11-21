@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.41.1',
+    data: '2026-11-22',
+    voci: [
+      'BGG: un dispositivo o un browser nuovo non rilegge più da solo tutto l’archivio (aveva reimportato partite già presenti da BG Stats); parte dalle recenti',
+      'BGG: se non si riesce a leggere l’elenco delle partite già mandate o scartate, la sincronizzazione si ferma e riprova dopo, invece di importare doppioni',
+    ],
+  },
+  {
     versione: '4.41.0',
     data: '2026-11-22',
     voci: [

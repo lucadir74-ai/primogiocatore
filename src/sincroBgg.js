@@ -40,10 +40,15 @@ function segnaCompleto() {
   try { localStorage.setItem(CHIAVE_COMPLETA, new Date().toISOString()) } catch { /* niente */ }
 }
 
+// Un dispositivo appena entrato (o un browser nuovo) non rilegge tutto
+// l'archivio BGG da solo: il 22/11/2026 il browser integrato ha
+// reimportato così 69 partite già presenti da BG Stats. Parte dalle
+// recenti; la rilettura completa arriva dopo una settimana.
 function serveCompleto() {
   try {
     const c = localStorage.getItem(CHIAVE_COMPLETA)
-    return !c || Date.now() - new Date(c) > COMPLETO_OGNI_GIORNI * 86400000
+    if (!c) { segnaCompleto(); return false }
+    return Date.now() - new Date(c) > COMPLETO_OGNI_GIORNI * 86400000
   } catch { return false }
 }
 
@@ -68,8 +73,12 @@ async function inviateDaQui(profiloId) {
         .eq('utente_id', profiloId), 1000, 'bgg_play_id')
     } catch { c = [] }
     return [...a, ...b, ...c].map((x) => x.bgg_play_id)
-  } catch {
-    return []
+  } catch (e) {
+    // Prima qui si tornava un elenco vuoto: se la lettura falliva (rete
+    // lenta, un dispositivo appena entrato che scarica tutto), le partite
+    // mandate da qui a BGG tornavano indietro come nuove, doppie. Meglio
+    // non sincronizzare questa volta: si riprova alla prossima apertura.
+    throw new Error(`Non riesco a leggere le partite già mandate a BGG: ${e?.message || e}`)
   }
 }
 
