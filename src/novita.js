@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.39.0',
+    data: '2026-11-21',
+    voci: [
+      'Informativa privacy al primo accesso: si legge e si accetta prima di entrare; l’app registra data e versione accettate',
+      'Persone → Soci → Informativa (solo amministratore): si incolla il testo dell’associazione, si guarda l’anteprima e si pubblica; ogni versione nuova va riaccettata da tutti',
+    ],
+  },
+  {
     versione: '4.38.0',
     data: '2026-11-21',
     voci: [

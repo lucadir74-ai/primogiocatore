@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.6.0 - 202611211900 (registro delle operazioni; elenco letto con elenco_soci())
+// v1.7.0 - 202611212100 (informativa privacy: versioni e pubblicazione)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo l'amministratore dell'app.
@@ -20,6 +20,7 @@ import Sezione from './Sezione.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import SchedaIscritto from './SchedaIscritto.jsx'
 import Registro from './Registro.jsx'
+import { GestioneInformativa } from './Informativa.jsx'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
 const COLONNE_SOCI = 'id, tana_id, nickname, nome, cognome, email, aggiunto_il'
@@ -497,6 +498,11 @@ export default function Soci({ profilo }) {
               </div>
             )
           })}
+        </Sezione>
+      )}
+      {globale && (
+        <Sezione id="soci-informativa" titolo="Informativa privacy" nota="solo amministratore">
+          <GestioneInformativa />
         </Sezione>
       )}
       {globale && (

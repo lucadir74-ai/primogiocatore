@@ -48,6 +48,7 @@ const PAGINE_DA_PREPARARE = [
   ['profilo:giochi', GiochiDoppi, 'org'], ['profilo:ruoli', Organizzatori, 'org'], ['profilo:soci', Soci, 'soci'],
 ]
 import Benvenuto from './Benvenuto.jsx'
+import Informativa from './Informativa.jsx'
 import EventoIngresso from './EventoIngresso.jsx'
 import EventoPartecipante from './EventoPartecipante.jsx'
 import { codiceEventoInSospeso, dimenticaCodiceEvento, entraNellEvento } from './evento'
@@ -974,6 +975,8 @@ export default function App() {
   const [mira, setMira] = useState(null)
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
+  // Informativa privacy da accettare (privacy_fase4.sql): null = niente.
+  const [informativa, setInformativa] = useState(null)
   // Dal link della mail di iscrizione: prima si sceglie la password.
   const [cambioPassword, setCambioPassword] = useState(arrivoDaInvito ? 'invito' : false)
   // Senza sessione: pagina di benvenuto, oppure accesso/iscrizione.
@@ -1160,6 +1163,17 @@ export default function App() {
     })
     return () => { clearTimeout(fretta); iscrizione.subscription.unsubscribe() }
   }, [])
+
+  // C'è un'informativa nuova da accettare? Se la lettura non riesce (niente
+  // rete, script non ancora lanciato) non si blocca nessuno.
+  useEffect(() => {
+    if (!sessione) { setInformativa(null); return }
+    let vivo = true
+    supabase.rpc('informativa_da_accettare').then(({ data, error }) => {
+      if (vivo) setInformativa(!error && Array.isArray(data) && data[0] ? data[0] : null)
+    }, () => {})
+    return () => { vivo = false }
+  }, [sessione?.user?.id])   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!sessione) return
@@ -1390,6 +1404,8 @@ export default function App() {
         <div className="scheda">
           {erroreProfilo ? <Avviso tipo="errore" testo={erroreProfilo} /> : <p>Carico il profilo&hellip;</p>}
         </div>
+      ) : informativa ? (
+        <Informativa dati={informativa} onAccettata={() => setInformativa(null)} />
       ) : codiceEvento ? (
         <div className="scheda"><p>Entro nell&rsquo;evento&hellip;</p></div>
       ) : ammesso === false && profilo.stato_socio === 'partecipante' ? (
