@@ -16,6 +16,15 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.38.0',
+    data: '2026-11-21',
+    voci: [
+      'Iscrizione dei soci: si scrive il nick oppure l’email con cui ci si è associati; il link per attivare l’account arriva all’email che risulta all’associazione, che a schermo non compare mai',
+      'Iscrizione: limite ai tentativi; chi ha già un account riceve il link per scegliere una password nuova',
+      'Dal link della mail si sceglie subito la password; nick, nome e cognome arrivano dall’elenco soci',
+    ],
+  },
+  {
     versione: '4.37.0',
     data: '2026-11-21',
     voci: [

@@ -4,7 +4,7 @@
 // Punto 3b: registrazione partite con timer e punteggi.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase, configurato, COLORI, daMostrare, sessioneSalvata } from './supabase'
+import { supabase, configurato, COLORI, daMostrare, sessioneSalvata, arrivoDaInvito } from './supabase'
 import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
 import Prepara from './Prepara.jsx'
@@ -172,8 +172,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
   const [modo, setModo] = useState(modoIniziale)   // entra | iscriviti | recupero
   // Iscrizione a passi: domanda → (no: WhatsApp) | (sì: email → dati)
   const [passo, setPasso] = useState(daEvento ? 'dati' : 'domanda')   // domanda | no | email | dati
-  const [emailVerificata, setEmailVerificata] = useState(false)
-  const [nonTrovata, setNonTrovata] = useState(false)
+  const [chi, setChi] = useState('')                 // nick o email del socio
+  const [esito, setEsito] = useState(null)           // inviata | non_socio | ambiguo
   const [nickname, setNickname] = useState('')
   const [nome, setNome] = useState('')
   const [cognome, setCognome] = useState('')
@@ -183,20 +183,27 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
   const [errore, setErrore] = useState('')
   const [ok, setOk] = useState('')
 
-  async function verificaEmail() {
-    setErrore(''); setOk(''); setNonTrovata(false)
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setErrore('Scrivi un indirizzo email completo.'); return }
+  // Iscrizione dei soci (indicazioni privacy dell'associazione): nick o
+  // email dell'elenco; il server manda il link all'email DELL'ELENCO e qui
+  // non torna mai quale sia (api/iscrizione.js).
+  async function cercaSocio() {
+    setErrore(''); setOk(''); setEsito(null)
+    if (chi.trim().length < 2) { setErrore('Scrivi il tuo nick o la tua email.'); return }
     setAttesa(true)
     try {
-      const { data, error } = await supabase.rpc('email_tra_i_soci', { p_email: email.trim() })
-      // Se il controllo non riesce non si passa: l'iscrizione è solo per i soci.
-      if (error) { setErrore('Non riesco a controllare l\u2019elenco soci. Riprova fra poco.'); return }
-      if (data) { setEmailVerificata(true); setPasso('dati') } else setNonTrovata(true)
+      const r = await fetch('/api/iscrizione', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chi: chi.trim() }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setErrore(d.errore || 'Invio non riuscito. Riprova fra poco.'); return }
+      setEsito(d.esito)
+    } catch {
+      setErrore('Niente rete: riprova quando sei collegato.')
     } finally { setAttesa(false) }
   }
 
   function vaiA(nuovo) {
-    setModo(nuovo); setPasso(daEvento ? 'dati' : 'domanda'); setErrore(''); setOk(''); setNonTrovata(false); setEmailVerificata(false)
+    setModo(nuovo); setPasso(daEvento ? 'dati' : 'domanda'); setErrore(''); setOk(''); setEsito(null)
   }
 
   async function invia() {
@@ -209,7 +216,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
       setErrore('Servono email e password.')
       return
     }
-    if (modo === 'iscriviti' && !emailVerificata && !daEvento) {
+    // Da qui si iscrive solo chi arriva da un evento: i soci passano da cercaSocio.
+    if (modo === 'iscriviti' && !daEvento) {
       setErrore('L\u2019iscrizione è riservata ai soci della Tana: se non lo sei, scrivi a Dario su WhatsApp.')
       return
     }
@@ -313,29 +321,46 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
         </>
       )}
 
-      {modo === 'iscriviti' && passo === 'email' && (
+      {modo === 'iscriviti' && passo === 'email' && esito === 'inviata' && (
+        <>
+          <div className="avviso ok">
+            Ti abbiamo inviato una mail di conferma all&rsquo;indirizzo che risulta all&rsquo;associazione.
+            Apri il link nella mail per attivare l&rsquo;account e scegliere la password.
+          </div>
+          <p className="aiuto">
+            Controlla anche la posta indesiderata. Se non arriva, o se l&rsquo;email che avevi dato all&rsquo;associazione
+            non la usi pi&ugrave;, contatta l&rsquo;associazione.
+          </p>
+          <a className="bottone bottone-secondario" href={linkWhatsApp({ nickname: chi.includes('@') ? '' : chi })} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+            Contatta l&rsquo;associazione su WhatsApp
+          </a>
+        </>
+      )}
+
+      {modo === 'iscriviti' && passo === 'email' && esito !== 'inviata' && (
         <>
           <div className="campo">
-            <label htmlFor="v-email">Con quale email ti sei iscritto alla Tana?</label>
-            <input id="v-email" type="email" value={email} autoComplete="email"
-              onChange={(e) => { setEmail(e.target.value); setNonTrovata(false) }}
-              onKeyDown={(e) => e.key === 'Enter' && verificaEmail()} />
+            <label htmlFor="v-chi">Il tuo nick oppure l&rsquo;email con cui ti sei associato</label>
+            <input id="v-chi" value={chi} autoComplete="username" autoCapitalize="none"
+              onChange={(e) => { setChi(e.target.value); setEsito(null) }}
+              onKeyDown={(e) => e.key === 'Enter' && cercaSocio()} />
+            <p className="aiuto">Il link per attivare l&rsquo;account arriva all&rsquo;email che risulta all&rsquo;associazione.</p>
           </div>
-          {!nonTrovata ? (
-            <button className="bottone" onClick={verificaEmail} disabled={attesa || !email.trim()}>
-              {attesa ? 'Controllo\u2026' : 'Continua'}
-            </button>
-          ) : (
-            <>
-              <div className="avviso errore">
-                Questa email non risulta fra i soci. Controlla di aver scritto quella che hai dato alla Tana.
-              </div>
-              <button className="bottone" onClick={verificaEmail} disabled={attesa}>Riprova</button>
-              <a className="bottone bottone-secondario" href={linkWhatsApp({ email })} target="_blank" rel="noopener noreferrer"
-                style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
-                Chiedi aiuto su WhatsApp
-              </a>
-            </>
+          {esito === 'non_socio' && (
+            <div className="avviso errore">Non risulti tra i soci: contatta l&rsquo;associazione.</div>
+          )}
+          {esito === 'ambiguo' && (
+            <div className="avviso errore">Questo nick lo usano pi&ugrave; soci: scrivi l&rsquo;email con cui ti sei associato.</div>
+          )}
+          <button className="bottone" onClick={cercaSocio} disabled={attesa || !chi.trim()}>
+            {attesa ? 'Controllo\u2026' : esito ? 'Riprova' : 'Continua'}
+          </button>
+          {esito === 'non_socio' && (
+            <a className="bottone bottone-secondario" href={linkWhatsApp({ nickname: chi.includes('@') ? '' : chi, email: chi.includes('@') ? chi : '' })} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+              Contatta l&rsquo;associazione su WhatsApp
+            </a>
           )}
         </>
       )}
@@ -368,9 +393,7 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
-          readOnly={modo === 'iscriviti' && emailVerificata}
         />
-        {modo === 'iscriviti' && emailVerificata && <p className="aiuto">Email trovata fra i soci della Tana ✓</p>}
       </div>
       )}
 
@@ -430,7 +453,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
 // Si arriva qui dal collegamento ricevuto per posta: Supabase apre
 // una sessione valida giusto per questo, e finché non si sceglie una
 // password nuova non si va da nessuna parte.
-function NuovaPassword({ fatto }) {
+// invito: si arriva dalla mail di iscrizione, l'account è appena nato.
+function NuovaPassword({ fatto, invito = false }) {
   const [password, setPassword] = useState('')
   const [ripeti, setRipeti] = useState('')
   const [attesa, setAttesa] = useState(false)
@@ -450,8 +474,10 @@ function NuovaPassword({ fatto }) {
 
   return (
     <div className="scheda">
-      <h2>Scegli la password nuova</h2>
-      <p className="sottotitolo">Da adesso entrerai con questa.</p>
+      <h2>{invito ? 'Benvenuto! Scegli la tua password' : 'Scegli la password nuova'}</h2>
+      <p className="sottotitolo">
+        {invito ? 'Il tuo account è attivo. Scegli la password con cui entrerai le prossime volte.' : 'Da adesso entrerai con questa.'}
+      </p>
 
       <Avviso tipo="errore" testo={errore} />
 
@@ -948,7 +974,8 @@ export default function App() {
   const [mira, setMira] = useState(null)
   const [ritorno, setRitorno] = useState(null)
   const [ritornoStorico, setRitornoStorico] = useState(null)
-  const [cambioPassword, setCambioPassword] = useState(false)
+  // Dal link della mail di iscrizione: prima si sceglie la password.
+  const [cambioPassword, setCambioPassword] = useState(arrivoDaInvito ? 'invito' : false)
   // Senza sessione: pagina di benvenuto, oppure accesso/iscrizione.
   const [ingresso, setIngresso] = useState(() => {
     if (codiceEventoInSospeso()) return 'evento'
@@ -1339,8 +1366,8 @@ export default function App() {
         </div>
       ) : !pronto ? (
         <div className="scheda"><p>Un attimo&hellip;</p></div>
-      ) : cambioPassword ? (
-        <NuovaPassword fatto={() => setCambioPassword(false)} />
+      ) : cambioPassword && sessione ? (
+        <NuovaPassword invito={cambioPassword === 'invito'} fatto={() => setCambioPassword(false)} />
       ) : !sessione ? (
         ingresso === 'evento' && codiceEvento ? (
           <EventoIngresso

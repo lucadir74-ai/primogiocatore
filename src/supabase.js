@@ -17,6 +17,11 @@ export const configurato = Boolean(url && chiave)
 // la copia dell'ultima volta. Sul server no (lì non c'è un telefono).
 const nelBrowser = typeof window !== 'undefined'
 
+// Si arriva dal link della mail di iscrizione (invito mandato da
+// api/iscrizione.js): va letto prima che la libreria pulisca l'indirizzo,
+// perché subito dopo si deve scegliere la password.
+export const arrivoDaInvito = nelBrowser && /(^|[#&])type=invite(&|$)/.test(window.location.hash || '')
+
 export let supabase = configurato
   ? createClient(url, chiave, nelBrowser ? { global: { fetch: fetchConMemoria } } : undefined)
   : null

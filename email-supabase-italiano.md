@@ -32,24 +32,28 @@ Conferma la tua iscrizione a Primo Giocatore
 
 ---
 
-## 2. Invite user (invito)
+## 2. Invite user (attivazione dell'account del socio)
+
+Dal 21/11/2026 è la mail che riceve il socio quando si iscrive con il suo nick o la sua email:
+arriva all'indirizzo che risulta nell'elenco soci.
 
 **Subject**
 ```
-Sei stato invitato su Primo Giocatore
+Attiva il tuo account su Primo Giocatore
 ```
 
 **Body**
 ```html
 <div style="font-family: Arial, Helvetica, sans-serif; max-width: 520px; margin: 0 auto; color: #222; line-height: 1.5;">
-  <h2 style="margin: 0 0 16px;">Hai un invito</h2>
-  <p>Ciao,</p>
-  <p>sei stato invitato a entrare in Primo Giocatore. Clicca qui per accettare e creare il tuo account:</p>
+  <h2 style="margin: 0 0 16px;">Benvenuto in Primo Giocatore!</h2>
+  <p>{{ if .Data.nome }}Ciao {{ .Data.nome }},{{ else }}Ciao,{{ end }}</p>
+  <p>qualcuno ha chiesto di creare l'account di Primo Giocatore{{ if .Data.nickname }} per il socio <strong>{{ .Data.nickname }}</strong>{{ end }}. Ti scriviamo all'indirizzo che risulta all'associazione.</p>
+  <p>Se sei stato tu, clicca qui per attivare l'account e scegliere la password:</p>
   <p style="margin: 24px 0;">
-    <a href="{{ .ConfirmationURL }}" style="background: #222; color: #fff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">Accetta l'invito</a>
+    <a href="{{ .ConfirmationURL }}" style="background: #222; color: #fff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">Attiva l'account</a>
   </p>
   <p style="font-size: 13px; color: #666;">Se il pulsante non funziona, copia questo indirizzo nel browser:<br>{{ .ConfirmationURL }}</p>
-  <p style="font-size: 13px; color: #666;">Se non aspettavi questo invito, ignora questo messaggio.</p>
+  <p style="font-size: 13px; color: #666;">Se non l'hai chiesto tu, ignora questo messaggio: senza il tuo clic l'account non si attiva.</p>
   <p style="font-size: 13px; color: #666;">Primo Giocatore by TdGroma</p>
 </div>
 ```
