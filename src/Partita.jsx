@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.29.0 - 202611210200 (cooperative: punteggio di squadra oppure punti a testa, accanto a ogni nome)
+// v4.30.0 - 202611211000 (appena registrata, la partita si rifà con gli stessi giocatori)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -99,6 +99,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   const [ripresa, setRipresa] = useState(false)
   // Partita appena registrata: se è a punti si mostrano i record.
   const [riepilogo, setRiepilogo] = useState(null)
+  // Ciò che serve per rifarla subito con gli stessi giocatori.
+  const [rivincita, setRivincita] = useState(null)
 
   const montata = useRef(true)
   useEffect(() => { montata.current = true; caricaElenchi(); return () => { montata.current = false } }, [])
@@ -686,11 +688,46 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setCoopScelta(null); setPunteggioSquadra(''); setPuntiATesta(false)
+    setRivincita(null)
     setSegnapuntiAperto(false)
     setRipresa(false)
     setCercaGiocatore('')
     azzeraTimer()
     cancellaBozza()
+  }
+
+  // Stesso gioco, stessi giocatori, stesso luogo e stesso evento; punti,
+  // fazioni e ordine di turno da capo (i giocatori nell'ordine di turno
+  // di quella partita, se era segnato).
+  function fotoRivincita() {
+    return {
+      gioco,
+      luogo,
+      coop: tipo === 'coop',
+      eventoId: evento ? evento.id : eventoId,
+      righe: [...righe]
+        .sort((a, b) => (a.ordine ?? 99) - (b.ordine ?? 99))
+        .map((r) => ({
+          chiave: r.chiave, utente_id: r.utente_id, ospite_id: r.ospite_id, nome: r.nome,
+          punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
+        })),
+    }
+  }
+
+  function rifaiConGliStessi() {
+    const r = rivincita
+    if (!r) return
+    setRiepilogo(null)
+    setMessaggio('')
+    setErrore('')
+    setGioco(r.gioco)
+    setRighe(r.righe)
+    setLuogo(r.luogo)
+    setCoopScelta(r.coop)
+    if (!evento) setEventoId(r.eventoId)
+    setRipresa('rifatta')
+    setRivincita(null)
+    window.scrollTo?.({ top: 0 })
   }
 
   async function salva() {
@@ -769,12 +806,14 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           const conPunti = tipo !== 'coop' && tipo !== 'posizione'
             && dati.giocatori.some((g) => g.punteggio_totale != null)
           setUltimaPartita(ordinata.map((r) => r.chiave))
+          const foto = fotoRivincita()
           if (conPunti) {
             setRiepilogo({ id: salvataId, giocoId: gioco.id, giocoNome: gioco.nome })
           } else {
             setMessaggio('Partita registrata.')
           }
           azzera()
+          setRivincita(foto)
         }
       } catch (e) {
         // Senza rete la partita resta sul telefono e parte da sola
@@ -788,7 +827,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
             : `Niente rete: ${quante} partite in attesa, partiranno da sole.`
         )
         setUltimaPartita(ordinata.map((r) => r.chiave))
+        const foto = fotoRivincita()
         azzera()
+        setRivincita(foto)
       }
     } catch (e) {
       setErrore(e.message)
@@ -860,6 +901,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         giocoId={riepilogo.giocoId}
         giocoNome={riepilogo.giocoNome}
         onChiudi={() => { setRiepilogo(null); window.scrollTo?.({ top: 0 }) }}
+        onRifai={rivincita ? rifaiConGliStessi : null}
       />
     )
   }
@@ -870,6 +912,13 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+      {rivincita && !gioco && righe.length === 0 && (
+        <button className="bottone rifai-stessi" onClick={rifaiConGliStessi}>
+          Rifai con gli stessi giocatori
+          <span className="sotto-tasto">{rivincita.gioco.nome} · {rivincita.righe.length} {rivincita.righe.length === 1 ? 'giocatore' : 'giocatori'}</span>
+        </button>
+      )}
 
       {ripresa && !modifica && (
         <div className="avviso ok">

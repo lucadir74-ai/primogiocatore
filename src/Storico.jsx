@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v4.2.0 - 202611202300 (cooperative: l'esito si vede anche quando è persa, il punteggio di squadra una volta sola)
+// v4.3.0 - 202611211000 (ogni partita si può rifare con gli stessi giocatori)
 
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
@@ -11,6 +11,7 @@ import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import { leggiBozza } from './bozza'
 import { punteggioSquadra } from './cooperativa'
+import { preparaRivincita } from './rivincita'
 
 // Le partite per gioco, per giocatore e per luogo ci sono già in
 // Statistiche: qui resta solo l'elenco, con la ricerca e il filtro
@@ -90,6 +91,21 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
   // Dal vivo / online, come nelle Statistiche. Vale per tutte le sezioni.
   const [dove, setDove] = useState('tutte')   // tutte | vivo | online
   const [errore, setErrore] = useState('')
+  const [rifacendo, setRifacendo] = useState(false)
+
+  // Stesso gioco e stessi giocatori, da capo: si apre come partita nuova.
+  async function rifai(p) {
+    if (leggiBozza() && !window.confirm('C\u2019è una partita in corso non ancora registrata: la sostituisco con questa?')) return
+    setRifacendo(true)
+    setErrore('')
+    try {
+      await preparaRivincita(p)
+      onNuova?.()
+    } catch (e) {
+      setErrore('Non riesco a preparare la partita: ' + (e.message || 'riprova.'))
+      setRifacendo(false)
+    }
+  }
   const nomi = useNomiIscritti()   // nome e cognome veri: per cercare e per «Irene R.»
 
   useEffect(() => { carica() }, [])
@@ -376,9 +392,15 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
 
                 {p.note && <p className="aiuto note-partita">{p.note}</p>}
 
-                {p.registrata_da === profilo.id && (
+                {/* Le partite arrivate da BGA non si rifanno al tavolo. */}
+                {((!daBga(p) && onNuova) || p.registrata_da === profilo.id) && (
                   <div className="azioni-partita">
-                    {!daBga(p) && (
+                    {!daBga(p) && onNuova && (
+                      <button className="bottone-piatto" onClick={() => rifai(p)} disabled={rifacendo}>
+                        {rifacendo ? 'Preparo\u2026' : 'Rifai con gli stessi giocatori'}
+                      </button>
+                    )}
+                    {p.registrata_da === profilo.id && !daBga(p) && (
                       <button
                         className="bottone-piatto"
                         onClick={() => onModifica?.(p.id, { sezione, cerca, dove, aperta: p.id })}
@@ -386,9 +408,11 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                         Modifica
                       </button>
                     )}
-                    <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
-                      Cancella
-                    </button>
+                    {p.registrata_da === profilo.id && (
+                      <button className="bottone-piatto pericolo" onClick={() => cancella(p.id)}>
+                        Cancella
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
