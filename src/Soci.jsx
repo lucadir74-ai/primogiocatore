@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.7.0 - 202611212100 (informativa privacy: versioni e pubblicazione)
+// v1.8.0 - 202611220000 (ex soci: da quanti giorni, eliminazione dell'account)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo l'amministratore dell'app.
@@ -22,6 +22,7 @@ import SchedaIscritto from './SchedaIscritto.jsx'
 import Registro from './Registro.jsx'
 import { GestioneInformativa } from './Informativa.jsx'
 import { conNomiVeri } from './nomiIscritti'
+import ExSoci from './ExSoci.jsx'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
 const COLONNE_SOCI = 'id, tana_id, nickname, nome, cognome, email, aggiunto_il'
@@ -501,6 +502,11 @@ export default function Soci({ profilo }) {
               </div>
             )
           })}
+        </Sezione>
+      )}
+      {globale && (
+        <Sezione id="soci-ex" titolo="Ex soci" nota="solo amministratore">
+          <ExSoci />
         </Sezione>
       )}
       {globale && (

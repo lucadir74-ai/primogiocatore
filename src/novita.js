@@ -16,6 +16,15 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.41.0',
+    data: '2026-11-22',
+    voci: [
+      'Profilo: «Scarica i miei dati» in JSON o CSV, con tutto quello che l’app ha su di te',
+      'Elimina account: ricorda che non tocca l’iscrizione all’associazione',
+      'Persone → Soci → Ex soci (solo amministratore): chi è stato tolto dall’elenco, da quanti giorni, e l’eliminazione del suo account',
+    ],
+  },
+  {
     versione: '4.40.0',
     data: '2026-11-21',
     voci: [

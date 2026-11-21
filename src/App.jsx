@@ -730,7 +730,71 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
         Esci dall'account
       </button>
 
+      <ScaricaDati />
+
       <EliminaAccount email={sessione.user.email} />
+    </div>
+  )
+}
+
+/* ---------------- Scarica i miei dati ---------------- */
+
+// Tutto quello che l'app ha su di te (privacy_fase6.sql, i_miei_dati),
+// in JSON o in un foglio CSV con una riga per ogni valore.
+function ScaricaDati() {
+  const [attesa, setAttesa] = useState(false)
+  const [errore, setErrore] = useState('')
+
+  function salvaFile(nome, testo, tipo) {
+    const url = URL.createObjectURL(new Blob([testo], { type: tipo }))
+    const a = document.createElement('a')
+    a.href = url; a.download = nome
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+
+  // { sezione: [ {campo: valore} ] | {campo: valore} } → sezione;riga;campo;valore
+  function inCsv(dati) {
+    const righe = [['sezione', 'riga', 'campo', 'valore']]
+    const testo = (v) => (v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+    for (const [sezione, valore] of Object.entries(dati)) {
+      if (Array.isArray(valore)) {
+        valore.forEach((r, i) => {
+          if (r && typeof r === 'object') for (const [k, v] of Object.entries(r)) righe.push([sezione, i + 1, k, testo(v)])
+          else righe.push([sezione, i + 1, '', testo(r)])
+        })
+      } else if (valore && typeof valore === 'object') {
+        for (const [k, v] of Object.entries(valore)) righe.push([sezione, '', k, testo(v)])
+      } else righe.push([sezione, '', '', testo(valore)])
+    }
+    const cella = (c) => `"${String(c).replace(/"/g, '""')}"`
+    return '﻿' + righe.map((r) => r.map(cella).join(';')).join('\r\n')
+  }
+
+  async function scarica(formato) {
+    setErrore(''); setAttesa(true)
+    const { data, error } = await supabase.rpc('i_miei_dati')
+    setAttesa(false)
+    if (error) {
+      setErrore(/i_miei_dati/.test(error.message) ? 'Funzione non ancora pronta sul database: riprova più tardi.' : traduciErrore(error))
+      return
+    }
+    const giorno = new Date().toLocaleDateString('sv-SE')   // AAAA-MM-GG, ora italiana
+    if (formato === 'json') salvaFile(`primo-giocatore-i-miei-dati-${giorno}.json`, JSON.stringify(data, null, 2), 'application/json')
+    else salvaFile(`primo-giocatore-i-miei-dati-${giorno}.csv`, inCsv(data), 'text/csv;charset=utf-8')
+  }
+
+  return (
+    <div className="campo" style={{ marginTop: '1.5rem' }}>
+      <h3 className="titolo-sezione">I miei dati</h3>
+      <p className="aiuto">Scarica tutto quello che l&rsquo;app ha su di te: account, profilo, nome e cognome, iscrizione all&rsquo;elenco soci, partite, tavoli, collezione, informative accettate.</p>
+      <Avviso tipo="errore" testo={errore} />
+      <button className="bottone bottone-secondario" onClick={() => scarica('json')} disabled={attesa}>
+        {attesa ? 'Preparo…' : 'Scarica i miei dati (JSON)'}
+      </button>
+      <button className="bottone bottone-secondario" onClick={() => scarica('csv')} disabled={attesa}>
+        Scarica i miei dati (CSV)
+      </button>
     </div>
   )
 }
@@ -783,6 +847,10 @@ function EliminaAccount({ email }) {
         Le partite in cui c&rsquo;erano altri giocatori dell&rsquo;app restano nel loro storico:
         al tuo posto comparirà &laquo;Ex giocatore&raquo;, senza il tuo nome né altri tuoi dati.
         I giochi e i luoghi che hai aggiunto restano a disposizione di tutti.
+      </p>
+      <p className="aiuto">
+        Eliminare l&rsquo;account dell&rsquo;app non tocca la tua iscrizione all&rsquo;associazione.
+        Prima, se vuoi, scarica i tuoi dati qui sopra.
       </p>
       <Avviso tipo="errore" testo={errore} />
       <label htmlFor="conferma-elimina">Per confermare, scrivi la tua email</label>
