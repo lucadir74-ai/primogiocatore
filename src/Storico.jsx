@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v4.1.1 - 202611132200 (le partite arrivate da BGA non hanno «Modifica»)
+// v4.2.0 - 202611202300 (cooperative: l'esito si vede anche quando è persa, il punteggio di squadra una volta sola)
 
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
@@ -10,6 +10,7 @@ import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daB
 import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import { leggiBozza } from './bozza'
+import { punteggioSquadra } from './cooperativa'
 
 // Le partite per gioco, per giocatore e per luogo ci sono già in
 // Statistiche: qui resta solo l'elenco, con la ricerca e il filtro
@@ -285,6 +286,8 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
           return (b.punteggio_totale ?? -Infinity) - (a.punteggio_totale ?? -Infinity)
         })
         const vincitori = classifica.filter((x) => x.vincitore).map((x) => chi(x).nome)
+        const coop = p.tipo_punteggio === 'coop'
+        const squadra = punteggioSquadra(p)
 
         return (
           <div key={p.id} className={`riga-partita${apertaQui ? ' aperta' : ''}`}>
@@ -325,10 +328,11 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                   {p.luoghi?.nome ? ` · ${p.luoghi.nome}` : ''}
                   {p.durata_minuti ? ` · ${durataLeggibile(p.durata_minuti)}` : ''}
                 </span>
-                {vincitori.length > 0 && (
-                  <span className="riga-vincitore">
-                    {p.tipo_punteggio === 'coop'
-                      ? p.esito_coop === 'vinta' ? 'Vinta insieme' : 'Persa insieme'
+                {/* Una cooperativa persa non ha vincitori, ma l'esito si scrive lo stesso. */}
+                {(coop ? p.esito_coop : vincitori.length > 0) && (
+                  <span className={`riga-vincitore${coop && p.esito_coop !== 'vinta' ? ' persa' : ''}`}>
+                    {coop
+                      ? `${p.esito_coop === 'vinta' ? 'Vinta insieme' : 'Persa insieme'}${squadra != null ? ` · ${squadra} punti` : ''}`
                       : `Vince ${vincitori.join(', ')}`}
                   </span>
                 )}
@@ -362,7 +366,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                         {par.spareggio != null && (
                           <span className="anno spareggio-nota">sp. {par.spareggio}</span>
                         )}
-                        {par.punteggio_totale != null && (
+                        {par.punteggio_totale != null && squadra == null && (
                           <span className="punti-finali">{par.punteggio_totale}</span>
                         )}
                       </li>

@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.6.0 - 202611142000 (tornando alla Home tavoli e IPG si vedono subito: la pagina non si ridisegna due volte)
+// v1.7.0 - 202611202300 (rifai l'ultima: cooperativa o no come l'ultima volta)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -146,7 +146,9 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
           nome: nomeDi(x),
           punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
         }))
-      scriviBozza({ gioco, righe, luogo: ultima.luoghi?.nome || '', rifatta: true, accumulati: 0, avviatoIl: null })
+      // Cooperativa o no come l'ultima volta, anche se il gioco dice altro.
+      scriviBozza({ gioco, righe, luogo: ultima.luoghi?.nome || '', rifatta: true, accumulati: 0, avviatoIl: null,
+        coop: ultima.tipo_punteggio === 'coop' })
       onNuovaPartita()
     } catch (e) {
       setErrore('Non riesco a preparare la partita: ' + (e.message || 'riprova.'))
