@@ -1,5 +1,5 @@
 // Primo Giocatore - scheda di un iscritto vista dagli organizzatori
-// v1.4.1 - 202611022300 (partite BGA: conta anche quelle arrivate prima da BGG e collegate)
+// v1.5.0 - 202611211900 (apertura della scheda di un socio segnata nel registro; città tolta)
 // Si apre toccando un nome nella pagina Ruoli o nell'elenco soci.
 // Dall'elenco soci arriva anche la riga del socio (socio): se non ha
 // ancora un account si mostrano solo i dati dell'elenco. Dati base dell'account e
@@ -43,6 +43,12 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
   const [errore, setErrore] = useState('')
   const [orgTana, setOrgTana] = useState(false)   // organizza almeno una Tana
   const [esitoBga, setEsitoBga] = useState(null)  // ultimo tentativo automatico (tabella bga_esiti)
+
+  // Aprire la scheda di un socio dall'elenco si segna nel registro delle
+  // operazioni (privacy_fase2.sql). Se lo script manca, niente.
+  useEffect(() => {
+    if (socio?.id != null) supabase.rpc('segna_scheda_socio', { p_socio: socio.id }).then(() => {}, () => {})
+  }, [socio?.id])
 
   useEffect(() => {
     if (!id) return

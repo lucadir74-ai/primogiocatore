@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.5.0 - 202611211800 (importa CSV: anche «sostituisci tutto l'elenco»)
+// v1.6.0 - 202611211900 (registro delle operazioni; elenco letto con elenco_soci())
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo l'amministratore dell'app.
@@ -19,8 +19,10 @@ import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import Sezione from './Sezione.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import SchedaIscritto from './SchedaIscritto.jsx'
+import Registro from './Registro.jsx'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
+const COLONNE_SOCI = 'id, tana_id, nickname, nome, cognome, email, aggiunto_il'
 const STATI = { in_attesa: 'in attesa', eccezione: 'entra come eccezione', escluso: 'non ammesso' }
 
 // CSV: separatore indovinato dalla prima riga (; , o tab), virgolette rispettate.
@@ -114,7 +116,13 @@ export default function Soci({ profilo }) {
         supabase.from('tane').select('id, nome').order('nome'),
         supabase.from('impostazioni').select('valore').eq('chiave', 'controllo_soci').maybeSingle(),
         supabase.from('organizzatori_tana').select('utente_id, tana_id'),
-        tutteLeRighe(() => supabase.from('soci').select('id, tana_id, nickname, nome, cognome, email, aggiunto_il').order('aggiunto_il', { ascending: false })),
+        // elenco_soci() segna la consultazione nel registro (privacy_fase2.sql);
+        // finché lo script non c'è, si legge come prima.
+        tutteLeRighe(() => supabase.rpc('elenco_soci').select(COLONNE_SOCI).order('aggiunto_il', { ascending: false }))
+          .catch((e) => {
+            if (!/elenco_soci/.test(e?.message || '')) throw e
+            return tutteLeRighe(() => supabase.from('soci').select(COLONNE_SOCI).order('aggiunto_il', { ascending: false }))
+          }),
         supabase.rpc('non_nell_elenco'),
       ])
       const sbaglio = [t, imp, o, f].find((x) => x.error)
@@ -489,6 +497,11 @@ export default function Soci({ profilo }) {
               </div>
             )
           })}
+        </Sezione>
+      )}
+      {globale && (
+        <Sezione id="soci-registro" titolo="Registro delle operazioni" nota="solo amministratore">
+          <Registro />
         </Sezione>
       )}
       {aperto && (

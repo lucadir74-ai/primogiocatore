@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.37.0',
+    data: '2026-11-21',
+    voci: [
+      'Registro delle operazioni (solo amministratore, in Persone → Soci): caricamenti, modifiche e consultazioni dell’elenco soci, schede aperte, ruoli e decisioni sugli accessi',
+    ],
+  },
+  {
     versione: '4.36.0',
     data: '2026-11-21',
     voci: [
