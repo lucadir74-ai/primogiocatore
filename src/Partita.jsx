@@ -915,7 +915,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
       {rivincita && !gioco && righe.length === 0 && (
         <button className="bottone rifai-stessi" onClick={rifaiConGliStessi}>
-          Rifai con gli stessi giocatori
+          Ripeti tavolo
           <span className="sotto-tasto">{rivincita.gioco.nome} · {rivincita.righe.length} {rivincita.righe.length === 1 ? 'giocatore' : 'giocatori'}</span>
         </button>
       )}
@@ -923,7 +923,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
       {ripresa && !modifica && (
         <div className="avviso ok">
           {ripresa === 'rifatta'
-            ? 'Stesso gioco e stessi giocatori dell\u2019ultima partita.'
+            ? 'Tavolo ripetuto: stesso gioco e stessi giocatori.'
             : 'Ripresa la partita lasciata a metà.'}{' '}
           <button className="bottone-piatto" onClick={azzera}>ricomincia da capo</button>
         </div>

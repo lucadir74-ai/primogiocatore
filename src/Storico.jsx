@@ -397,7 +397,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                   <div className="azioni-partita">
                     {!daBga(p) && onNuova && (
                       <button className="bottone-piatto" onClick={() => rifai(p)} disabled={rifacendo}>
-                        {rifacendo ? 'Preparo\u2026' : 'Rifai con gli stessi giocatori'}
+                        {rifacendo ? 'Preparo\u2026' : 'Ripeti tavolo'}
                       </button>
                     )}
                     {p.registrata_da === profilo.id && !daBga(p) && (

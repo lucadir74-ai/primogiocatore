@@ -365,7 +365,7 @@ body {
 
 .bottone-stretto { width: auto; padding: 0.7rem 1.1rem; }
 
-/* Rifai con gli stessi giocatori: dopo la registrazione e nel riepilogo */
+/* Ripeti tavolo (stesso gioco, stessi giocatori): dopo la registrazione e nel riepilogo */
 .rifai-stessi { margin-bottom: 1rem; }
 .rifai-stessi .sotto-tasto {
   display: block;

@@ -117,7 +117,7 @@ export default function RiepilogoPartita({ profilo, partitaId, giocoId, giocoNom
       )}
 
       {onRifai && (
-        <button className="bottone rifai-stessi" onClick={onRifai}>Rifai con gli stessi giocatori</button>
+        <button className="bottone rifai-stessi" onClick={onRifai}>Ripeti tavolo</button>
       )}
       <button className={onRifai ? 'bottone bottone-secondario' : 'bottone'} onClick={onChiudi}>Nuova partita</button>
     </div>

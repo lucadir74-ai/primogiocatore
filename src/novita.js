@@ -19,8 +19,8 @@ export const NOVITA = [
     versione: '4.35.0',
     data: '2026-11-21',
     voci: [
-      'Partita appena registrata: tasto «Rifai con gli stessi giocatori», con lo stesso gioco, luogo ed evento; punti, fazioni e ordine di turno da capo',
-      'Storico: ogni partita si può rifare con gli stessi giocatori, non solo l’ultima',
+      'Partita appena registrata: tasto «Ripeti tavolo», stesso gioco e stessi giocatori, con lo stesso luogo ed evento; punti, fazioni e ordine di turno da capo',
+      'Storico: «Ripeti tavolo» su ogni partita, non solo sull’ultima',
     ],
   },
   {
