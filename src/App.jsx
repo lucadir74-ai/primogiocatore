@@ -9,6 +9,7 @@ import { svuotaMemoriaRete } from './memoriaRete'
 import StatoRete from './StatoRete.jsx'
 import Prepara from './Prepara.jsx'
 import { salvaOAccoda, profiloConModifiche, EVENTO_MODIFICHE_INVIATE } from './modifiche'
+import { dimenticaNomiIscritti } from './nomiIscritti'
 import { preparaElenchiPartita } from './elenchiPartita'
 import Installa from './Installa.jsx'
 import Aggiornamento from './Aggiornamento.jsx'
@@ -583,7 +584,7 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
   // prima finiva subito in tutta l'app, e uscendo senza salvare il nick
   // nuovo restava in giro fino alla riapertura, senza essere salvato.
   const [profilo, setBozza] = useState(salvato)
-  const CAMPI = ['nome', 'cognome', 'nickname', 'colore', 'bgg_username', 'bga_username', 'collezione_condivisa']
+  const CAMPI = ['nome', 'cognome', 'nickname', 'mostra_nome', 'colore', 'bgg_username', 'bga_username', 'collezione_condivisa']
   const diversi = (a, b) => CAMPI.some((k) => (a[k] ?? '') !== (b[k] ?? ''))
   const cambiato = diversi(profilo, salvato)
   // Se il profilo cambia altrove (es. il nome BGA collegato da Dati) e qui
@@ -613,6 +614,7 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
         nome: profilo.nome.trim(),
         cognome: profilo.cognome.trim(),
         nickname: profilo.nickname?.trim() || null,
+        mostra_nome: profilo.mostra_nome === true,
         colore: profilo.colore || null,
         bgg_username: profilo.bgg_username?.trim() || null,
         bga_username: profilo.bga_username?.trim() || null,
@@ -622,6 +624,7 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
       const { inAttesa } = await salvaOAccoda(sessione.user.id, 'profilo', sessione.user.id, campi)
       setProfilo((p) => ({ ...p, ...campi }))
       setBozza((p) => ({ ...p, ...campi }))
+      dimenticaNomiIscritti()   // nome o casella cambiati: i nomi si rileggono
       setOk(inAttesa
         ? 'Niente rete: il profilo è salvato sul telefono e partirà da solo quando torna la linea.'
         : 'Profilo salvato.')
@@ -658,8 +661,17 @@ function Profilo({ sessione, profilo: salvato, setProfilo }) {
       <div className="campo">
         <label htmlFor="p-nick">Soprannome</label>
         <input id="p-nick" value={profilo.nickname || ''} onChange={(e) => aggiorna('nickname', e.target.value)} />
-        <p className="aiuto">Deve essere diverso da quello di ogni altro giocatore.</p>
+        <p className="aiuto">Deve essere diverso da quello di ogni altro giocatore. Il nick e le tue statistiche li vedono gli altri soci iscritti all&rsquo;app.</p>
       </div>
+
+      <label className="sei-tu-scelta">
+        <input type="checkbox" checked={profilo.mostra_nome === true}
+          onChange={(e) => aggiorna('mostra_nome', e.target.checked)} />
+        <span>
+          Gli altri soci possono vedere il mio nome e cognome
+          <span className="anno block">Se non lo spunti, vedono solo il tuo nick. Gli organizzatori della Tana li vedono comunque. La tua email non la vede mai nessuno.</span>
+        </span>
+      </label>
 
       <label className="sei-tu-scelta">
         <input type="checkbox" checked={profilo.collezione_condivisa !== false}
@@ -1181,13 +1193,16 @@ export default function App() {
     // Subito il profilo dell'ultima volta: l'app si apre senza aspettare.
     const copia = profiloSalvato(sessione.user.id)
     if (copia) setProfilo((p) => p || profiloConModifiche(copia))
-    supabase
-      .from('profili')
-      .select('*')
-      .eq('id', sessione.user.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    Promise.all([
+      supabase.from('profili').select('*').eq('id', sessione.user.id).maybeSingle(),
+      // Il mio nome vero: in profili c'è solo se ho scelto di mostrarlo
+      // (privacy_fase5.sql). Se la tabella non c'è ancora, niente.
+      supabase.from('anagrafica').select('nome, cognome').eq('utente_id', sessione.user.id).maybeSingle()
+        .then((r) => r, () => ({ data: null })),
+    ])
+      .then(([{ data: letto, error }, { data: vero }]) => {
         if (!vivo) return
+        const data = letto && vero ? { ...letto, nome: vero.nome ?? letto.nome, cognome: vero.cognome ?? letto.cognome } : letto
         if (error) { if (!copia) setErroreProfilo(traduciErrore(error)) }
         else if (data) {
           setErroreProfilo('')

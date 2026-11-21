@@ -11,6 +11,7 @@ import ChiSono, { PartiteOspite } from './ChiSono.jsx'
 import CercaScegli from './CercaScegli.jsx'
 import Sezione from './Sezione.jsx'
 import { propostePerIscritto, cercaPersone, avvisiCollegamento } from './somiglianze.js'
+import { conNomiVeri } from './nomiIscritti'
 
 const MOTIVI = {
   'numero BGA': 'stesso numero BGA',
@@ -208,7 +209,9 @@ export default function UnisciOspiti({ profilo, onRichieste }) {
         supabase.from('richieste_collegamento').select('ospite_id, utente_id').eq('stato', 'rifiutata')
           .then(({ data }) => data || [], () => []),
       ])
-      setPersone(pr)
+      // Nomi veri dove si possono vedere (chi organizza: tutti; gli altri:
+      // solo di chi li mostra). Gli altri si riconoscono dal nick.
+      setPersone(await conNomiVeri(pr))
       setEsclusi((prima) => new Set([...prima, ...esclusiSalvati(), ...no.map((r) => `${r.ospite_id}|${r.utente_id}`)]))
       // Quelli già collegati a un account, o uniti a un altro ospite,
       // non sono più ospiti da gestire.

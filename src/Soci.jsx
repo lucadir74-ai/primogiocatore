@@ -21,6 +21,7 @@ import CercaScegli from './CercaScegli.jsx'
 import SchedaIscritto from './SchedaIscritto.jsx'
 import Registro from './Registro.jsx'
 import { GestioneInformativa } from './Informativa.jsx'
+import { conNomiVeri } from './nomiIscritti'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
 const COLONNE_SOCI = 'id, tana_id, nickname, nome, cognome, email, aggiunto_il'
@@ -135,13 +136,15 @@ export default function Soci({ profilo }) {
       setMie(gestite)
       setTana((attuale) => attuale ?? gestite[0] ?? null)
       setSoci(s)
-      setFuori(f.data || [])
+      // Il nome degli account fuori elenco può essere nascosto agli altri
+      // soci: chi organizza lo legge dai nomi veri.
+      setFuori(await conNomiVeri(f.data || []))
       // A parte: se manca lo script della scheda, l'elenco funziona lo stesso.
       const { data: abbinati, error: senza } = await supabase.rpc('soci_con_account')
       setAccount(senza ? null : new Map((abbinati || []).map((x) => [String(x.socio), x.utente])))
       if (globale) {
         const p = await tutteLeRighe(() => supabase.from('profili').select('id, nome, nickname').order('nome'))
-        setPersone(p)
+        setPersone(await conNomiVeri(p))
       }
     } catch (e) {
       const m = e?.message || String(e)

@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
+import { conNomiVeri } from './nomiIscritti'
 
 const STATI = { socio: 'socio', in_attesa: 'in attesa', eccezione: 'entra come eccezione', escluso: 'non ammesso' }
 
@@ -60,7 +61,16 @@ export default function SchedaIscritto({ id, socio, onChiudi }) {
           ? 'Al database manca lo script SQL della scheda iscritto (scheda_iscritto.sql). Va eseguito una volta in Supabase.'
           : error.message)
       } else if (!data) setErrore('Account non trovato.')
-      else setS(data)
+      else {
+        setS(data)
+        // Nome e cognome possono essere nascosti agli altri soci: chi
+        // organizza li legge dai nomi veri (privacy_fase5.sql).
+        if (data.profilo) {
+          conNomiVeri([{ ...data.profilo, id }]).then(([p]) => {
+            if (vivo) setS((x) => (x ? { ...x, profilo: { ...x.profilo, nome: p.nome, cognome: p.cognome } } : x))
+          })
+        }
+      }
     })
     // L'ultimo tentativo di sincronizzazione BGA: se la tabella manca, niente.
     supabase.from('bga_esiti').select('*').eq('utente_id', id).maybeSingle().then(({ data }) => {

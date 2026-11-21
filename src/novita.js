@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.40.0',
+    data: '2026-11-21',
+    voci: [
+      'Privacy: nome e cognome li vedono gli altri soci solo se nel profilo spunti «Gli altri soci possono vedere il mio nome e cognome»; altrimenti vedono il nick',
+      'Gli organizzatori della Tana continuano a vedere nomi e cognomi; il riconoscimento degli ospiti usa sempre i nomi veri',
+    ],
+  },
+  {
     versione: '4.39.0',
     data: '2026-11-21',
     voci: [

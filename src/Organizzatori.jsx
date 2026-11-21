@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import SchedaIscritto from './SchedaIscritto'
-import { NomeVero, nomeBreve, useNomiIscritti } from './nomiIscritti'
+import { NomeVero, nomeBreve, useNomiIscritti, conNomiVeri } from './nomiIscritti'
 
 export default function Organizzatori({ profilo }) {
   const [persone, setPersone] = useState([])
@@ -22,7 +22,8 @@ export default function Organizzatori({ profilo }) {
         .from('profili')
         .select('id, nome, cognome, nickname, organizzatore, dimostratore, amministratore, creato_il')
         .order('nome'))
-      setPersone(righe)
+      // Nomi nascosti agli altri soci: chi organizza li vede da anagrafica.
+      setPersone(await conNomiVeri(righe))
     } catch (e) {
       setErrore(e.message)
     }
