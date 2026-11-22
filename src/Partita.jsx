@@ -19,6 +19,7 @@ import { eventiVisibili, mieiEventi, statoEvento } from './evento'
 import { eASquadre, squadreDi } from './squadre'
 
 const LIMITE_NOMI = 12
+const MAX_SQUADRE = 6   // tanti quanti i colori delle squadre (index.css)
 
 // Nome intero di un ospite (il cognome c'è per quelli nuovi).
 const nomeOspite = (o) => [o?.nome, o?.cognome].filter(Boolean).join(' ') || 'Sconosciuto'
@@ -84,6 +85,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   // Esclude la cooperativa, che è già una squadra sola.
   const [aSquadre, setASquadre] = useState(false)
   const [punteggiSquadre, setPunteggiSquadre] = useState({})
+  // Quante squadre ci sono, e in quale vanno i giocatori che si toccano.
+  const [numSquadre, setNumSquadre] = useState(2)
+  const [squadraScelta, setSquadraScelta] = useState('1')
   const [quando, setQuando] = useState(perCampo(new Date()))
   const [minuti, setMinuti] = useState('')
   const [vincitoreScelto, setVincitoreScelto] = useState(null)
@@ -132,6 +136,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (b.punteggioSquadra) setPunteggioSquadra(b.punteggioSquadra)
     if (b.puntiATesta) setPuntiATesta(true)
     if (b.aSquadre) setASquadre(true)
+    // Quante squadre: quello salvato, o (bozze di prima) la più alta usata.
+    if (b.aSquadre) setNumSquadre(b.numSquadre || Math.max(2, ...(b.righe || []).map((r) => Number(r.squadra) || 0)))
     if (b.punteggiSquadre) setPunteggiSquadre(b.punteggiSquadre)
     if (b.vincitoreScelto) setVincitoreScelto(b.vincitoreScelto)
     setAccumulati(b.accumulati || 0)
@@ -147,9 +153,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (!gioco && righe.length === 0 && !accumulati && !avviatoIl) { cancellaBozza(); return }
     scriviBozza({
       gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto,
-      coop: coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, accumulati, avviatoIl,
+      coop: coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, numSquadre, accumulati, avviatoIl,
     })
-  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, accumulati, avviatoIl, modifica])
+  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, numSquadre, accumulati, avviatoIl, modifica])
 
   useEffect(() => {
     function aggiorna() {
@@ -283,6 +289,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         perSquadra[s.squadra] = v == null ? '' : String(v)
       }
       setPunteggiSquadre(perSquadra)
+      setNumSquadre(Math.max(2, ...parti.map((p) => Number(p.squadra) || 0)))
       const vincenti = [...new Set(parti.filter((p) => p.vincitore).map((p) => String(p.squadra)))]
       setVincitoreScelto(vincenti.length > 1 ? 'condivisa' : vincenti.length ? `s:${vincenti[0]}` : null)
     }
@@ -698,6 +705,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   const squadreAttive = aSquadre && tipo !== 'coop'
   const squadreUsate = [...new Set(righe.map((r) => r.squadra).filter(Boolean))]
     .sort((a, b) => Number(a) - Number(b))
+  // Tutte le squadre, anche quelle ancora senza giocatori.
+  const squadreElenco = Array.from({ length: numSquadre }, (_, i) => String(i + 1))
   function classificaSquadre() {
     const perPos = tipo === 'posizione'
     const ss = squadreUsate.map((n) => {
@@ -765,36 +774,41 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         : inTesta.map((r) => r.chiave)
 
   // Accende o spegne le squadre. Chi non ne ha una viene messo a turno
-  // nella 1 e nella 2 (come ci si siede a Tichu); poi si cambia con un tocco.
+  // nelle squadre (come ci si siede a Tichu); poi si sistemano a mano:
+  // si sceglie una squadra e si toccano i giocatori da metterci.
   function cambiaASquadre(si) {
     setASquadre(si)
     setVincitoreScelto(null)
+    setSquadraScelta('1')
     if (!si) return
     if (cooperativa) setCoopScelta(false)
-    setRighe((rs) => rs.map((r, i) => (r.squadra ? r : { ...r, squadra: String((i % 2) + 1) })))
+    setRighe((rs) => rs.map((r, i) => (r.squadra && Number(r.squadra) <= numSquadre
+      ? r : { ...r, squadra: String((i % numSquadre) + 1) })))
   }
 
-  // Un tocco porta il giocatore nella squadra dopo; dopo l'ultima degli
-  // altri c'è una squadra nuova (se ci sono abbastanza giocatori), poi
-  // si torna alla 1.
-  function cambiaSquadra(chiave) {
-    setRighe((rs) => {
-      const altri = rs.filter((r) => r.chiave !== chiave).map((r) => Number(r.squadra) || 0)
-      const ultima = Math.max(2, Math.min(rs.length, Math.max(0, ...altri) + 1))
-      return rs.map((r) => {
-        if (r.chiave !== chiave) return r
-        const n = Number(r.squadra) || 0
-        return { ...r, squadra: String(n >= ultima ? 1 : n + 1) }
-      })
-    })
+  // Quante squadre: da 2 fino a una per giocatore. Chi era in una squadra
+  // che non c'è più viene messo nella più corta (effetto qui sotto).
+  const massimoSquadre = Math.max(2, Math.min(MAX_SQUADRE, righe.length))
+  function cambiaNumeroSquadre(n) {
+    const nuovo = Math.max(2, Math.min(massimoSquadre, n))
+    setNumSquadre(nuovo)
+    setVincitoreScelto(null)
+    if (Number(squadraScelta) > nuovo) setSquadraScelta(String(nuovo))
+    setRighe((rs) => rs.map((r) => (Number(r.squadra) > nuovo ? { ...r, squadra: '' } : r)))
+  }
+
+  // Il giocatore toccato va nella squadra scelta in alto.
+  function mettiInSquadra(chiave) {
+    setVincitoreScelto(null)
+    setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, squadra: squadraScelta } : r)))
   }
 
   // Chi si aggiunge a una partita a squadre va nella squadra più corta.
   useEffect(() => {
     if (!squadreAttive || !righe.some((r) => !r.squadra)) return
     setRighe((rs) => {
-      const conta = new Map([['1', 0], ['2', 0]])
-      for (const r of rs) if (r.squadra) conta.set(r.squadra, (conta.get(r.squadra) || 0) + 1)
+      const conta = new Map(Array.from({ length: numSquadre }, (_, i) => [String(i + 1), 0]))
+      for (const r of rs) if (conta.has(r.squadra)) conta.set(r.squadra, conta.get(r.squadra) + 1)
       return rs.map((r) => {
         if (r.squadra) return r
         const [n] = [...conta.entries()].sort((a, b) => a[1] - b[1] || Number(a[0]) - Number(b[0]))[0]
@@ -802,13 +816,13 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         return { ...r, squadra: n }
       })
     })
-  }, [squadreAttive, righe])
+  }, [squadreAttive, righe, numSquadre])
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setCoopScelta(null); setPunteggioSquadra(''); setPuntiATesta(false)
-    setASquadre(false); setPunteggiSquadre({})
+    setASquadre(false); setPunteggiSquadre({}); setNumSquadre(2); setSquadraScelta('1')
     setRivincita(null)
     setSegnapuntiAperto(false)
     setRipresa(false)
@@ -849,6 +863,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setCoopScelta(r.coop)
     setASquadre(Boolean(r.aSquadre))
     setPunteggiSquadre({})
+    setNumSquadre(Math.max(2, ...r.righe.map((x) => Number(x.squadra) || 0)))
+    setSquadraScelta('1')
     if (!evento) setEventoId(r.eventoId)
     setRipresa('rifatta')
     setRivincita(null)
@@ -867,8 +883,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso, oppure «Vittoria condivisa», poi registra.')
       return
     }
-    if (squadreAttive && squadreUsate.length < 2) {
-      setErrore('A squadre servono almeno due squadre: tocca la squadra accanto a un giocatore per cambiarla.')
+    if (squadreAttive && squadreUsate.length < numSquadre) {
+      const vuota = squadreElenco.find((n) => !squadreUsate.includes(n))
+      setErrore(`La squadra ${vuota} è vuota: scegli «Squadra ${vuota}» e tocca i giocatori da metterci, oppure togli una squadra.`)
       return
     }
     if (squadreAttive && squadreVincenti.length === 0) {
@@ -1320,6 +1337,30 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
 
+          {squadreAttive && righe.length > 0 && (
+            <div className="scelta-squadre">
+              <div className="numero-squadre">
+                <span>Squadre</span>
+                <button className="bottone-tondo" onClick={() => cambiaNumeroSquadre(numSquadre - 1)}
+                  disabled={numSquadre <= 2} aria-label="Una squadra in meno">−</button>
+                <strong aria-live="polite">{numSquadre}</strong>
+                <button className="bottone-tondo" onClick={() => cambiaNumeroSquadre(numSquadre + 1)}
+                  disabled={numSquadre >= massimoSquadre} aria-label="Una squadra in più">+</button>
+              </div>
+              <p className="aiuto">Scegli una squadra, poi tocca i giocatori da metterci.</p>
+              <div className="selettore-squadre" role="radiogroup" aria-label="Squadra in cui mettere i giocatori">
+                {squadreElenco.map((n) => (
+                  <button key={n} role="radio" aria-checked={squadraScelta === n}
+                    className={`tasto-squadra squadra-${(Number(n) - 1) % 6 + 1}${squadraScelta === n ? ' scelta' : ''}`}
+                    onClick={() => setSquadraScelta(n)}>
+                    Squadra {n}
+                    <span className="quanti-squadra">{' '}· {righe.filter((r) => r.squadra === n).length}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ul className="elenco elenco-giocatori">
             {/* A squadre l'elenco resta nell'ordine in cui si sono aggiunti:
                 cambiando squadra con un tocco nessuno salta di posto. */}
@@ -1416,8 +1457,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                   {squadreAttive ? (
                     <button
                       className={`tasto-squadra squadra-${((Number(r.squadra) || 1) - 1) % 6 + 1}`}
-                      onClick={() => cambiaSquadra(r.chiave)}
-                      aria-label={`${r.nome} è nella squadra ${r.squadra || '—'}: tocca per cambiarla`}
+                      onClick={() => mettiInSquadra(r.chiave)}
+                      aria-label={`${r.nome} è nella squadra ${r.squadra || '—'}: tocca per metterlo nella squadra ${squadraScelta}`}
                     >
                       Sq. {r.squadra || '–'}
                     </button>
@@ -1454,12 +1495,11 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           {squadreAttive && righe.length > 0 && (
             <div className="campo blocco-squadre">
               <label>{tipo === 'posizione' ? 'Piazzamento delle squadre' : 'Punti delle squadre'}</label>
-              <p className="aiuto">
-                Tocca «Sq.» accanto a un giocatore per cambiargli squadra.
-                {tipo !== 'posizione' && ' Se il gioco non ha punti, tocca «ha vinto» accanto alla squadra vincitrice.'}
-              </p>
+              {tipo !== 'posizione' && (
+                <p className="aiuto">Se il gioco non ha punti, tocca «ha vinto» accanto alla squadra vincitrice.</p>
+              )}
               <ul className="elenco elenco-giocatori elenco-squadre">
-                {squadreUsate.map((n) => {
+                {squadreElenco.map((n) => {
                   const s = squadreInOrdine.find((x) => x.n === n)
                   const vince = squadreVincenti.includes(n)
                   return (
@@ -1467,16 +1507,16 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                       <span className="posto" aria-hidden="true">{s?.pos ? `${s.pos}°` : '–'}</span>
                       <span className={`tasto-squadra squadra-${((Number(n) || 1) - 1) % 6 + 1}`} aria-hidden="true">Sq. {n}</span>
                       <div className="nome-giocatore">
-                        <span>{s?.giocatori.map((r) => r.nome).join(', ')}</span>
+                        <span>{s ? s.giocatori.map((r) => r.nome).join(', ') : 'ancora nessun giocatore'}</span>
                         {vince && <span className="etichetta-vince">vince</span>}
                       </div>
-                      <input
+                      {s && <input
                         className="mini" type="number" inputMode="numeric"
                         aria-label={`${tipo === 'posizione' ? 'Piazzamento' : 'Punti'} della squadra ${n}`}
                         placeholder={tipo === 'posizione' ? 'pos.' : 'punti'}
                         value={punteggiSquadre[n] ?? ''}
                         onChange={(e) => setPunteggiSquadre((p) => ({ ...p, [n]: e.target.value }))}
-                      />
+                      />}
                       {s && mostraSceltaSquadra(s) && !condivisa && (
                         <button
                           className={`bottone-piatto scegli-vincitore${vincitoreScelto === `s:${n}` ? ' scelto' : ''}`}
@@ -1489,9 +1529,6 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                   )
                 })}
               </ul>
-              {squadreUsate.length < 2 && (
-                <p className="aiuto">Serve almeno un&rsquo;altra squadra: tocca «Sq.» accanto a un giocatore.</p>
-              )}
             </div>
           )}
 

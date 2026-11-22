@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.43.0',
+    data: '2026-11-22',
+    voci: [
+      'Partite a squadre: si sceglie quante squadre (con − e +), poi si tocca una squadra e i giocatori da metterci, invece di toccare ogni giocatore finché arriva alla squadra giusta',
+    ],
+  },
+  {
     versione: '4.42.0',
     data: '2026-11-22',
     voci: [

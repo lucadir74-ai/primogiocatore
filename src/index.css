@@ -928,6 +928,30 @@ body {
   justify-content: center;
 }
 button.tasto-squadra { cursor: pointer; }
+/* Quante squadre e in quale si stanno mettendo i giocatori. */
+.scelta-squadre {
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.75rem;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--superficie);
+}
+.scelta-squadre .aiuto { margin: 0.4rem 0 0.5rem; }
+.numero-squadre { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; }
+.numero-squadre > span { margin-right: auto; }
+.numero-squadre strong { min-width: 1.5rem; text-align: center; font-family: var(--display); font-size: 1.2rem; }
+.bottone-tondo {
+  width: 2.4rem; height: 2.4rem; flex: none;
+  border: 1px solid var(--bordo-forte); border-radius: 50%;
+  background: var(--superficie); color: var(--inchiostro);
+  font: inherit; font-size: 1.25rem; line-height: 1; cursor: pointer;
+}
+.bottone-tondo:disabled { opacity: 0.35; cursor: default; }
+.selettore-squadre { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.selettore-squadre .tasto-squadra { min-height: 2.6rem; padding: 0.3rem 0.8rem; }
+/* La squadra scelta: piena del suo colore. */
+.tasto-squadra.scelta { background: var(--sq); color: var(--superficie); }
+.quanti-squadra { font-weight: 400; opacity: 0.85; }
 .squadra-1 { --sq: var(--blu); }
 .squadra-2 { --sq: var(--verde); }
 .squadra-3 { --sq: var(--giallo); }
