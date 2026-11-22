@@ -18,7 +18,7 @@ import SeiTu, { contaRichiesteDaApprovare, riconoscimi } from './SeiTu.jsx'
 import { contaOspitiDaRiconoscere } from './ChiSono.jsx'
 import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
-import { sincronizzaBgaSeServe } from './bga'
+import { sincronizzaBgaSeServe, nuoveDaBga, bgaAvvisoVisto } from './bga'
 import { inviaABggSeServe } from './invioBgg'
 import { aggiornaCollezioneSeServe } from './collezioneBgg'
 import TiraPerAggiornare from './TiraPerAggiornare.jsx'
@@ -1111,12 +1111,14 @@ export default function App() {
     if (!profilo?.bga_id || daBga) return   // non nella scheda aperta dal segnalibro
     return quandoLibero(() => {
       sincronizzaBgaSeServe(profilo)
-        .then((r) => {
-          if (r) setAvvisoBga(r)
+        .catch(() => null)   // niente rete o BGA giù: si riprova alla prossima apertura
+        .then(async (r) => {
           // Partite nuove da BGA: verso BGG, se l'iscritto l'ha chiesto.
           if (r?.nuove) inviaABggSeServe(profilo)
+          // L'avviso conta anche quelle importate dal server.
+          const n = await nuoveDaBga(profilo.id).catch(() => ({ nuove: 0 }))
+          if (r || n.nuove) setAvvisoBga({ ...(r || {}), nuove: n.nuove, fino: n.fino })
         })
-        .catch(() => { /* niente rete o BGA giù: si riprova alla prossima apertura */ })
     }, 9000)
   }, [profilo?.id])
 
@@ -1565,12 +1567,14 @@ export default function App() {
             if (daBgg) voci.push({ id: 'bgg', chiudi: () => setDaBgg(null), testo:
               [daBgg.fatte > 0 && `Da BGG: ${daBgg.fatte} ${daBgg.fatte === 1 ? 'partita nuova' : 'partite nuove'}.`,
                daBgg.daControllare > 0 && `${daBgg.daControllare} sembrano già presenti: guardale in Importa.`].filter(Boolean).join(' ') })
-            if (avvisoBga?.nuove > 0) voci.push({ id: 'bga-nuove', chiudi: () => setAvvisoBga(null),
+            const bgaVisto = () => { bgaAvvisoVisto(profilo.id, avvisoBga?.fino); setAvvisoBga(null) }
+            if (avvisoBga?.nuove > 0) voci.push({ id: 'bga-nuove', chiudi: bgaVisto,
+              guarda: () => { bgaVisto(); setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) },
               testo: `Da BGA: ${avvisoBga.nuove} ${avvisoBga.nuove === 1 ? 'partita nuova' : 'partite nuove'}.` })
             const sospese = avvisoBga?.inSospeso || (scheda !== 'profilo' ? sospeseBga : 0)
-            if (sospese > 0) voci.push({ id: 'bga-sospese', guarda: () => { setAvvisoBga(null); vai('dati') },
+            if (sospese > 0) voci.push({ id: 'bga-sospese', guarda: () => { bgaVisto(); vai('dati') },
               testo: sospese === 1 ? 'Una partita da BGA aspetta una tua scelta.' : `${sospese} partite da BGA aspettano una tua scelta.` })
-            if (avvisoBga?.scaduta) voci.push({ id: 'bga-scaduta', guarda: () => { setAvvisoBga(null); vai('dati') },
+            if (avvisoBga?.scaduta) voci.push({ id: 'bga-scaduta', guarda: () => { bgaVisto(); vai('dati') },
               testo: 'La sessione di Board Game Arena è scaduta: ricollegala.' })
             if (riconosciute > 0) voci.push({ id: 'riconosciute', chiudi: () => setRiconosciute(0),
               testo: riconosciute === 1 ? 'Abbiamo trovato 1 scheda ospite con il tuo nome: quelle partite ora sono tue.'

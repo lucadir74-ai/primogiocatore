@@ -615,6 +615,31 @@ export async function leggiDaServer(profilo, { tutto = false, dal = null, avanza
 const CHIAVE_ORA = 'primo-giocatore:bga-ultima-sincro'
 const CHIAVE_STORICO = 'primo-giocatore:bga-storico'
 const OGNI_ORE_BGA = 1
+const CHIAVE_AVVISO = 'primo-giocatore:bga-avviso-dal'
+
+// Le partite BGA entrate dall'ultima volta che hai visto l'avviso, da
+// chiunque importate: l'app o il server (a telefono spento). Prima
+// l'avviso compariva solo se importava l'app, e da quando il server è
+// ripartito (22/11) non compariva più. La prima volta su un telefono si
+// guardano le ultime 24 ore. Restituisce { nuove, fino } («fino» va
+// passato a bgaAvvisoVisto quando si chiude l'avviso).
+export async function nuoveDaBga(profiloId) {
+  let dal = null
+  try { dal = localStorage.getItem(`${CHIAVE_AVVISO}:${profiloId}`) } catch { /* niente */ }
+  if (!dal) dal = new Date(Date.now() - 24 * 3600000).toISOString()
+  const { data, count, error } = await supabase.from('partite')
+    .select('creata_il', { count: 'exact' })
+    .eq('registrata_da', profiloId).not('bga_tavolo', 'is', null).gt('creata_il', dal)
+    .order('creata_il', { ascending: false }).limit(1)
+  if (error) return { nuove: 0 }
+  if (!count) { bgaAvvisoVisto(profiloId, dal); return { nuove: 0 } }
+  return { nuove: count, fino: data?.[0]?.creata_il || dal }
+}
+
+export function bgaAvvisoVisto(profiloId, fino) {
+  if (!fino) return
+  try { localStorage.setItem(`${CHIAVE_AVVISO}:${profiloId}`, fino) } catch { /* niente */ }
+}
 
 // Importa da un blocco di tavoli solo quello che non chiede decisioni:
 // le partite nuove di giochi già riconosciuti e quelle che coincidono
