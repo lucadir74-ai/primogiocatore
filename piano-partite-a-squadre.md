@@ -2,7 +2,8 @@
 
 Stato (22/11/2026): **punti 1–4 fatti** nella versione 4.42.0
 (script `supabase/partite_a_squadre.sql`, modulo `src/squadre.js`).
-Resta il punto 5: import BGA (numero della squadra) ed export BGG.
+Import da BGA e invio a BGG: non si fanno (scelta di Luca, 22/11/2026).
+Lavoro chiuso.
 
 Decisioni di Luca (22/11/2026):
 - punteggio **uno per squadra**;
