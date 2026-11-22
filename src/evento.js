@@ -1,5 +1,5 @@
 // Primo Giocatore - ingresso agli eventi con link o QR
-// v1.0.0 - 202611181700
+// v1.1.0 - 202611222330 (giorniEvento: i giorni dell'evento per la scelta della data dei tavoli)
 //
 // Il link di un evento è l'indirizzo dell'app con ?e=CODICE (come ?t=
 // per i tavoli: nessun percorso da configurare sul server). Il codice
@@ -88,6 +88,23 @@ export function inizioPropostoEvento(ev) {
     if (fra < primo) return primo
   }
   return fra
+}
+
+// Tutti i giorni dell'evento, dal primo all'ultimo (AAAA-MM-GG): sono i
+// bottoni della scelta della data per i suoi tavoli e i giorni del programma.
+export function giorniEvento(evento) {
+  const ev = conGiorni(evento)
+  if (!ev?.inizio) return []
+  const ultimo = ev.fine && ev.fine > ev.inizio ? ev.fine : ev.inizio
+  const giorni = []
+  const d = new Date(`${ev.inizio}T12:00:00`)
+  while (giorni.length < 60) {
+    const g = d.toLocaleDateString('sv-SE')
+    giorni.push(g)
+    if (g >= ultimo) break
+    d.setDate(d.getDate() + 1)
+  }
+  return giorni
 }
 
 const oggi = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Rome' })   // AAAA-MM-GG

@@ -1,11 +1,13 @@
 // Primo Giocatore - scelta di giorno e ora
-// v1.1.0 - 202611091700 (anche le 20:45, l'orario solito in sede)
+// v1.2.0 - 202611222330 (giorniFissi: dentro un evento i bottoni sono i suoi giorni)
 //
 // Il selettore di data e ora del telefono non fa capire come si
 // conferma. Qui si tocca un giorno e un orario: la scelta vale subito e
 // il riepilogo in alto dice cosa è stato scelto. Le serate in calendario
 // sono segnate, e scegliendone una l'orario parte da quello della serata.
 // Per giorni e orari fuori dall'elenco restano i campi del telefono.
+// giorniFissi (AAAA-MM-GG): al posto dei prossimi giorni, per esempio i
+// giorni di un evento fra due mesi.
 
 import { useState } from 'react'
 import BarraScorrevole from './BarraScorrevole.jsx'
@@ -55,9 +57,10 @@ export function SceltaOra({ valore, onCambia, ore = ORE }) {
 }
 
 // valore: 'AAAA-MM-GGTHH:MM' oppure ''. serate: [{ data, ora_inizio }].
-export default function SceltaQuando({ valore, onCambia, serate = [], facoltativo = false, giorni = 14 }) {
+export default function SceltaQuando({ valore, onCambia, serate = [], facoltativo = false, giorni = 14, giorniFissi = null }) {
   const [data, ora] = valore ? valore.split('T') : ['', '']
-  const elenco = prossimiGiorni(giorni)
+  const elenco = giorniFissi?.length ? giorniFissi : prossimiGiorni(giorni)
+  const [oggi, domani] = prossimiGiorni(2)
   const [altraData, setAltraData] = useState(false)
   const dataFuori = data && !elenco.includes(data)
   const serataDi = (d) => serate.find((s) => s.data === d)
@@ -87,7 +90,7 @@ export default function SceltaQuando({ valore, onCambia, serate = [], facoltativ
               className={`pastiglia-nome${data === d ? ' scelta' : ''}${s ? ' con-serata' : ''}`}
               aria-pressed={data === d}
               onClick={() => { setAltraData(false); scegliGiorno(d) }}>
-              {d === elenco[0] ? 'oggi' : d === elenco[1] ? 'domani' : nomeGiorno(d)}
+              {d === oggi ? 'oggi' : d === domani ? 'domani' : nomeGiorno(d)}
               {s && <span className="segno-serata" aria-label="serata in calendario"> ●</span>}
             </button>
           )

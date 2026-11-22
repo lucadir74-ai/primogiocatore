@@ -3115,6 +3115,25 @@ a.contatto .contatto-valore { color: var(--blu); }
 .evento-link-testo { display: block; padding: 0.5rem 0.6rem; background: var(--carta); border: 1px solid var(--bordo); border-radius: 8px; font-size: 0.85rem; overflow-wrap: anywhere; user-select: all; }
 .evento-tasti { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
 .evento-date { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 0.8rem; }
+/* Tavoli: un evento aperto ha una scheda sola, che apre il suo programma */
+.evento-scheda {
+  display: grid; gap: 0.15rem; width: 100%; margin: 0 0 0.6rem; padding: 0.8rem 0.95rem;
+  border: 1px solid var(--bordo-forte); border-radius: 12px; background: var(--carta);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.evento-scheda:focus-visible { outline: 2px solid var(--blu); outline-offset: 2px; }
+.evento-scheda .evento-occhiello { margin: 0; }
+.evento-scheda-nome { font-family: var(--display); font-size: 1.08rem; text-wrap: balance; }
+.evento-scheda-conta { margin-top: 0.15rem; font-size: 0.86rem; font-weight: 600; color: var(--verde); }
+/* Il programma dell'evento: un bottone per giorno, con quanti tavoli */
+.giorni-evento button { display: inline-flex; align-items: baseline; justify-content: center; gap: 0.3rem; }
+.quanti-giorno { font-size: 0.76rem; font-weight: 500; color: var(--inchiostro-tenue); }
+/* Gestione eventi: i tavoli giorno per giorno */
+.evento-giorni { list-style: none; margin: 0.3rem 0 0.6rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.45rem; }
+.evento-giorni li { display: grid; gap: 0.05rem; padding: 0.5rem 0.7rem; border: 1px solid var(--bordo); border-radius: 10px; background: var(--carta); font-size: 0.85rem; }
+.evento-giorni li strong { font-size: 0.95rem; }
+.evento-giorni li.vuoto { color: var(--inchiostro-tenue); }
+.evento-giorni li.vuoto strong { font-weight: 500; }
 .evento-persona { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .evento-persona .nome-giocatore { flex: 1 1 140px; min-width: 0; }
 .evento-persona select { width: auto; }

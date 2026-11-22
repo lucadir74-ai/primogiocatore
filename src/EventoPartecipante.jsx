@@ -1,5 +1,5 @@
 // Primo Giocatore - l'app di chi partecipa solo a un evento
-// v1.3.0 - 202611182200 (classifica dell'evento)
+// v1.4.0 - 202611222330 (solo organizzatori e partecipanti; chi organizza gestisce tutti i tavoli)
 //
 // Chi non è socio della Tana entra con il link di un evento e vede solo
 // i suoi eventi. Per l'evento scelto: i tavoli (iscriversi, pubblicarne),
@@ -17,7 +17,8 @@ const Partita = lazy(() => import('./Partita.jsx'))
 const GestioneEventi = lazy(() => import('./GestioneEventi.jsx'))
 const ClassificaEvento = lazy(() => import('./ClassificaEvento.jsx'))
 
-const RUOLI = { organizzatore: 'organizzi', dimostratore: 'spieghi i giochi', partecipante: 'partecipi' }
+// Nell'evento si è organizzatori o partecipanti (chi spiega lo decide ogni tavolo).
+const RUOLI = { organizzatore: 'organizzi' }
 const STATI = { in_arrivo: 'In arrivo', in_corso: 'In corso', concluso: 'Concluso' }
 const ORDINE = { in_corso: 0, in_arrivo: 1, concluso: 2 }
 
@@ -110,7 +111,7 @@ export default function EventoPartecipante({ profilo, avviso }) {
     <>
       <div className="scheda evento-testa">
         {avviso && <div className="avviso ok">{avviso}</div>}
-        <p className="evento-occhiello">Evento · {RUOLI[evento.ruolo] || evento.ruolo}</p>
+        <p className="evento-occhiello">Evento · {RUOLI[evento.ruolo] || 'partecipi'}</p>
         <div className="evento-riga senza-bordo">
           <div>
             <h2>{evento.nome || 'Evento'}</h2>
@@ -139,7 +140,8 @@ export default function EventoPartecipante({ profilo, avviso }) {
 
       <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
         {scheda === 'tavoli' && (
-          <Tavoli key={evento.id} profilo={profilo} evento={evento} soloEvento onRegistraPartita={apriPartita} />
+          <Tavoli key={evento.id} profilo={profilo} evento={evento} soloEvento onRegistraPartita={apriPartita}
+            organizzo={evento.ruolo === 'organizzatore'} />
         )}
         {scheda === 'partita' && aperto && (
           <Partita key={`${evento.id}-${partitaId || 'nuova'}`} profilo={profilo} evento={evento} soloEvento
@@ -152,7 +154,8 @@ export default function EventoPartecipante({ profilo, avviso }) {
           </div>
         )}
         {scheda === 'gestisci' && evento.ruolo === 'organizzatore' && (
-          <GestioneEventi profilo={profilo} soloEventoId={evento.id} />
+          <GestioneEventi profilo={profilo} soloEventoId={evento.id}
+            onApriTavoli={() => { setScheda('tavoli'); window.scrollTo({ top: 0 }) }} />
         )}
         {scheda === 'partite' && (
           <div className="scheda">

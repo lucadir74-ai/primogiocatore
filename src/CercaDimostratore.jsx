@@ -1,5 +1,5 @@
 // Primo Giocatore - scelta del dimostratore di un tavolo
-// v1.0.1 - 202611021300 (non mostra gli ospiti uniti a un altro)
+// v1.1.0 - 202611222330 (perEvento: nessuna preferenza per i dimostratori della Tana)
 //
 // Il dimostratore si prende fra i dimostratori: chi ha un account ed è
 // segnato come tale, oppure un ospite dimostratore. Se la persona c'è
@@ -7,6 +7,10 @@
 // un utente registrato) lo diventa nel momento in cui la scegli. Se non
 // c'è proprio, si crea un ospite: lo stesso che poi potrà comparire
 // nelle partite e passare al suo account quando si registra.
+//
+// perEvento: in un tavolo di un evento chi spiega lo decide il tavolo.
+// Si sceglie chiunque, senza stelline, e sceglierlo non lo fa diventare
+// dimostratore della Tana.
 
 import { useEffect, useState } from 'react'
 import { supabase, daMostrare } from './supabase'
@@ -14,7 +18,7 @@ import { supabase, daMostrare } from './supabase'
 const daProfilo = (x) => ({ chiave: `p:${x.id}`, tipo: 'profilo', id: x.id, nome: daMostrare(x) })
 const daOspite = (x) => ({ chiave: `o:${x.id}`, tipo: 'ospite', id: x.id, nome: x.nome })
 
-export default function CercaDimostratore({ profilo, disponibili = [], onScegli, onErrore }) {
+export default function CercaDimostratore({ profilo, disponibili = [], onScegli, onErrore, perEvento = false }) {
   const [testo, setTesto] = useState('')
   const [trovati, setTrovati] = useState({ dimostratori: [], altri: [] })
   const [lavorando, setLavorando] = useState(false)
@@ -34,13 +38,13 @@ export default function CercaDimostratore({ profilo, disponibili = [], onScegli,
         ...(p.data || []).map((x) => ({ ...daProfilo(x), dimostratore: x.dimostratore })),
         ...(o.data || []).map((x) => ({ ...daOspite(x), dimostratore: x.dimostratore })),
       ].sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
-      setTrovati({
+      setTrovati(perEvento ? { dimostratori: [], altri: tutti } : {
         dimostratori: tutti.filter((x) => x.dimostratore),
         altri: tutti.filter((x) => !x.dimostratore),
       })
     }, 250)
     return () => clearTimeout(attesa)
-  }, [testo])
+  }, [testo, perEvento])
 
   function scelto(persona) {
     setTesto('')
@@ -62,7 +66,7 @@ export default function CercaDimostratore({ profilo, disponibili = [], onScegli,
     if (!nome) return
     setLavorando(true)
     const { data, error } = await supabase.from('ospiti')
-      .insert({ nome, creato_da: profilo.id, dimostratore: true })
+      .insert({ nome, creato_da: profilo.id, dimostratore: !perEvento })
       .select('id, nome').single()
     setLavorando(false)
     if (error) { onErrore?.(error.message); return }
@@ -91,7 +95,7 @@ export default function CercaDimostratore({ profilo, disponibili = [], onScegli,
       )}
 
       <input className="campo-cerca" value={testo} onChange={(e) => setTesto(e.target.value)}
-        placeholder="Cerca fra i dimostratori" aria-label="Cerca il dimostratore" />
+        placeholder={perEvento ? 'Cerca chi spiega: nick o nome' : 'Cerca fra i dimostratori'} aria-label="Cerca il dimostratore" />
 
       {q.length >= 2 && (
         <div className="pastiglie-persone">
@@ -101,12 +105,16 @@ export default function CercaDimostratore({ profilo, disponibili = [], onScegli,
               {p.tipo === 'ospite' && <span className="anno"> · senza account</span>}
             </button>
           ))}
-          {trovati.altri.map((p) => (
+          {trovati.altri.map((p) => (perEvento ? (
+            <button type="button" key={p.chiave} className="pastiglia-nome" onClick={() => scelto(p)}>
+              {p.nome}{p.tipo === 'ospite' && <span className="anno"> · senza account</span>}
+            </button>
+          ) : (
             <button type="button" key={p.chiave} className="pastiglia-nome ospite"
               onClick={() => nomina(p)} disabled={lavorando}>
               {p.nome} <span className="anno">(nuovo dimostratore{p.tipo === 'ospite' ? ', senza account' : ''})</span>
             </button>
-          ))}
+          )))}
           {!identico && (
             <button type="button" className="pastiglia-nome nuovo" onClick={aggiungi} disabled={lavorando}>
               + Aggiungi «{q}»

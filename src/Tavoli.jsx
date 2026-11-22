@@ -1,13 +1,19 @@
 // Primo Giocatore - Tavoli
-// v2.28.0 - 202611181900 (tavoli degli eventi: con «evento» si vedono e si pubblicano solo quelli dell'evento)
+// v2.29.0 - 202611222330 (programma dell'evento a giorni; gli eventi in cima ai Tavoli; chi organizza l'evento ne gestisce i tavoli)
 //
-// evento: aperta dentro un evento (l'app di chi partecipa), solo i
-// tavoli di quell'evento. soloEvento: chi non è socio, che il luogo non
-// lo sceglie (non può crearne) e usa quello dell'evento.
+// evento: aperta dentro un evento (l'app di chi partecipa, o la scheda
+// dell'evento toccata qui), solo i tavoli di quell'evento, giorno per
+// giorno. soloEvento: chi non è socio, che il luogo non lo sceglie (non
+// può crearne) e usa quello dell'evento. organizzo: chi organizza
+// l'evento, che ne gestisce tutti i tavoli. onIndietro: aperta dai Tavoli
+// della Tana, con la testata dell'evento e il ritorno.
+// Fuori da un evento ogni evento aperto ha una scheda sola in cima, e i
+// suoi tavoli non si mescolano a quelli della Tana. apriEvento: si apre
+// subito il programma di quell'evento.
 
 import { nomeLuogo, LUOGO_TANA } from './luoghiNome'
 import RichiesteTavolo from './RichiesteTavolo.jsx'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { supabase, nomeOspite, daMostrare, fetchBgg, tutteLeRighe } from './supabase'
 import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
@@ -21,7 +27,19 @@ import SceltaQuando from './SceltaQuando.jsx'
 import { trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 import BarraScorrevole from './BarraScorrevole.jsx'
-import { eventiVisibili, eventoAperto, inizioPropostoEvento, linkTavolo } from './evento'
+import { eventiVisibili, eventoAperto, inizioPropostoEvento, linkTavolo, giorniEvento, mieiEventi, statoEvento, dateEvento } from './evento'
+
+const GestioneEventi = lazy(() => import('./GestioneEventi.jsx'))
+const STATI_EVENTO = { in_arrivo: 'In arrivo', in_corso: 'In corso', concluso: 'Concluso' }
+
+// Per la data di un tavolo: i giorni dell'evento da oggi in poi (tutti,
+// se l'evento è già finito e si sta correggendo un tavolo vecchio).
+function giorniDaScegliere(ev) {
+  const tutti = giorniEvento(ev)
+  const oggi = new Date().toLocaleDateString('sv-SE')
+  const prossimi = tutti.filter((g) => g >= oggi)
+  return prossimi.length ? prossimi : tutti
+}
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -44,7 +62,8 @@ const VUOTO = {
 
 const RAGGI = [5, 10, 25]
 
-export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste, evento = null, soloEvento = false }) {
+export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste, evento = null, soloEvento = false,
+  organizzo = false, apriEvento = null, onIndietro = null }) {
   // Gli eventi che vedo: per scegliere l'evento di un tavolo nuovo e per
   // il codice nelle locandine dei tavoli degli eventi.
   const [eventi, setEventi] = useState(evento ? [evento] : [])
@@ -52,6 +71,22 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const eventiAperti = eventi.filter(eventoAperto)
   const eventoDi = (id) => eventi.find((e) => e.id === id) || null
   const possoPubblicare = !evento || eventoAperto(evento)
+  // Fuori da un evento: i miei ruoli negli eventi. Chi organizza un evento
+  // ne gestisce tutti i tavoli, come chi li ha pubblicati.
+  const [ruoliEventi, setRuoliEventi] = useState(new Map())
+  useEffect(() => {
+    if (evento) return
+    mieiEventi(profilo.id).then((l) => setRuoliEventi(new Map(l.map((e) => [e.id, e.ruolo]))), () => {})
+  }, [profilo.id, evento?.id])
+  const organizzoEvento = (id) => Boolean(id) && Boolean(
+    (evento?.id === id && organizzo) || profilo.amministratore || ruoliEventi.get(id) === 'organizzatore')
+  const [eventoVisto, setEventoVisto] = useState(apriEvento)   // l'evento di cui si guarda il programma
+  const [gestisciEvento, setGestisciEvento] = useState(false)
+  // Il giorno del programma: durante l'evento si parte da oggi.
+  const [filtroGiorno, setFiltroGiorno] = useState(() => {
+    const oggi = new Date().toLocaleDateString('sv-SE')
+    return evento && giorniEvento(evento).includes(oggi) ? oggi : ''
+  })
   const [giroRichieste, setGiroRichieste] = useState(0)   // per ricaricare le richieste di tavolo
   const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
@@ -79,7 +114,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const [gestione, setGestione] = useState(null)   // il tavolo di cui sono aperte le azioni di gestione
   // Con tanti tavoli (un evento ne ha dieci al giorno) servono i filtri.
   const [filtroLuogo, setFiltroLuogo] = useState('')     // '' tutti | 'case' | id del luogo
-  const [filtroGiorno, setFiltroGiorno] = useState('')   // '' tutti | AAAA-MM-GG
+  // filtroGiorno ('' tutti | AAAA-MM-GG) è più su: nel programma di un evento parte da oggi.
   const [soloPosto, setSoloPosto] = useState(false)
   const [cercaTavolo, setCercaTavolo] = useState('')
   const [quantiPassati, setQuantiPassati] = useState(10)
@@ -121,13 +156,18 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   async function carica() {
     setCaricamento(true)
     const oggi = mezzanotte()
+    const niente = Promise.resolve({ data: [], count: 0, error: null })
     const [t, pa, pr, lu, se, po] = await Promise.all([
-      tutte(() => dellEvento(supabase.from('tavoli').select(CAMPI_TAVOLO)).gte('inizio', oggi).order('inizio', { ascending: true })),
-      leggiPassati(oggi),
+      // Un evento dura pochi giorni: i suoi tavoli si leggono tutti, anche
+      // quelli già giocati, per vederli giorno per giorno.
+      evento
+        ? tutte(() => dellEvento(supabase.from('tavoli').select(CAMPI_TAVOLO)).order('inizio', { ascending: true }))
+        : tutte(() => supabase.from('tavoli').select(CAMPI_TAVOLO).gte('inizio', oggi).order('inizio', { ascending: true })),
+      evento ? niente : leggiPassati(oggi),
       tutte(() => supabase.from('profili').select('id, nome, nickname, dimostratore').order('nome')),
       tutte(() => supabase.from('luoghi').select('nome').order('nome')),
-      // Le prossime serate: nella scelta del giorno sono segnate.
-      supabase.from('serate').select('data, ora_inizio')
+      // Le prossime serate della Tana: nella scelta del giorno sono segnate.
+      evento ? niente : supabase.from('serate').select('data, ora_inizio')
         .gte('data', new Date().toISOString().slice(0, 10)).eq('annullata', false).order('data'),
       supabase.rpc('posizioni_tavoli'),
     ])
@@ -170,7 +210,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     const inizio = perCampo(evento ? inizioPropostoEvento(evento) : sera)
     setModulo({ ...VUOTO, inizio, luogo: evento ? (evento.luogo_nome || '') : LUOGO_TANA, evento_id: evento?.id || null })
     setLuogoNoto(null)
-    caricaDisponibili(inizio)
+    // Le disponibilità sono quelle delle serate della Tana: in un evento no.
+    caricaDisponibili(evento ? '' : inizio)
     setMessaggio('')
   }
 
@@ -214,7 +255,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       evento_id: t.evento_id || null,
     })
     setLuogoNoto(null)
-    caricaDisponibili(perCampo(t.inizio))
+    caricaDisponibili(t.evento_id ? '' : perCampo(t.inizio))
     setMessaggio('')
   }
 
@@ -369,7 +410,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           .select('id').single()
         if (error) throw error
         tavoloId = data.id
-        setMessaggio('Tavolo pubblicato.' + avvisoPosizione)
+        // Pubblicato qui per un evento: sta nel programma dell'evento, non nell'elenco della Tana.
+        const nomeEvento = !evento && campi.evento_id ? eventoDi(campi.evento_id)?.nome : null
+        setMessaggio((nomeEvento ? `Tavolo pubblicato nell’evento ${nomeEvento}: lo trovi nella sua scheda, sotto «Eventi».` : 'Tavolo pubblicato.') + avvisoPosizione)
 
         // Nato da una richiesta: chi aveva chiesto viene iscritto.
         if (modulo.richiesta && modulo.gioco_id) {
@@ -715,6 +758,31 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
   /* ---------- Viste ---------- */
 
+  // Il programma di un evento, aperto dalla sua scheda in cima ai Tavoli.
+  const eventoInVista = !evento && eventoVisto ? eventoDi(eventoVisto) : null
+  if (eventoInVista) {
+    return (
+      <Tavoli key={eventoInVista.id} profilo={profilo} evento={eventoInVista} onRegistraPartita={onRegistraPartita}
+        organizzo={organizzoEvento(eventoInVista.id) || Boolean(profilo.organizzatore && eventoInVista.tana_id != null)}
+        onIndietro={() => { setEventoVisto(null); carica(); window.scrollTo({ top: 0 }) }} />
+    )
+  }
+
+  // Chi organizza l'evento lo gestisce da qui, senza passare dal Profilo.
+  if (evento && gestisciEvento) {
+    const torna = () => { setGestisciEvento(false); carica(); window.scrollTo({ top: 0 }) }
+    return (
+      <>
+        <div className="scheda scheda-sottile">
+          <button className="bottone-piatto" onClick={torna}>&larr; torna ai tavoli dell&rsquo;evento</button>
+        </div>
+        <Suspense fallback={<div className="scheda"><p>Un attimo&hellip;</p></div>}>
+          <GestioneEventi profilo={profilo} soloEventoId={evento.id} onApriTavoli={torna} />
+        </Suspense>
+      </>
+    )
+  }
+
   if (caricamento) return <div className="scheda"><p>Carico i tavoli&hellip;</p></div>
 
   if (locandina) return <Locandina tavolo={locandina} codiceEvento={eventoDi(locandina.evento_id)?.codice}
@@ -905,6 +973,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   if (modulo) {
     const giocoScelto = modulo.gioco
     const dimScelto = modulo.dimostratore_id || modulo.dimostratore_ospite_id || modulo.dimostratore_nome
+    // Tavolo di un evento: i giorni da scegliere sono i suoi, e chi spiega
+    // lo decide il tavolo (nessuna preferenza per i dimostratori della Tana).
+    const eventoModulo = evento || eventoDi(modulo.evento_id)
+    const giorniModulo = eventoModulo ? giorniDaScegliere(eventoModulo) : null
+    const ioSpiego = modulo.libero
+      ? modulo.dimostratori.some((x) => x.chiave === `p:${profilo.id}`)
+      : modulo.dimostratore_id === profilo.id
 
     return (
       <div className="scheda">
@@ -968,10 +1043,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
         <div className="campo">
           <label>Quando</label>
-          <SceltaQuando valore={modulo.inizio} serate={serateFuture}
+          <SceltaQuando valore={modulo.inizio} serate={eventoModulo ? [] : serateFuture} giorniFissi={giorniModulo}
             onCambia={(v) => {
               setModulo((m) => ({ ...m, inizio: v }))
-              if (v.slice(0, 10) !== modulo.inizio.slice(0, 10)) caricaDisponibili(v)
+              if (!eventoModulo && v.slice(0, 10) !== modulo.inizio.slice(0, 10)) caricaDisponibili(v)
             }} />
         </div>
 
@@ -982,7 +1057,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             <select id="t-evento" value={modulo.evento_id || ''}
               onChange={(e) => {
                 const ev = eventoDi(e.target.value)
-                setModulo((m) => ({ ...m, evento_id: ev?.id || null, luogo: ev?.luogo_nome || m.luogo }))
+                // Un giorno fuori dall'evento diventa un orario dei suoi giorni.
+                const giorni = ev ? giorniDaScegliere(ev) : []
+                const fuori = ev && giorni.length > 0 && !giorni.includes(modulo.inizio.slice(0, 10))
+                const inizio = fuori ? perCampo(inizioPropostoEvento(ev)) : modulo.inizio
+                setModulo((m) => ({ ...m, evento_id: ev?.id || null, luogo: ev?.luogo_nome || m.luogo, inizio }))
+                caricaDisponibili(ev ? '' : inizio)
               }}>
               <option value="">Nessuno: tavolo della Tana</option>
               {[...eventiAperti, ...(modulo.evento_id && !eventiAperti.some((x) => x.id === modulo.evento_id) && eventoDi(modulo.evento_id) ? [eventoDi(modulo.evento_id)] : [])]
@@ -1061,7 +1141,11 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
               onChange={(e) => setModulo({ ...modulo, su_approvazione: e.target.checked })} />
             <span>
               Iscrizioni su approvazione
-              <span className="anno block">Chi si iscrive resta in attesa finché non lo accetti tu. Utile per i tavoli a casa.</span>
+              <span className="anno block">
+                {eventoModulo
+                  ? 'Con la spunta chi si iscrive aspetta che lo accetti tu (o chi organizza l’evento). Senza, entra subito finché ci sono posti, poi va in lista d’attesa.'
+                  : 'Chi si iscrive resta in attesa finché non lo accetti tu. Utile per i tavoli a casa.'}
+              </span>
             </span>
           </label>
         </div>
@@ -1086,8 +1170,18 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
             posto e gestiscono il tavolo come chi l&rsquo;ha pubblicato. Chi si iscrive può anche dire
             che è disposto a spiegare: lo vedi fra gli iscritti.
           </p>
-          <CercaDimostratore profilo={profilo} onErrore={setErrore}
-            disponibili={disponibili.filter((d) => !modulo.dimostratori.some((x) => x.chiave === d.chiave))}
+          {eventoModulo && !ioSpiego && (
+            <div className="pastiglie-persone">
+              <button type="button" className="pastiglia-nome nuovo"
+                onClick={() => setModulo((m) => ({
+                  ...m, dimostratori: [...m.dimostratori, { chiave: `p:${profilo.id}`, tipo: 'profilo', id: profilo.id, nome: daMostrare(profilo) }],
+                }))}>
+                {modulo.dimostratori.length ? 'Spiego anch’io' : 'Spiego io'}
+              </button>
+            </div>
+          )}
+          <CercaDimostratore profilo={profilo} onErrore={setErrore} perEvento={Boolean(eventoModulo)}
+            disponibili={eventoModulo ? [] : disponibili.filter((d) => !modulo.dimostratori.some((x) => x.chiave === d.chiave))}
             onScegli={(p) => setModulo((m) => (m.dimostratori.some((x) => x.chiave === p.chiave)
               ? m
               : { ...m, dimostratori: [...m.dimostratori, p] }))} />
@@ -1114,13 +1208,27 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
               </p>
             </>
           ) : (
-            <CercaDimostratore profilo={profilo} disponibili={disponibili} onErrore={setErrore}
-              onScegli={(p) => setModulo((m) => ({
-                ...m,
-                dimostratore_nome: p.nome,
-                dimostratore_id: p.tipo === 'profilo' ? p.id : null,
-                dimostratore_ospite_id: p.tipo === 'ospite' ? p.id : null,
-              }))} />
+            <>
+              {/* In un evento di solito spiega chi pubblica il tavolo: un tocco solo. */}
+              {eventoModulo && (
+                <div className="pastiglie-persone">
+                  <button type="button" className="pastiglia-nome nuovo"
+                    onClick={() => setModulo((m) => ({
+                      ...m, dimostratore_nome: daMostrare(profilo), dimostratore_id: profilo.id, dimostratore_ospite_id: null,
+                    }))}>
+                    Spiego io
+                  </button>
+                </div>
+              )}
+              <CercaDimostratore profilo={profilo} disponibili={eventoModulo ? [] : disponibili} onErrore={setErrore}
+                perEvento={Boolean(eventoModulo)}
+                onScegli={(p) => setModulo((m) => ({
+                  ...m,
+                  dimostratore_nome: p.nome,
+                  dimostratore_id: p.tipo === 'profilo' ? p.id : null,
+                  dimostratore_ospite_id: p.tipo === 'ospite' ? p.id : null,
+                }))} />
+            </>
           )}
 
           <label className="consenso">
@@ -1150,7 +1258,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <div className="campo">
           <label>Iscrizioni aperte fino a</label>
           {modulo.chiusura_iscrizioni ? (
-            <SceltaQuando valore={modulo.chiusura_iscrizioni} facoltativo giorni={10}
+            <SceltaQuando valore={modulo.chiusura_iscrizioni} facoltativo giorni={10} giorniFissi={giorniModulo}
               onCambia={(v) => setModulo((m) => ({ ...m, chiusura_iscrizioni: v }))} />
           ) : (
             <p className="aiuto">
@@ -1201,7 +1309,12 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     if (!t.posti_max) return true
     return (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length < t.posti_max
   }
-  const futuri = tavoli.filter((t) => new Date(t.inizio) >= inizioOggi)
+  // Fuori da un evento: ogni evento aperto ha una scheda in cima, e i suoi
+  // tavoli stanno nel suo programma invece di mescolarsi a quelli della Tana.
+  const eventiInCima = evento ? [] : eventiAperti
+  const inCima = new Set(eventiInCima.map((e) => e.id))
+  const tavoliQui = evento ? tavoli : tavoli.filter((t) => !inCima.has(t.evento_id))
+  const futuri = tavoliQui.filter((t) => new Date(t.inizio) >= inizioOggi)
 
   // Le scelte dei filtri vengono dai tavoli in programma: i luoghi pubblici
   // uno per uno, le case private tutte insieme (il nome dice di chi sono).
@@ -1211,20 +1324,27 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     .sort((x, y) => y.quanti - x.quanti || x.nome.localeCompare(y.nome, 'it'))
   const quanteCase = futuri.filter(eCasa).length
   const giorniFiltro = [...new Set(futuri.map((t) => giornoDi(t.inizio)))].sort()
+  // Nel programma di un evento i giorni sono bottoni: tutti quelli
+  // dell'evento, anche già passati, più quelli dei tavoli messi fuori date.
+  const giorniProgramma = evento
+    ? [...new Set([...giorniEvento(evento), ...tavoliQui.map((t) => giornoDi(t.inizio))])].sort() : []
   const tantiTavoli = futuri.length > 6
   const mostraLuoghi = luoghiFiltro.length + (quanteCase ? 1 : 0) > 1
-  const mostraGiorni = tantiTavoli && giorniFiltro.length > 1
+  const mostraGiorni = !evento && tantiTavoli && giorniFiltro.length > 1
   // Un filtro rimasto su un luogo o un giorno che non c'è più non nasconde tutto.
   const luogoScelto = filtroLuogo === 'case' ? (quanteCase ? 'case' : '')
     : luoghiFiltro.some((l) => l.id === filtroLuogo) ? filtroLuogo : ''
-  const giornoScelto = giorniFiltro.includes(filtroGiorno) ? filtroGiorno : ''
+  const giornoScelto = (evento ? giorniProgramma : giorniFiltro).includes(filtroGiorno) ? filtroGiorno : ''
   const testoCercato = cercaTavolo.trim().toLowerCase()
-  const filtriAttivi = Boolean(luogoScelto || giornoScelto || soloPosto || testoCercato)
+  // Il giorno del programma non è un filtro da togliere: si cambia con i suoi bottoni.
+  const filtriAttivi = Boolean(luogoScelto || (giornoScelto && !evento) || soloPosto || testoCercato)
+  // Un giorno scelto nel programma mostra tutto quel giorno, anche i tavoli già giocati.
+  const base = evento && giornoScelto ? tavoliQui.filter((t) => giornoDi(t.inizio) === giornoScelto) : futuri
 
-  const prossimi = futuri
+  const prossimi = base
     .filter((t) => {
       if (luogoScelto === 'case' ? !eCasa(t) : luogoScelto && String(t.luogo_id) !== luogoScelto) return false
-      if (giornoScelto && giornoDi(t.inizio) !== giornoScelto) return false
+      if (!evento && giornoScelto && giornoDi(t.inizio) !== giornoScelto) return false
       if (soloPosto && (!haPosto(t) || new Date(t.inizio) < adesso)) return false
       if (testoCercato && !`${t.titolo || ''} ${t.giochi?.nome || ''} ${t.descrizione || ''}`.toLowerCase().includes(testoCercato)) return false
       if (!miaPosizione || raggio == null) return true
@@ -1247,25 +1367,36 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     if (perGiorno.at(-1)?.giorno !== g) perGiorno.push({ giorno: g, tavoli: [] })
     perGiorno.at(-1).tavoli.push(t)
   }
-  const passati = tavoli.filter((t) => new Date(t.inizio) < inizioOggi).reverse()
+  const passati = tavoliQui.filter((t) => new Date(t.inizio) < inizioOggi).reverse()
 
-  // I titoli dei giorni ci sono con più giorni o con tanti tavoli: sotto
-  // un titolo alla riga basta l'ora, altrimenti serve anche la data.
-  const conTitoli = !miaPosizione && (perGiorno.length > 1 || tantiTavoli)
+  // I titoli dei giorni ci sono con più giorni o con tanti tavoli (e
+  // sempre nel programma di un evento): sotto un titolo alla riga basta
+  // l'ora, altrimenti serve anche la data.
+  const conTitoli = !miaPosizione && (Boolean(evento) || perGiorno.length > 1 || tantiTavoli)
+  // Con un giorno scelto nel programma il titolo è già sopra.
+  const titoliGiorno = conTitoli && !(evento && giornoScelto)
+  const etichettaGiorno = (g) => {
+    const oggi = giornoDi(adesso)
+    const domani = giornoDi(new Date(adesso.getTime() + 86400000))
+    return g === oggi ? 'oggi' : g === domani ? 'domani'
+      : new Date(g + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' })
+  }
 
   const scheda = (t) => {
     const conf = (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'confermato').length
     const daAccettare = t.su_approvazione
       ? (t.iscrizioni_tavolo || []).filter((i) => i.stato === 'attesa').length : 0
-    // Chi l'ha pubblicato, chi organizza e il dimostratore del tavolo lo
-    // gestiscono: iscritti, modifiche, partita. Eliminarlo no, il
-    // dimostratore non può.
-    const proprietario = t.host_id === profilo.id || profilo.organizzatore
+    // Chi l'ha pubblicato, chi organizza (la Tana o l'evento del tavolo) e
+    // il dimostratore del tavolo lo gestiscono: iscritti, modifiche,
+    // partita. Eliminarlo no, il dimostratore non può.
+    const proprietario = t.host_id === profilo.id || profilo.organizzatore || organizzoEvento(t.evento_id)
     const mio = proprietario || t.dimostratore_id === profilo.id
       || (t.iscrizioni_tavolo || []).some((i) =>
         i.ruolo === 'dimostratore' && i.utente_id === profilo.id && i.stato !== 'annullato')
     const passato = new Date(t.inizio) < adesso
     const prima = new Date(t.inizio) < inizioOggi          // di un giorno passato
+    // Basta l'ora sotto il titolo del giorno (o del giorno scelto nel programma).
+    const soloOra = conTitoli && (!prima || Boolean(evento && giornoScelto))
     const aperta = espanso === t.id
     const liberi = t.posti_max ? Math.max(0, t.posti_max - conf) : null
     const iscrittoIo = (t.iscrizioni_tavolo || []).some((i) => i.utente_id === profilo.id && i.stato === 'confermato')
@@ -1286,16 +1417,27 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <button type="button" className="tavolo-riga" aria-expanded={aperta}
           onClick={() => setEspanso(aperta ? null : t.id)}>
           {/* Sotto il titolo del giorno basta l'ora; altrove serve anche la data. */}
-          {conTitoli && !prima && <span className="tavolo-ora">{oraTavolo}</span>}
+          {soloOra && <span className="tavolo-ora">{oraTavolo}</span>}
           {copertinaTavolo(t) && <img src={copertinaTavolo(t)} alt="" className="copertina" />}
           <span className="tavolo-riga-testo">
             <span className="titolo-tavolo"><strong>{t.titolo || t.giochi?.nome || 'Tavolo'}</strong>{t.descrizione && <span className="nota-tavolo"> · {t.descrizione}</span>}</span>
-            <span className="anno">
-              {conTitoli && !prima ? '' : `${quando(t.inizio)} · `}
-              {luogo}{eCasa(t) ? ' · casa privata' : ''}
-              {!evento && t.evento_id && eventoDi(t.evento_id) ? ` · ${eventoDi(t.evento_id).nome}` : ''}
-              {d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : ''}
-            </span>
+            {evento ? (
+              // Nell'evento il luogo è quasi sempre lo stesso: conta chi spiega.
+              <span className="anno">
+                {[soloOra ? '' : quando(t.inizio),
+                  t.dimostratore_nome ? `spiega ${t.dimostratore_nome}` : '',
+                  t.su_approvazione ? 'su approvazione' : '',
+                  t.luogo_id && t.luogo_id !== evento.luogo_id ? luogo : '',
+                ].filter(Boolean).join(' · ') || luogo}
+              </span>
+            ) : (
+              <span className="anno">
+                {soloOra ? '' : `${quando(t.inizio)} · `}
+                {luogo}{eCasa(t) ? ' · casa privata' : ''}
+                {t.evento_id && eventoDi(t.evento_id) ? ` · ${eventoDi(t.evento_id).nome}` : ''}
+                {d != null ? ` · a ${p?.esatta ? '' : 'circa '}${scriviDistanza(d)}` : ''}
+              </span>
+            )}
           </span>
           {esito && <span className={`tavolo-posti${esito.pieno ? ' pieno' : ''}`}>{esito.testo}</span>}
           {mio && daAccettare > 0 && <span className="pallino" aria-label={`${daAccettare} da accettare`}>{daAccettare}</span>}
@@ -1369,8 +1511,23 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   }
 
   return (
+    <>
+    {/* Aperto dai Tavoli della Tana: la testata dell'evento e il ritorno. */}
+    {evento && onIndietro && (
+      <div className="scheda evento-testa">
+        <button className="bottone-piatto" onClick={onIndietro}>&larr; tutti i tavoli</button>
+        <p className="evento-occhiello">Evento · {STATI_EVENTO[statoEvento(evento)]}</p>
+        <h2>{evento.nome}</h2>
+        <span className="anno block">{dateEvento(evento)}{evento.luogo_nome ? ` · ${evento.luogo_nome}` : ''}</span>
+        {organizzo && (
+          <button className="bottone bottone-secondario" onClick={() => { setGestisciEvento(true); window.scrollTo({ top: 0 }) }}>
+            Gestisci l&rsquo;evento
+          </button>
+        )}
+      </div>
+    )}
     <div className="scheda">
-      <h2>{evento ? `Tavoli · ${evento.nome}` : 'Tavoli'}</h2>
+      <h2>{evento ? 'Tavoli dell’evento' : 'Tavoli'}</h2>
 
       {!evento && (profilo.dimostratore || profilo.organizzatore) && (
         <BarraScorrevole><div className="sottoschede">
@@ -1387,7 +1544,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
       <p className="sottotitolo">
         {!evento ? 'Serate aperte a cui ci si può iscrivere.'
-          : possoPubblicare ? 'I tavoli dell’evento: iscriviti, oppure pubblicane uno tuo.'
+          : possoPubblicare ? 'Giorno per giorno, con l’ora e chi spiega. Tocca un tavolo per iscriverti, oppure pubblicane uno tuo.'
           : 'L’evento è concluso: i tavoli restano da consultare.'}
       </p>
 
@@ -1402,7 +1559,32 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
       {possoPubblicare && <button className="bottone" onClick={apriNuovo}>Pubblica un tavolo</button>}
 
-      {!miaPosizione ? (
+      {/* Gli eventi aperti: una scheda ciascuno, che apre il loro programma. */}
+      {eventiInCima.length > 0 && (
+        <>
+          <h3 className="titolo-sezione">Eventi <span className="conteggio">{eventiInCima.length}</span></h3>
+          {eventiInCima.map((ev) => {
+            const suoi = tavoli.filter((t) => t.evento_id === ev.id && new Date(t.inizio) >= inizioOggi && t.stato === 'aperto' && t.pubblicato)
+            const conPosto = suoi.filter((t) => haPosto(t) && new Date(t.inizio) >= adesso).length
+            return (
+              <button key={ev.id} type="button" className="evento-scheda"
+                onClick={() => { setEventoVisto(ev.id); window.scrollTo({ top: 0 }) }}>
+                <span className="evento-occhiello">Evento · {STATI_EVENTO[statoEvento(ev)]}</span>
+                <strong className="evento-scheda-nome">{ev.nome}</strong>
+                <span className="anno">{dateEvento(ev)}{ev.luogo_nome ? ` · ${ev.luogo_nome}` : ''}</span>
+                <span className="evento-scheda-conta">
+                  {suoi.length === 0 ? 'Ancora nessun tavolo: pubblica il primo'
+                    : `${suoi.length} ${suoi.length === 1 ? 'tavolo' : 'tavoli'} · ${conPosto} con posto`}
+                  <span aria-hidden="true"> ›</span>
+                </span>
+              </button>
+            )
+          })}
+        </>
+      )}
+
+      {/* Nell'evento si gioca tutti nello stesso posto: niente «vicini». */}
+      {evento ? null : !miaPosizione ? (
         <div className="cerca-vicini">
           <button className="bottone bottone-secondario" onClick={trovaminiVicini} disabled={cercandoPosizione}>
             {cercandoPosizione ? 'Cerco…' : 'Mostra prima i tavoli vicini'}
@@ -1435,8 +1617,26 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         </>
       )}
 
+      {/* Il programma dell'evento: un bottone per giorno, con quanti tavoli ha. */}
+      {evento && giorniProgramma.length > 1 && (
+        <BarraScorrevole><div className="sottoschede giorni-evento" role="group" aria-label="Giorno dell'evento">
+          <button type="button" className={giornoScelto === '' ? 'attiva' : ''} aria-pressed={giornoScelto === ''}
+            onClick={() => setFiltroGiorno('')}>
+            tutti
+          </button>
+          {giorniProgramma.map((g) => (
+            <button key={g} type="button" className={giornoScelto === g ? 'attiva' : ''} aria-pressed={giornoScelto === g}
+              onClick={() => setFiltroGiorno(g)}>
+              {etichettaGiorno(g)}
+              <span className="quanti-giorno">{tavoliQui.filter((t) => giornoDi(t.inizio) === g).length}</span>
+            </button>
+          ))}
+        </div></BarraScorrevole>
+      )}
+
       <h3 className="titolo-sezione">
-        In programma <span className="conteggio">{filtriAttivi ? `${prossimi.length} di ${futuri.length}` : prossimi.length}</span>
+        {evento && giornoScelto ? titoloGiorno(giornoScelto) : 'In programma'}{' '}
+        <span className="conteggio">{filtriAttivi ? `${prossimi.length} di ${base.length}` : prossimi.length}</span>
       </h3>
       {(mostraLuoghi || mostraGiorni || tantiTavoli) && (
         <div className="filtri-tavoli">
@@ -1469,7 +1669,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           )}
           {filtriAttivi && (
             <button type="button" className="bottone-piatto"
-              onClick={() => { setFiltroLuogo(''); setFiltroGiorno(''); setSoloPosto(false); setCercaTavolo('') }}>
+              onClick={() => { setFiltroLuogo(''); if (!evento) setFiltroGiorno(''); setSoloPosto(false); setCercaTavolo('') }}>
               togli i filtri
             </button>
           )}
@@ -1486,15 +1686,17 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
       )}
       {prossimi.length === 0 ? (
         <p className="aiuto">
-          {filtriAttivi && futuri.length > 0
+          {filtriAttivi && base.length > 0
             ? 'Nessun tavolo con questi filtri.'
-            : raggio != null && futuri.length > 0
+            : raggio != null && base.length > 0
             ? `Nessun tavolo entro ${raggio} km.`
+            : evento && giornoScelto
+            ? (possoPubblicare ? 'Nessun tavolo in questo giorno, per ora: pubblicane uno tu.' : 'Nessun tavolo in questo giorno.')
             : 'Nessun tavolo in programma.'}
         </p>
       ) : miaPosizione ? prossimi.map(scheda) : perGiorno.map((g) => (
         <div key={g.giorno}>
-          {conTitoli && (
+          {titoliGiorno && (
             <h4 className="giorno-tavoli">
               {titoloGiorno(g.giorno)} <span className="conteggio">{g.tavoli.length}</span>
             </h4>
@@ -1503,7 +1705,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         </div>
       ))}
 
-      {passati.length > 0 && (
+      {/* Con un giorno scelto nel programma i suoi tavoli passati sono già sopra. */}
+      {passati.length > 0 && !(evento && giornoScelto) && (
         <>
           <h3 className="titolo-sezione">Passati</h3>
           {passati.slice(0, quantiPassati).map(scheda)}
@@ -1517,5 +1720,6 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
 
       </>}
     </div>
+    </>
   )
 }

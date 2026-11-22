@@ -99,11 +99,12 @@ begin
     esito := esito || E'\nOK organizzatore evento non nomina altri organizzatori';
   end;
   begin
-    update evento_ruoli set ruolo = 'dimostratore' where evento_id = v_ev and utente_id = u_est;
+    -- (22/11/2026: il ruolo «dimostratore» dell'evento non c'è più, vedi eventi_solo_organizzatori.sql)
+    update evento_ruoli set ruolo = 'partecipante' where evento_id = v_ev and utente_id = u_est;
     get diagnostics n = row_count;
-    esito := esito || E'\n' || case when n = 1 then 'OK' else 'NO' end || ' organizzatore evento nomina un dimostratore';
+    esito := esito || E'\n' || case when n = 1 then 'OK' else 'NO' end || ' organizzatore evento cambia il ruolo di un partecipante';
   exception when others then
-    esito := esito || E'\nNO organizzatore evento nomina un dimostratore: ' || sqlerrm;
+    esito := esito || E'\nNO organizzatore evento cambia il ruolo di un partecipante: ' || sqlerrm;
   end;
 
   -- ===== Esterno si iscrive al tavolo =====

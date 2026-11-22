@@ -1,10 +1,11 @@
 // Primo Giocatore - gestione degli eventi
-// v1.0.0 - 202611182000
+// v1.1.0 - 202611222330 (si nominano solo gli organizzatori; in cima i tavoli dell'evento)
 //
 // Per chi organizza: crea un evento, ne cambia nome, date e luogo, ne
 // chiude gli ingressi, e lo fa conoscere (link da copiare, QR a tutto
-// schermo, locandina da stampare). Le persone dell'evento: chi organizza,
-// chi spiega i giochi, chi partecipa.
+// schermo, locandina da stampare). Nell'evento si nominano solo gli
+// organizzatori: chi partecipa entra da solo con il link o il QR, e chi
+// spiega un gioco lo decide ogni tavolo.
 //
 // Chi può cosa (lo garantisce il database, eventi_fase1.sql):
 // - crea un evento chi organizza tutto, o chi organizza una Tana (per la sua);
@@ -15,15 +16,17 @@
 //
 // soloEventoId: aperta dall'app di chi partecipa solo agli eventi, mostra
 // direttamente quell'evento (niente elenco, niente creazione).
+// onApriTavoli(id): porta al programma dei tavoli dell'evento.
 
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
-import { eventiVisibili, mieiEventi, statoEvento, dateEvento, linkEvento } from './evento'
+import { eventiVisibili, mieiEventi, statoEvento, dateEvento, linkEvento, giorniEvento } from './evento'
 import { trovaOCreaLuogo } from './giochiMiei'
 
 const STATI = { in_arrivo: 'In arrivo', in_corso: 'In corso', concluso: 'Concluso' }
-const RUOLI = [['organizzatore', 'Organizza'], ['dimostratore', 'Spiega i giochi'], ['partecipante', 'Partecipa']]
+const giornoCorto = (g) => new Date(g + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })
+const giornoDi = (d) => new Date(d).toLocaleDateString('sv-SE')
 const nuovoCodice = () => Array.from(crypto.getRandomValues(new Uint8Array(8)))
   .map((n) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[n % 32]).join('')
 
@@ -82,11 +85,13 @@ function QrSchermo({ evento, onChiudi }) {
 
 /* ---------- Un evento ---------- */
 
-function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato, onIndietro }) {
+function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato, onIndietro, onApriTavoli }) {
   const [vista, setVista] = useState(null)   // null | 'locandina' | 'qr'
   const [modulo, setModulo] = useState({ nome: evento.nome || '', inizio: evento.inizio || '', fine: evento.fine || '', luogo: evento.luogo_nome || '', chiuso: !!evento.chiuso })
-  const [persone, setPersone] = useState(null)
-  const [tutti, setTutti] = useState([])     // profili da aggiungere (li vede chi è socio)
+  const [organizzatori, setOrganizzatori] = useState(null)
+  const [partecipanti, setPartecipanti] = useState(null)   // quanti sono entrati con il link
+  const [tavoli, setTavoli] = useState(null)               // per il riepilogo in cima
+  const [tutti, setTutti] = useState([])     // fra chi scegliere un organizzatore
   const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
@@ -96,20 +101,29 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
   const link = linkEvento(evento.codice)
   const qr = useQr(link, 600)
 
-  useEffect(() => { caricaPersone() }, [evento.id])
+  useEffect(() => { caricaPersone(); caricaTavoli() }, [evento.id])
   useEffect(() => {
+    if (!puoNominare) return
     tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname'))
       .then(setTutti, () => setTutti([]))
-  }, [])
+  }, [puoNominare])
 
+  // Nell'evento si nominano solo gli organizzatori; degli altri basta sapere quanti sono.
   async function caricaPersone() {
-    const { data, error } = await supabase.from('evento_ruoli')
-      .select('utente_id, ruolo, aggiunto_il, profili ( nome, cognome, nickname )')
-      .eq('evento_id', evento.id)
-    if (error) { setErrore(error.message); return }
-    const ordine = { organizzatore: 0, dimostratore: 1, partecipante: 2 }
-    setPersone((data || []).sort((a, b) => ordine[a.ruolo] - ordine[b.ruolo]
-      || daMostrare(a.profili).localeCompare(daMostrare(b.profili), 'it')))
+    const [org, altri] = await Promise.all([
+      supabase.from('evento_ruoli').select('utente_id, profili ( nome, cognome, nickname )')
+        .eq('evento_id', evento.id).eq('ruolo', 'organizzatore'),
+      supabase.from('evento_ruoli').select('utente_id', { count: 'exact', head: true })
+        .eq('evento_id', evento.id).neq('ruolo', 'organizzatore'),
+    ])
+    if (org.error) { setErrore(org.error.message); return }
+    setOrganizzatori((org.data || []).sort((a, b) => daMostrare(a.profili).localeCompare(daMostrare(b.profili), 'it')))
+    setPartecipanti(altri.error ? null : (altri.count ?? 0))
+  }
+
+  async function caricaTavoli() {
+    const { data, error } = await supabase.from('tavoli').select('id, inizio, stato').eq('evento_id', evento.id)
+    setTavoli(error ? [] : (data || []).filter((t) => t.stato !== 'annullato'))
   }
 
   const fatto = (testo) => { setErrore(''); setMessaggio(testo) }
@@ -142,19 +156,22 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
     if (error) sbagliato(error); else { onCambiato(); onIndietro() }
   }
 
-  async function cambiaRuolo(utenteId, ruolo) {
-    const { error } = await supabase.from('evento_ruoli').update({ ruolo }).eq('evento_id', evento.id).eq('utente_id', utenteId)
-    if (error) sbagliato(error); else { fatto('Ruolo cambiato.'); caricaPersone() }
+  // Chi era già entrato nell'evento cambia ruolo; gli altri entrano già organizzatori.
+  async function nomina(p) {
+    const { data: gia, error: e0 } = await supabase.from('evento_ruoli').select('ruolo')
+      .eq('evento_id', evento.id).eq('utente_id', p.id).maybeSingle()
+    if (e0) { sbagliato(e0); return }
+    const { error } = gia
+      ? await supabase.from('evento_ruoli').update({ ruolo: 'organizzatore' }).eq('evento_id', evento.id).eq('utente_id', p.id)
+      : await supabase.from('evento_ruoli').insert({ evento_id: evento.id, utente_id: p.id, ruolo: 'organizzatore' })
+    if (error) sbagliato(error); else { fatto(`${daMostrare(p)} organizza l’evento.`); setCerca(''); caricaPersone() }
   }
 
-  async function togli(utenteId) {
-    const { error } = await supabase.from('evento_ruoli').delete().eq('evento_id', evento.id).eq('utente_id', utenteId)
-    if (error) sbagliato(error); else { fatto('Tolto dall’evento.'); caricaPersone() }
-  }
-
-  async function aggiungi(p, ruolo) {
-    const { error } = await supabase.from('evento_ruoli').insert({ evento_id: evento.id, utente_id: p.id, ruolo })
-    if (error) sbagliato(error); else { fatto(`${daMostrare(p)} aggiunto.`); setCerca(''); caricaPersone() }
+  // Non organizza più, ma resta nell'evento: se non è socio, continua a vederlo.
+  async function togli(x) {
+    const { error } = await supabase.from('evento_ruoli').update({ ruolo: 'partecipante' })
+      .eq('evento_id', evento.id).eq('utente_id', x.utente_id)
+    if (error) sbagliato(error); else { fatto(`${daMostrare(x.profili)} non organizza più l’evento.`); caricaPersone() }
   }
 
   async function copia() {
@@ -171,12 +188,13 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
   if (vista === 'locandina') return <LocandinaEvento evento={evento} onChiudi={() => setVista(null)} />
 
   const q = cerca.trim().toLowerCase()
-  const giaDentro = new Set((persone || []).map((x) => x.utente_id))
+  const giaOrganizzano = new Set((organizzatori || []).map((x) => x.utente_id))
   const trovati = q.length >= 2
-    ? tutti.filter((p) => !giaDentro.has(p.id) && [p.nickname, p.nome, p.cognome].filter(Boolean).join(' ').toLowerCase().includes(q)).slice(0, 8)
+    ? tutti.filter((p) => !giaOrganizzano.has(p.id) && [p.nickname, p.nome, p.cognome].filter(Boolean).join(' ').toLowerCase().includes(q)).slice(0, 8)
     : []
-  const conta = (r) => (persone || []).filter((x) => x.ruolo === r).length
   const st = statoEvento(evento)
+  // I tavoli giorno per giorno: i giorni dell'evento, più quelli dei tavoli messi fuori date.
+  const giorniTavoli = [...new Set([...giorniEvento(evento), ...(tavoli || []).map((t) => giornoDi(t.inizio))])].sort()
 
   return (
     <>
@@ -190,6 +208,34 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
         {errore && <div className="avviso errore">{errore}</div>}
         {messaggio && <div className="avviso ok">{messaggio}</div>}
 
+        <h3 className="titolo-sezione">
+          Tavoli {tavoli && <span className="conteggio">{tavoli.length}</span>}
+        </h3>
+        {!tavoli ? <p className="aiuto">Un attimo&hellip;</p> : (
+          <>
+            <ul className="evento-giorni">
+              {giorniTavoli.map((g) => {
+                const n = tavoli.filter((t) => giornoDi(t.inizio) === g).length
+                return (
+                  <li key={g} className={n ? '' : 'vuoto'}>
+                    <span>{giornoCorto(g)}</span>
+                    <strong>{n === 0 ? 'nessun tavolo' : n === 1 ? '1 tavolo' : `${n} tavoli`}</strong>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="aiuto">
+              I tavoli li pubblica chiunque partecipi, e ognuno decide chi spiega, quanti posti ci sono e se
+              gli iscritti vanno accettati. Chi organizza l&rsquo;evento li gestisce tutti.
+            </p>
+            {onApriTavoli && (
+              <button className="bottone" onClick={() => onApriTavoli(evento.id)}>Apri i tavoli dell&rsquo;evento</button>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="scheda">
         <h3 className="titolo-sezione">Come si entra</h3>
         {evento.chiuso ? (
           <p className="avviso errore">Gli ingressi sono chiusi: il link non fa più entrare nessuno.</p>
@@ -256,51 +302,55 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
 
       <div className="scheda">
         <h3 className="titolo-sezione">
-          Persone <span className="conteggio">{(persone || []).length}</span>
+          Organizzatori {organizzatori && <span className="conteggio">{organizzatori.length}</span>}
         </h3>
         <p className="aiuto">
-          {conta('organizzatore')} {conta('organizzatore') === 1 ? 'organizza' : 'organizzano'} · {conta('dimostratore')} {conta('dimostratore') === 1 ? 'spiega' : 'spiegano'} i giochi
-          · {conta('partecipante')} {conta('partecipante') === 1 ? 'partecipa' : 'partecipano'}.
-          Chi entra con il link compare qui come partecipante.
+          Cambiano i dati dell&rsquo;evento, ne chiudono gli ingressi e gestiscono tutti i suoi tavoli: iscritti,
+          modifiche, partite. {puoNominare
+            ? 'Chi organizza la Tana dell’evento lo fa anche senza essere in elenco.'
+            : 'Li nomina chi organizza la Tana dell’evento.'}
         </p>
-        {!persone ? <p>Un attimo&hellip;</p> : (
+        {!organizzatori ? <p>Un attimo&hellip;</p> : organizzatori.length === 0 ? (
+          <p className="aiuto">Nessuno, per ora.</p>
+        ) : (
           <ul className="elenco">
-            {persone.map((x) => {
+            {organizzatori.map((x) => {
               const io = x.utente_id === profilo.id
-              const bloccato = !puoNominare && (x.ruolo === 'organizzatore')
               return (
                 <li key={x.utente_id} className="evento-persona">
                   <span className="nome-giocatore">{daMostrare(x.profili)}{io ? ' (tu)' : ''}</span>
-                  <select aria-label={`Ruolo di ${daMostrare(x.profili)}`} value={x.ruolo} disabled={bloccato}
-                    onChange={(e) => cambiaRuolo(x.utente_id, e.target.value)}>
-                    {RUOLI.filter(([r]) => puoNominare || r !== 'organizzatore' || x.ruolo === 'organizzatore')
-                      .map(([r, t]) => <option key={r} value={r}>{t}</option>)}
-                  </select>
-                  {!bloccato && !io && <button className="tasto-piccolo" onClick={() => togli(x.utente_id)}>Togli</button>}
+                  {puoNominare && !io && <button className="tasto-piccolo" onClick={() => togli(x)}>Togli</button>}
                 </li>
               )
             })}
           </ul>
         )}
 
-        {tutti.length > (persone || []).length && (
+        {puoNominare && (
           <div className="campo">
-            <label htmlFor="ev-cerca">Aggiungi una persona che ha già l&rsquo;account</label>
+            <label htmlFor="ev-cerca">Aggiungi un organizzatore</label>
             <input id="ev-cerca" type="search" value={cerca} onChange={(e) => setCerca(e.target.value)} placeholder="Nickname, nome o cognome" />
             {trovati.length > 0 && (
               <ul className="elenco">
                 {trovati.map((p) => (
                   <li key={p.id} className="evento-persona">
                     <span className="nome-giocatore">{daMostrare(p)}</span>
-                    {puoNominare && <button className="tasto-piccolo" onClick={() => aggiungi(p, 'organizzatore')}>Organizza</button>}
-                    <button className="tasto-piccolo" onClick={() => aggiungi(p, 'dimostratore')}>Spiega</button>
-                    <button className="tasto-piccolo" onClick={() => aggiungi(p, 'partecipante')}>Partecipa</button>
+                    <button className="tasto-piccolo" onClick={() => nomina(p)}>Organizza</button>
                   </li>
                 ))}
               </ul>
             )}
+            {q.length >= 2 && trovati.length === 0 && (
+              <p className="aiuto">Nessuno con questo nome. Chi non ha ancora l&rsquo;account deve prima entrare con il link dell&rsquo;evento.</p>
+            )}
           </div>
         )}
+
+        <p className="aiuto">
+          {partecipanti == null ? 'Chi partecipa entra da solo con il link o il QR: non serve aggiungerlo.'
+            : partecipanti === 0 ? 'Ancora nessuno è entrato con il link o il QR. Chi partecipa entra da solo: non serve aggiungerlo.'
+            : `${partecipanti === 1 ? 'È entrata 1 persona' : `Sono entrate ${partecipanti} persone`} con il link o il QR. Chi partecipa entra da solo: non serve aggiungerlo.`}
+        </p>
       </div>
 
       {puoCancellare && (
@@ -324,7 +374,7 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
 
 /* ---------- Elenco e creazione ---------- */
 
-export default function GestioneEventi({ profilo, soloEventoId = null }) {
+export default function GestioneEventi({ profilo, soloEventoId = null, onApriTavoli = null }) {
   const [eventi, setEventi] = useState(null)
   const [mieTane, setMieTane] = useState([])     // id delle Tane che organizzo
   const [tane, setTane] = useState([])
@@ -377,7 +427,7 @@ export default function GestioneEventi({ profilo, soloEventoId = null }) {
   const scelto = eventi.find((e) => e.id === aperto)
   if (scelto) {
     return <SchedaEvento key={scelto.id + scelto.codice} evento={scelto} profilo={profilo}
-      puoNominare={puoNominare(scelto)} puoCancellare={globale}
+      puoNominare={puoNominare(scelto)} puoCancellare={globale} onApriTavoli={onApriTavoli}
       onCambiato={carica} onIndietro={soloEventoId ? null : () => setAperto(null)} />
   }
   if (soloEventoId) return <div className="scheda"><p className="sottotitolo">Questo evento non lo gestisci tu.</p></div>

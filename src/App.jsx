@@ -1634,6 +1634,7 @@ export default function App() {
             <Tavoli
               key={apriTavolo?.quando || 'tavoli'}
               apriSubito={apriTavolo?.id}
+              apriEvento={apriTavolo?.evento}
               profilo={profilo}
               onRichieste={() => contaRichiesteTavolo().then(setTavoliChiesti)}
               onRegistraPartita={apriPartita}
@@ -1745,7 +1746,8 @@ export default function App() {
                   ) : attiva === 'info' ? (
                     <Info />
                   ) : attiva === 'eventi' ? (
-                    <GestioneEventi profilo={profilo} />
+                    <GestioneEventi profilo={profilo}
+                      onApriTavoli={(id) => { setApriTavolo({ evento: id, quando: Date.now() }); setScheda('tavoli'); window.scrollTo({ top: 0 }) }} />
                   ) : (
                     <Organizzatori profilo={profilo} />
                   )}

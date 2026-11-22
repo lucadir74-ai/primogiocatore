@@ -16,6 +16,16 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.44.0',
+    data: '2026-11-22',
+    voci: [
+      'Eventi: nell’evento si nominano solo gli organizzatori; chi partecipa entra da solo con il link o il QR, e chi spiega lo decide ogni tavolo',
+      'Tavoli: ogni evento aperto ha una scheda in cima, che apre i suoi tavoli giorno per giorno, con l’ora e chi spiega',
+      'Tavolo di un evento: la scelta della data propone i giorni dell’evento, c’è «Spiego io», e chi spiega si sceglie senza preferenze per i dimostratori della Tana',
+      'Chi organizza un evento gestisce tutti i suoi tavoli: iscritti da accettare, modifiche, partite',
+    ],
+  },
+  {
     versione: '4.43.3',
     data: '2026-11-22',
     voci: [
