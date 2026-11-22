@@ -787,14 +787,23 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   }
 
   // Quante squadre: da 2 fino a una per giocatore. Chi era in una squadra
-  // che non c'è più viene messo nella più corta (effetto qui sotto).
+  // che non c'è più viene messo nella più corta fra quelle che restano.
   const massimoSquadre = Math.max(2, Math.min(MAX_SQUADRE, righe.length))
   function cambiaNumeroSquadre(n) {
     const nuovo = Math.max(2, Math.min(massimoSquadre, n))
     setNumSquadre(nuovo)
     setVincitoreScelto(null)
     if (Number(squadraScelta) > nuovo) setSquadraScelta(String(nuovo))
-    setRighe((rs) => rs.map((r) => (Number(r.squadra) > nuovo ? { ...r, squadra: '' } : r)))
+    setRighe((rs) => {
+      const conta = new Map(Array.from({ length: nuovo }, (_, i) => [String(i + 1), 0]))
+      for (const r of rs) if (conta.has(r.squadra)) conta.set(r.squadra, conta.get(r.squadra) + 1)
+      return rs.map((r) => {
+        if (conta.has(r.squadra)) return r
+        const [k] = [...conta.entries()].sort((a, b) => a[1] - b[1] || Number(a[0]) - Number(b[0]))[0]
+        conta.set(k, conta.get(k) + 1)
+        return { ...r, squadra: k }
+      })
+    })
   }
 
   // Il giocatore toccato va nella squadra scelta in alto.
@@ -803,20 +812,12 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setRighe((rs) => rs.map((r) => (r.chiave === chiave ? { ...r, squadra: squadraScelta } : r)))
   }
 
-  // Chi si aggiunge a una partita a squadre va nella squadra più corta.
+  // Chi si aggiunge a una partita a squadre va nella squadra scelta in alto.
   useEffect(() => {
     if (!squadreAttive || !righe.some((r) => !r.squadra)) return
-    setRighe((rs) => {
-      const conta = new Map(Array.from({ length: numSquadre }, (_, i) => [String(i + 1), 0]))
-      for (const r of rs) if (conta.has(r.squadra)) conta.set(r.squadra, conta.get(r.squadra) + 1)
-      return rs.map((r) => {
-        if (r.squadra) return r
-        const [n] = [...conta.entries()].sort((a, b) => a[1] - b[1] || Number(a[0]) - Number(b[0]))[0]
-        conta.set(n, conta.get(n) + 1)
-        return { ...r, squadra: n }
-      })
-    })
-  }, [squadreAttive, righe, numSquadre])
+    const dove = Number(squadraScelta) <= numSquadre ? squadraScelta : '1'
+    setRighe((rs) => rs.map((r) => (r.squadra ? r : { ...r, squadra: dove })))
+  }, [squadreAttive, righe, numSquadre, squadraScelta])
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
@@ -1347,7 +1348,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                 <button className="bottone-tondo" onClick={() => cambiaNumeroSquadre(numSquadre + 1)}
                   disabled={numSquadre >= massimoSquadre} aria-label="Una squadra in più">+</button>
               </div>
-              <p className="aiuto">Scegli una squadra, poi tocca i giocatori da metterci.</p>
+              <p className="aiuto">Scegli una squadra, poi tocca i giocatori da metterci. Chi aggiungi adesso finisce in quella squadra.</p>
               <div className="selettore-squadre" role="radiogroup" aria-label="Squadra in cui mettere i giocatori">
                 {squadreElenco.map((n) => (
                   <button key={n} role="radio" aria-checked={squadraScelta === n}
