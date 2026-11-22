@@ -10,6 +10,7 @@ import { assicuraGiocoBgg, trovaOCreaLuogo, trovaOCreaOspite } from './giochiMie
 import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
+import Avanzamento from './Avanzamento.jsx'
 import { importaCollezioneBgg, contaCollezioneBgg, fraseCollezione } from './collezioneBgg'
 import { risposteLente, svuotaRisposteLente } from './memoriaRete'
 import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
@@ -123,6 +124,7 @@ export default function Dati({ profilo }) {
   const fileRef = useRef(null)
   const bgsRef = useRef(null)
   const [avanzamento, setAvanzamento] = useState(null)
+  const [avanzamentoCollezione, setAvanzamentoCollezione] = useState(null)
   const [anteprima, setAnteprima] = useState(null)   // { doc, analisi }
   const [miei, setMiei] = useState([])               // id dei profili che sono io
   const [cercaGiocatore, setCercaGiocatore] = useState('')
@@ -163,13 +165,14 @@ export default function Dati({ profilo }) {
     setImportandoCollezione(true)
     tieniAcceso(true)
     try {
-      const esito = await importaCollezioneBgg({ utente, profiloId: profilo.id })
+      const esito = await importaCollezioneBgg({ utente, profiloId: profilo.id, avanzamento: setAvanzamentoCollezione })
       setEsitoCollezione(fraseCollezione(esito))
       setCollezione(esito.giochi + esito.espansioni)
     } catch (e) {
       setErrore(e.message)
     } finally {
       setImportandoCollezione(false)
+      setAvanzamentoCollezione(null)
       tieniAcceso(false)
     }
   }
@@ -373,6 +376,7 @@ export default function Dati({ profilo }) {
 
       let aggiunte = 0
       let saltate = 0
+      setAvanzamento({ fase: 'Cerco le partite che hai già' })
       const presenti = await improntePresenti(supabase, profilo.id)
 
       // Cache locali, per non interrogare il database a ogni riga.
@@ -592,15 +596,7 @@ export default function Dati({ profilo }) {
           </p>
         )}
 
-        {avanzamento && (
-          <div className="avanzamento">
-            <span>{avanzamento.fase}</span>
-            <div className="barra-avanzamento">
-              <div style={{ width: `${(avanzamento.fatto / Math.max(1, avanzamento.totale)) * 100}%` }} />
-            </div>
-            <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
-          </div>
-        )}
+        {avanzamento && <Avanzamento {...avanzamento} />}
 
         <button className="bottone" onClick={() => confermaBgg(false)} disabled={lavorando || nuove === 0}>
           {lavorando ? 'Importo…' : `Importa le ${nuove} nuove`}
@@ -668,19 +664,7 @@ export default function Dati({ profilo }) {
           ))}
         </ul>
 
-        {avanzamento && (
-          <div className="avanzamento">
-            <span>{avanzamento.fase}</span>
-            {avanzamento.totale > 1 && (
-              <>
-                <div className="barra-avanzamento">
-                  <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
-                </div>
-                <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
-              </>
-            )}
-          </div>
-        )}
+        {avanzamento && <Avanzamento {...avanzamento} />}
 
         <button className="bottone" onClick={confermaBgstats} disabled={lavorando || miei.length === 0}>
           {lavorando ? 'Importo\u2026' : `Importa ${anteprima.analisi.partite} partite`}
@@ -702,19 +686,7 @@ export default function Dati({ profilo }) {
   const fatti = [collezione == null ? null : collezione > 0, partiteBgg, Boolean(profilo.bga_id)]
   const prossimo = fatti.slice(0, 2).includes(null) ? 0 : fatti.indexOf(false) + 1
 
-  const barra = avanzamento && (
-    <div className="avanzamento">
-      <span>{avanzamento.fase}</span>
-      {avanzamento.totale > 1 && (
-        <>
-          <div className="barra-avanzamento">
-            <div style={{ width: `${(avanzamento.fatto / avanzamento.totale) * 100}%` }} />
-          </div>
-          <span className="anno">{avanzamento.fatto} / {avanzamento.totale}</span>
-        </>
-      )}
-    </div>
-  )
+  const barra = avanzamento && <Avanzamento {...avanzamento} />
 
   return (
     <div className="scheda">
@@ -747,6 +719,7 @@ export default function Dati({ profilo }) {
         <button className="bottone" onClick={importaCollezione} disabled={importandoCollezione || lavorando}>
           {importandoCollezione ? 'Chiedo a BGG…' : collezione > 0 ? 'Aggiorna i miei giochi' : 'Importa i miei giochi'}
         </button>
+        {importandoCollezione && avanzamentoCollezione && <Avanzamento {...avanzamentoCollezione} />}
         {importandoCollezione && <div className="avviso">Non chiudere e non cambiare app: la prima volta BGG può metterci fino a un minuto.</div>}
         {esitoCollezione && <div className="avviso ok">{esitoCollezione}</div>}
         <p className="aiuto">Quando compri un gioco nuovo e lo segni su BGG, ripassa di qui o usa il tasto nella pagina Giochi.</p>

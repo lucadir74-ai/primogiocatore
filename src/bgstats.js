@@ -136,7 +136,9 @@ export async function importaBgstats(doc, profilo, idMiei = [], avanzamento = ()
 
   // I giochi già presenti nell'app (anche aggiunti da altri) si riusano
   // senza toccarli; gli altri si creano. Si ottengono solo quelli usati.
-  const giochiSalvati = await assicuraGiochi([...conBgg, ...senzaBgg])
+  const daSalvare = [...conBgg, ...senzaBgg]
+  const giochiSalvati = await assicuraGiochi(daSalvare,
+    (fatto) => avanzamento({ fase: 'Giochi', fatto, totale: daSalvare.length }))
   const idPerBgg = new Map(giochiSalvati.filter((g) => g.bgg_id).map((g) => [g.bgg_id, g.id]))
   const idPerNome = new Map(giochiSalvati.map((g) => [g.nome.toLowerCase(), g.id]))
   // Anche per il nome scritto nel file, che può differire da quello nell'app.

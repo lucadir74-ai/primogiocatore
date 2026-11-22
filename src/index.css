@@ -3168,3 +3168,20 @@ a.contatto .contatto-valore { color: var(--blu); }
 .tira-aggiorna-giro { display: inline-block; font-size: 1.2rem; line-height: 1; color: var(--blu); }
 .tira-aggiorna-giro.gira { animation: tira-aggiorna-gira 0.8s linear infinite; }
 @keyframes tira-aggiorna-gira { to { transform: rotate(360deg); } }
+
+/* Barra senza totale: un tratto che scorre (Avanzamento.jsx) */
+.barra-avanzamento.indeterminata { position: relative; }
+.barra-avanzamento.indeterminata div {
+  position: absolute;
+  width: 35%;
+  transition: none;
+  animation: barra-scorre 1.3s ease-in-out infinite;
+}
+@keyframes barra-scorre {
+  from { left: -35%; }
+  to { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-avanzamento.indeterminata div { left: 0; width: 100%; animation: barra-pulsa 1.6s ease-in-out infinite; }
+  @keyframes barra-pulsa { 50% { opacity: 0.35; } }
+}

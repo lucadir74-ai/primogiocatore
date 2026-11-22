@@ -2,6 +2,7 @@
 // v3.27.0 - 202611221200 (partite a squadre: atteso fra squadre, compagni fuori dal testa a testa, punteggio una volta per squadra)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
+import Avanzamento from './Avanzamento.jsx'
 import { durataLeggibile } from './durata'
 import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
@@ -164,8 +165,13 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
     return () => { vivo = false }
   }
   useEffect(() => leggiPezzo('generale', () => ipgGenerale({ leggere: true })), [giroIpg])
+  // Il server non dice a che punto è: la barra avanza a stima, sul tempo
+  // dell'ultimo ricalcolo fatto da questo telefono.
+  const [ricalcolando, setRicalcolando] = useState(false)
   async function ricalcolaPrimeggio() {
-    setRicalcolo('Ricalcolo in corso…')
+    if (ricalcolando) return
+    setRicalcolo('')
+    setRicalcolando(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const r = await fetch('/api/primeggio', { headers: { Authorization: `Bearer ${session?.access_token}` } })
@@ -177,12 +183,15 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
       // Se il database non ha ancora ipg_e_tane.sql, il server lo dice qui.
       const vecchio = j.scrittura && j.scrittura !== 'tutto o niente' ? ` Classifica scritta ${j.scrittura}.` : ''
       setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}${vecchio}`)
+      try { if (j.secondi > 0) localStorage.setItem(DURATA_IPG, String(j.secondi)) } catch { /* niente */ }
       dimenticaIpg()
       setPrimeggio([])
       setLetti(new Set())
       setGiroIpg((n) => n + 1)
     } catch (e) {
       setRicalcolo(`Non riuscito: ${e.message}`)
+    } finally {
+      setRicalcolando(false)
     }
   }
   // Un indice invece di una ricerca nell'elenco intero a ogni voce: la
@@ -706,7 +715,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
           vaiAlGiocatore={vaiAlGiocatore} vaiAlGioco={vaiAlGioco}
           classifica={classificaDi()} profilo={profilo}
           aggiornato={primeggio[0]?.aggiornato_il}
-          onRicalcola={profilo.organizzatore ? ricalcolaPrimeggio : null} ricalcolo={ricalcolo}
+          onRicalcola={profilo.organizzatore ? ricalcolaPrimeggio : null} ricalcolo={ricalcolo} ricalcolando={ricalcolando}
         />
       )}
     </div>
@@ -1350,7 +1359,13 @@ function SchedaLuogo({ d, istogramma, vaiAlGiocatore, vaiAlGioco, profilo, onMod
 
 /* ---------- Tutti ---------- */
 
-function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, classifica, profilo, aggiornato, onRicalcola, ricalcolo }) {
+// Quanto è durato l'ultimo ricalcolo dell'IPG (secondi): fa da stima per la barra.
+const DURATA_IPG = 'primo-giocatore:durata-ricalcolo-ipg'
+function stimaIpg() {
+  try { return Math.max(10, Number(localStorage.getItem(DURATA_IPG)) || 35) } catch { return 35 }
+}
+
+function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, classifica, profilo, aggiornato, onRicalcola, ricalcolo, ricalcolando }) {
   return (
     <>
       <div className="numeroni">
@@ -1387,11 +1402,13 @@ function SchedaGruppo({ d, partite, istogramma, vaiAlGiocatore, vaiAlGioco, clas
       ) : (
         <p className="aiuto">La classifica Primeggio non è ancora stata calcolata.</p>
       )}
-      {onRicalcola && (
+      {onRicalcola && (ricalcolando ? (
+        <Avanzamento fase="Ricalcolo l’IPG di tutti" stima={stimaIpg()} />
+      ) : (
         <p className="aiuto">
           <button className="bottone-piatto" onClick={onRicalcola}>Ricalcola ora</button> {ricalcolo}
         </p>
-      )}
+      ))}
 
       <h3 className="titolo-sezione">Vittorie rispetto all'atteso</h3>
       <ElencoCorto>

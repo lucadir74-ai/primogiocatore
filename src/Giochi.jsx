@@ -1,5 +1,5 @@
 // Primo Giocatore - schermata Giochi
-// v4.25.0 - 202611121200 (l'import della collezione BGG sta in collezioneBgg.js: lo usa anche la procedura in Dati e import)
+// v4.26.0 - 202611231400 (barra di avanzamento della collezione BGG)
 
 import ChiCeLha from './ChiCeLha.jsx'
 import { useEffect, useRef, useState } from 'react'
@@ -9,6 +9,7 @@ import Ludoteca from './Ludoteca.jsx'
 import DettaglioGioco from './DettaglioGioco.jsx'
 import { giochiMiei, assicuraGiocoBgg, assicuraGiochi } from './giochiMiei'
 import BarraScorrevole from './BarraScorrevole.jsx'
+import Avanzamento from './Avanzamento.jsx'
 import { importaCollezioneBgg, fraseCollezione } from './collezioneBgg'
 
 const TIPI_PUNTEGGIO = [
@@ -27,6 +28,7 @@ export default function Giochi({ profilo }) {
   const [errore, setErrore] = useState('')
   const [messaggio, setMessaggio] = useState('')
   const [importando, setImportando] = useState(false)
+  const [avanzamento, setAvanzamento] = useState(null)   // della collezione BGG
   const [manuale, setManuale] = useState(null) // null = chiuso
   const [vista, setVista] = useState('collezione')   // si apre sulla prima sottoscheda
   const [aperto, setAperto] = useState(null)          // il gioco di cui si guarda la scheda
@@ -127,10 +129,10 @@ export default function Giochi({ profilo }) {
       return
     }
     setErrore('')
-    setMessaggio('Chiedo la collezione a BGG. La prima volta può volerci qualche secondo.')
+    setMessaggio('')
     setImportando(true)
     try {
-      const esito = await importaCollezioneBgg({ utente: profilo.bgg_username, profiloId: profilo.id })
+      const esito = await importaCollezioneBgg({ utente: profilo.bgg_username, profiloId: profilo.id, avanzamento: setAvanzamento })
       setMessaggio(fraseCollezione(esito))
       caricaCatalogo()
       caricaMiei()
@@ -139,6 +141,7 @@ export default function Giochi({ profilo }) {
       setMessaggio('')
     } finally {
       setImportando(false)
+      setAvanzamento(null)
     }
   }
 
@@ -417,6 +420,7 @@ export default function Giochi({ profilo }) {
       <button className="bottone bottone-secondario" onClick={importaCollezione} disabled={importando}>
         {importando ? 'Aggiorno\u2026' : 'Importa o aggiorna la mia collezione BGG'}
       </button>
+      {importando && avanzamento && <Avanzamento {...avanzamento} />}
 
       {manuale === null ? (
         <p className="riga-fondo">
