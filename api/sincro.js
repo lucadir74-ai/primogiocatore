@@ -1,5 +1,5 @@
 // Primo Giocatore - sincronizzazione programmata con Board Game Arena
-// v1.3.1 - 202611022300 (BGA che non risponde come al solito: errore registrato, non sessione scaduta)
+// v1.4.0 - 202611231200 (corregge a poco a poco l'ora delle partite BGA già salvate)
 //
 // Gira sul server, chiamata da Supabase (pg_cron) ogni 10 minuti: così
 // le partite BGA entrano anche a telefono spento, su iPhone come su
@@ -36,7 +36,7 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PUBBLICA = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 const SEGRETO = process.env.SINCRO_SECRET
-const VERSIONE = 'server 1.3.1'
+const VERSIONE = 'server 1.4.0'
 
 const OGNI = 55 * 60000          // ogni iscritto al massimo una volta all'ora
 const NUOVO_ISCRITTO_FINO = 30000 // dopo 30 secondi non si comincia un altro iscritto
@@ -192,6 +192,25 @@ async function sincronizzaUno(db, utenteId, precedente, partenza) {
   return { nuove }
 }
 
+// Correzione dell'ora delle partite BGA già salvate (supabase/orari_bga.sql):
+// un pezzo di storico per giro, poi si riprende dalla pagina segnata.
+const ORARI_FINO = 25000   // dopo 25 secondi non si comincia
+async function correggiOrari(db, utenteId, pagina) {
+  const r = await leggi(db, utenteId, { fino: 0, da: pagina || 1 })
+  if (r.errore || r.scaduta || r.collegato === false) return 0
+  const orari = (r.tavoli || []).filter((t) => t.t && t.e)
+    .map((t) => ({ t: Number(t.t), e: new Date(t.e * 1000).toISOString() }))
+  let corrette = 0
+  if (orari.length) {
+    const { data, error } = await db.rpc('correggi_orari_bga', { p_utente: utenteId, p_orari: orari })
+    if (error) throw error
+    corrette = data || 0
+  }
+  await db.from('bga_esiti').update(r.continua ? { orari_pagina: r.continua } : { orari_fatti: true })
+    .eq('utente_id', utenteId)
+  return corrette
+}
+
 export default async function handler(req, res) {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '')
   if (!SEGRETO || token !== SEGRETO) return res.status(401).json({ errore: 'Non autorizzato' })
@@ -236,6 +255,25 @@ export default async function handler(req, res) {
       await db.from('bga_esiti').upsert({ utente_id: id, quando: new Date().toISOString(), versione: VERSIONE,
         dal_server: true, in_corso: false, errore: msg }, { onConflict: 'utente_id' })
       if (erroriDiFila >= MAX_ERRORI_DI_FILA) { riepilogo.fermato = 'troppi errori di fila'; break }
+    }
+  }
+  // Col tempo che resta, la correzione degli orari. Senza lo script SQL
+  // la lettura dà errore e non si fa niente.
+  if (!riepilogo.fermato && Date.now() - partenza < ORARI_FINO) {
+    const valide = new Set((sessioni || []).filter((s) => s.ultimo_errore !== 'scaduta').map((s) => s.utente_id))
+    const { data: daCorreggere, error: eo } = await db.from('bga_esiti')
+      .select('utente_id, orari_pagina').eq('orari_fatti', false).limit(50)
+    if (!eo) {
+      for (const x of daCorreggere || []) {
+        if (Date.now() - partenza > ORARI_FINO) break
+        if (!valide.has(x.utente_id)) continue
+        try {
+          riepilogo.orari = (riepilogo.orari || 0) + await correggiOrari(db, x.utente_id, x.orari_pagina)
+        } catch (err) {
+          console.log(`[sincro] orari ${x.utente_id.slice(0, 8)}: ${String(err?.message || err).slice(0, 160)}`)
+          break
+        }
+      }
     }
   }
   console.log(`[sincro] ${riepilogo.fatti}/${riepilogo.iscritti} iscritti, ${riepilogo.nuove} partite nuove, ${riepilogo.errori} errori${riepilogo.fermato ? ', fermato' : ''} in ${Date.now() - partenza}ms`)

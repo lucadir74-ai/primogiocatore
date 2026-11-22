@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.46.0',
+    data: '2026-11-23',
+    voci: [
+      'BGA: l’ora delle partite importate dall’app era un’ora avanti (due d’estate). Ora è giusta, e quelle già salvate si correggono da sole nei prossimi giorni',
+    ],
+  },
+  {
     versione: '4.45.1',
     data: '2026-11-23',
     voci: [
