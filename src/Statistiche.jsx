@@ -174,7 +174,9 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
       const pesi = j.pesi_mancanti > 0
         ? ` Pesi BGG ancora da recuperare: ${j.pesi_mancanti} giochi (ripeti il ricalcolo o aspetta la notte).`
         : ''
-      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}`)
+      // Se il database non ha ancora ipg_e_tane.sql, il server lo dice qui.
+      const vecchio = j.scrittura && j.scrittura !== 'tutto o niente' ? ` Classifica scritta ${j.scrittura}.` : ''
+      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}${vecchio}`)
       dimenticaIpg()
       setPrimeggio([])
       setLetti(new Set())

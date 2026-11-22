@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.4.0 - 202611182200 (chi partecipa solo agli eventi non compare nella classifica della Tana)
+// v1.5.0 - 202611222200 (la tabella ipg si sostituisce tutta insieme: un ricalcolo interrotto non lascia classifiche a metà)
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -30,6 +30,7 @@
 //   degli organizzatori ricalcola sempre.
 
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 import { calcolaPrimeggio } from '../src/primeggioCalcolo.js'
 import { leggiPesiBgg } from '../src/pesoBgg.js'
 import { decodificaBlocco, idGiochi, aggiungiGiochi } from '../src/primeggioDati.js'
@@ -221,6 +222,41 @@ async function completaPesi(db, partite, scadenza) {
   return { recuperati: pesi.size, mancanti: senza.size - pesi.size }
 }
 
+// La tabella ipg si sostituisce tutta insieme (supabase/ipg_e_tane.sql):
+// le righe nuove vanno prima in ipg_nuova con un numero di lotto, poi
+// pubblica_ipg le mette al posto di quelle vecchie in un'unica operazione.
+// Prima si cancellava e si riscriveva a blocchi: un ricalcolo interrotto a
+// metà lasciava le classifiche vuote o a pezzi, anche per giorni.
+// Se lo script non c'è ancora (tabella o funzione mancanti), si fa come prima.
+const mancaScript = (e) => ['42P01', 'PGRST205', '42883', 'PGRST202'].includes(e?.code)
+
+async function scriviIpg(db, righe) {
+  const lotto = randomUUID()
+  try {
+    // Gli avanzi di un ricalcolo interrotto, più vecchi di un'ora.
+    const { error: e0 } = await db.from('ipg_nuova').delete()
+      .lt('messo_il', new Date(Date.now() - 3600000).toISOString())
+    if (e0) throw e0
+    for (let i = 0; i < righe.length; i += 500) {
+      const { error } = await db.from('ipg_nuova').insert(righe.slice(i, i + 500).map((r) => ({ ...r, lotto })))
+      if (error) throw error
+    }
+    const { error } = await db.rpc('pubblica_ipg', { p_lotto: lotto })
+    if (error) throw error
+    return 'tutto o niente'
+  } catch (e) {
+    if (!mancaScript(e)) throw e   // la classifica di prima resta intera
+    await db.from('ipg_nuova').delete().eq('lotto', lotto).then(() => {}, () => {})
+    const { error: e1 } = await db.from('ipg').delete().gte('partite', 0)
+    if (e1) throw e1
+    for (let i = 0; i < righe.length; i += 500) {
+      const { error } = await db.from('ipg').insert(righe.slice(i, i + 500))
+      if (error) throw error
+    }
+    return 'come prima (manca ipg_e_tane.sql)'
+  }
+}
+
 // Il calcolo vero e proprio, senza la parte web: lo usa anche la prova
 // in locale. Restituisce il riepilogo e le righe scritte.
 export async function ricalcola(db) {
@@ -259,17 +295,14 @@ export async function ricalcola(db) {
     r.gioco_immagine = g?.immagine_url || null
   }
 
-  // Si riscrive tutto: prima si cancella, poi si inserisce a blocchi.
-  const { error: e1 } = await db.from('ipg').delete().gte('partite', 0)
-  if (e1) throw e1
-  for (let i = 0; i < righe.length; i += 500) {
-    const { error } = await db.from('ipg').insert(righe.slice(i, i + 500).map((r) => ({ ...r, aggiornato_il: ora })))
-    if (error) throw error
-  }
+  // Una classifica vuota non sostituisce quella che c'è.
+  if (!righe.length) throw new Error('Nessuna riga calcolata: la classifica resta com’era.')
+  const scrittura = await scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora })))
 
   return {
     partite: partite.length,
     righe: righe.length,
+    scrittura,
     pesi_recuperati: pesi.recuperati,
     pesi_mancanti: pesi.mancanti,
     lettura: compatta ? 'compatta' : 'come prima',

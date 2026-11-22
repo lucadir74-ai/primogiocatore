@@ -16,6 +16,15 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.43.3',
+    data: '2026-11-22',
+    voci: [
+      'Classifiche: il ricalcolo notturno sostituisce la classifica solo quando quella nuova è completa (prima, se si interrompeva a metà, le classifiche restavano vuote o a pezzi)',
+      'Soci: ogni organizzatore decide solo gli account della propria Tana (o senza Tana), in vista di Pescara',
+      'Sito più protetto: non si può mostrare l’app dentro pagine di altri siti',
+    ],
+  },
+  {
     versione: '4.43.2',
     data: '2026-11-22',
     voci: [
