@@ -16,11 +16,11 @@ import { luoghiPerChiGuarda } from './luoghiNome'
 
 const CAMPI = `
   id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, registrata_da,
-  chiave_esterna, bga_tavolo,
+  chiave_esterna, bga_tavolo, a_squadre,
   giochi ( id, nome, immagine_url ),
   luoghi ( id, nome, tipo ),
   partecipazioni (
-    id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio, ruolo, ordine_turno,
+    id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, spareggio, ruolo, ordine_turno, squadra,
     profili:utente_id ( nome, nickname, colore ),
     ospiti:ospite_id ( nome, cognome, utente_collegato )
   )
@@ -52,7 +52,7 @@ const ascoltatori = new Set()
    'tutti' = per tutti, 'spento' = mai (si legge tutto ogni volta). */
 export const ARCHIVIO_LOCALE = 'tutti'
 const CHIAVE_PROVA = 'primo-giocatore:archivio-locale'
-const VERSIONE_CACHE = 3   // 3: ospiti con il cognome; 2: luoghi con proprietario e nome per gli altri
+const VERSIONE_CACHE = 4   // 4: partite a squadre (partite_a_squadre.sql); 3: ospiti con il cognome; 2: luoghi con proprietario e nome per gli altri
 const RILETTURA_COMPLETA = 7 * 86400000   // una settimana
 const MARGINE = 5 * 60000                 // si richiedono anche gli ultimi 5 minuti già letti
 

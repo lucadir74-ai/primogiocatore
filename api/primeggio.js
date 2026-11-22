@@ -71,7 +71,7 @@ export async function partiteComePrima(db) {
   for (let da = 0; ; da += PAGINA) {
     const { data, error } = await db.from('partite')
       .select(`
-        id, giocata_il, registrata_da, tipo_punteggio,
+        id, giocata_il, registrata_da, tipo_punteggio, a_squadre,
         giochi ( id, bgg_id, peso_bgg, nome, immagine_url ),
         partecipazioni ( utente_id, ospite_id, punteggio_totale, posizione, vincitore,
                          ospiti:ospite_id ( utente_collegato ) )

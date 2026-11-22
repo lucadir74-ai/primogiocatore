@@ -906,6 +906,50 @@ body {
   color: var(--inchiostro-tenue);
 }
 
+/* ---------- Squadre ---------- */
+/* Il tasto «Sq. 1» accanto al giocatore: un colore per squadra, sempre
+   con il numero scritto (il colore da solo non basta a distinguerle). */
+.tasto-squadra {
+  --sq: var(--inchiostro-tenue);
+  flex: none;
+  min-width: 3.4rem;
+  min-height: 2.2rem;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid var(--sq);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button.tasto-squadra { cursor: pointer; }
+.squadra-1 { --sq: var(--blu); }
+.squadra-2 { --sq: var(--verde); }
+.squadra-3 { --sq: var(--giallo); }
+.squadra-4 { --sq: var(--viola); }
+.squadra-5 { --sq: var(--rosso); }
+.squadra-6 { --sq: var(--bordo-forte); }
+/* Riga della squadra: sopra numero, punti e «ha vinto»; sotto i nomi,
+   che su un telefono non ci starebbero accanto. */
+.blocco-squadre .elenco-squadre li { flex-wrap: wrap; row-gap: 0.35rem; }
+.blocco-squadre .elenco-squadre .mini { flex: none; width: 5.6rem; margin-left: auto; }
+.blocco-squadre .elenco-squadre .nome-giocatore {
+  order: 10;
+  flex: 1 0 100%;
+  padding-left: 0.2rem;
+  font-size: 0.9rem;
+  color: var(--inchiostro-tenue);
+}
+/* Storico e Statistiche: la testata di ogni squadra sopra i suoi giocatori. */
+.riga-squadra { font-size: 0.85rem; color: var(--inchiostro-tenue); }
+.riga-squadra .tasto-squadra { min-height: 1.8rem; min-width: 3rem; }
+.riga-squadra.vincitore { color: var(--inchiostro); }
+
 .campo-fazione {
   display: block;
   width: 100%;

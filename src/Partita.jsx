@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.30.0 - 202611211000 (appena registrata, la partita si rifà con gli stessi giocatori)
+// v4.42.0 - 202611221200 (partite a squadre: spunta «a squadre», un punteggio per squadra)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -16,6 +16,7 @@ import { LUOGO_TANA } from './luoghiNome'
 import { elenchiSalvati, leggiElenchiPartita } from './elenchiPartita'
 import { salvaOAccoda, collezioneConModifiche } from './modifiche'
 import { eventiVisibili, mieiEventi, statoEvento } from './evento'
+import { eASquadre, squadreDi } from './squadre'
 
 const LIMITE_NOMI = 12
 
@@ -78,6 +79,11 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   // Oppure punti a testa, accanto a ogni nome: per le cooperative dove
   // ognuno ha il suo punteggio (e per quelle importate così).
   const [puntiATesta, setPuntiATesta] = useState(false)
+  // A squadre (Codenames, Tichu...): ogni giocatore ha una squadra (righe[].squadra,
+  // «1», «2»...) e il punteggio è uno per squadra (punteggiSquadre, per numero).
+  // Esclude la cooperativa, che è già una squadra sola.
+  const [aSquadre, setASquadre] = useState(false)
+  const [punteggiSquadre, setPunteggiSquadre] = useState({})
   const [quando, setQuando] = useState(perCampo(new Date()))
   const [minuti, setMinuti] = useState('')
   const [vincitoreScelto, setVincitoreScelto] = useState(null)
@@ -125,6 +131,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (typeof b.coop === 'boolean') setCoopScelta(b.coop)
     if (b.punteggioSquadra) setPunteggioSquadra(b.punteggioSquadra)
     if (b.puntiATesta) setPuntiATesta(true)
+    if (b.aSquadre) setASquadre(true)
+    if (b.punteggiSquadre) setPunteggiSquadre(b.punteggiSquadre)
     if (b.vincitoreScelto) setVincitoreScelto(b.vincitoreScelto)
     setAccumulati(b.accumulati || 0)
     setAvviatoIl(b.avviatoIl || null)
@@ -139,9 +147,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     if (!gioco && righe.length === 0 && !accumulati && !avviatoIl) { cancellaBozza(); return }
     scriviBozza({
       gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto,
-      coop: coopScelta, punteggioSquadra, puntiATesta, accumulati, avviatoIl,
+      coop: coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, accumulati, avviatoIl,
     })
-  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, puntiATesta, accumulati, avviatoIl, modifica])
+  }, [gioco, righe, luogo, note, quando, minuti, esitoCoop, vincitoreScelto, coopScelta, punteggioSquadra, puntiATesta, aSquadre, punteggiSquadre, accumulati, avviatoIl, modifica])
 
   useEffect(() => {
     function aggiorna() {
@@ -233,10 +241,10 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     const { data, error } = await supabase
       .from('partite')
       .select(`
-        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, evento_id,
+        id, giocata_il, durata_minuti, note, tipo_punteggio, esito_coop, evento_id, a_squadre,
         giochi ( * ), luoghi ( nome ),
         partecipazioni (
-          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno,
+          id, utente_id, ospite_id, punteggio_totale, posizione, vincitore, ruolo, spareggio, ordine_turno, squadra,
           profili:utente_id ( nome, cognome, nickname ), ospiti:ospite_id ( nome, cognome ),
           dettagli_punteggio ( categoria, valore )
         )
@@ -262,6 +270,22 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
       .map((p) => p.punteggio_totale).filter((v) => v != null).map(Number))]
     setPunteggioSquadra(coop && punteggi.length === 1 ? String(punteggi[0]) : '')
     setPuntiATesta(coop && punteggi.length > 1)
+    // A squadre: il punteggio (o il piazzamento) di ogni squadra è quello
+    // dei suoi giocatori. Più squadre vincitrici = vittoria condivisa; una
+    // sola si ricorda come scelta, per quando mancano i punti o sono pari.
+    const parti = data.partecipazioni || []
+    const sq = !coop && eASquadre(data)
+    setASquadre(sq)
+    if (sq) {
+      const perSquadra = {}
+      for (const s of squadreDi(data)) {
+        const v = data.tipo_punteggio === 'posizione' ? s.posizione : s.punteggio
+        perSquadra[s.squadra] = v == null ? '' : String(v)
+      }
+      setPunteggiSquadre(perSquadra)
+      const vincenti = [...new Set(parti.filter((p) => p.vincitore).map((p) => String(p.squadra)))]
+      setVincitoreScelto(vincenti.length > 1 ? 'condivisa' : vincenti.length ? `s:${vincenti[0]}` : null)
+    }
     setRighe(
       (data.partecipazioni || []).map((p) => ({
         chiave: p.utente_id ? `u-${p.utente_id}` : `o-${p.ospite_id}`,
@@ -273,6 +297,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         spareggio: p.spareggio == null ? '' : String(p.spareggio),
         ruolo: p.ruolo || '',
         ordine: p.ordine_turno ?? null,
+        squadra: p.squadra == null ? '' : String(p.squadra),
         parziali: (p.dettagli_punteggio || []).length
           ? Object.fromEntries(p.dettagli_punteggio.map((d) => [d.categoria, Number(d.valore)]))
           : null,
@@ -666,28 +691,124 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     })
   }
 
-  const ordinata = classifica()
+  // A squadre: la classifica è fra le squadre, con un punteggio (o un
+  // piazzamento) ciascuna. Se nessuna ha punti si sceglie a mano chi ha
+  // vinto; a pari punti in testa, «ha vinto» o vittoria condivisa, come
+  // per i giocatori. vincitoreScelto vale «s:<numero>» per una squadra.
+  const squadreAttive = aSquadre && tipo !== 'coop'
+  const squadreUsate = [...new Set(righe.map((r) => r.squadra).filter(Boolean))]
+    .sort((a, b) => Number(a) - Number(b))
+  function classificaSquadre() {
+    const perPos = tipo === 'posizione'
+    const ss = squadreUsate.map((n) => {
+      const v = punteggiSquadre[n]
+      return { n, valore: v === '' || v == null ? null : Number(v), giocatori: righe.filter((r) => r.squadra === n) }
+    })
+    const scelta = (s) => vincitoreScelto === `s:${s.n}`
+    if (ss.every((s) => s.valore == null)) {
+      const qualcuna = ss.some(scelta)
+      return ss.map((s) => ({ ...s, pos: qualcuna ? (scelta(s) ? 1 : 2) : null }))
+    }
+    const vuoto = perPos ? Infinity : -Infinity
+    const confronta = (a, b) => {
+      const va = a.valore ?? vuoto, vb = b.valore ?? vuoto
+      if (va !== vb) return perPos ? va - vb : vb - va
+      if (vincitoreScelto === 'condivisa') return 0
+      if (scelta(a)) return -1
+      if (scelta(b)) return 1
+      return 0
+    }
+    const ordinate = [...ss].sort(confronta)
+    let ultimaPos = 0
+    return ordinate.map((s, i) => {
+      if (s.valore == null) return { ...s, pos: null }
+      if (i > 0 && confronta(ordinate[i - 1], s) === 0) return { ...s, pos: ultimaPos }
+      ultimaPos = i + 1
+      return { ...s, pos: ultimaPos }
+    })
+  }
+  const squadreInOrdine = squadreAttive ? classificaSquadre() : []
+  const squadraMigliore = squadreInOrdine.find((s) => s.valore != null)
+  const squadreContendenti = squadraMigliore
+    ? squadreInOrdine.filter((s) => s.valore === squadraMigliore.valore)
+    : []
+  const pareggioSquadre = squadreContendenti.length > 1
+  const senzaPuntiSquadre = squadreAttive && squadreInOrdine.length > 0 && !squadraMigliore
+  const mostraSceltaSquadra = (s) => senzaPuntiSquadre
+    || (pareggioSquadre && squadreContendenti.some((c) => c.n === s.n))
+
+  const ordinata = squadreAttive
+    ? squadreInOrdine.flatMap((s) => s.giocatori.map((r) => ({ ...r, pos: s.pos })))
+      .concat(righe.filter((r) => !r.squadra).map((r) => ({ ...r, pos: null })))
+    : classifica()
 
   // Chi è a pari punteggio col migliore: sono loro a doversi spareggiare.
   const migliore = ordinata.find((r) => r.pos != null)
-  const contendenti = migliore
+  const contendenti = squadreAttive ? [] : migliore
     ? ordinata.filter((r) => r.punteggio !== '' && r.punteggio === migliore.punteggio)
     : []
-  const pareggio = contendenti.length > 1 && tipo !== 'coop'
-  const mostraScelta = (r) => pareggio && contendenti.some((c) => c.chiave === r.chiave)
+  const pareggio = squadreAttive ? pareggioSquadre : contendenti.length > 1 && tipo !== 'coop'
+  const mostraScelta = (r) => !squadreAttive && pareggio && contendenti.some((c) => c.chiave === r.chiave)
 
   const inTesta = ordinata.filter((r) => r.pos === 1)
   const condivisa = vincitoreScelto === 'condivisa'
-  const vincitori = condivisa
-    ? contendenti.map((r) => r.chiave)
-    : pareggio && !vincitoreScelto
-      ? []
-      : inTesta.map((r) => r.chiave)
+  const squadreVincenti = !squadreAttive ? []
+    : condivisa && pareggioSquadre ? squadreContendenti.map((s) => s.n)
+    : pareggioSquadre && !vincitoreScelto ? []
+    : squadreInOrdine.filter((s) => s.pos === 1).map((s) => s.n)
+  const vincitori = squadreAttive
+    ? righe.filter((r) => squadreVincenti.includes(r.squadra)).map((r) => r.chiave)
+    : condivisa
+      ? contendenti.map((r) => r.chiave)
+      : pareggio && !vincitoreScelto
+        ? []
+        : inTesta.map((r) => r.chiave)
+
+  // Accende o spegne le squadre. Chi non ne ha una viene messo a turno
+  // nella 1 e nella 2 (come ci si siede a Tichu); poi si cambia con un tocco.
+  function cambiaASquadre(si) {
+    setASquadre(si)
+    setVincitoreScelto(null)
+    if (!si) return
+    if (cooperativa) setCoopScelta(false)
+    setRighe((rs) => rs.map((r, i) => (r.squadra ? r : { ...r, squadra: String((i % 2) + 1) })))
+  }
+
+  // Un tocco porta il giocatore nella squadra dopo; dopo l'ultima degli
+  // altri c'è una squadra nuova (se ci sono abbastanza giocatori), poi
+  // si torna alla 1.
+  function cambiaSquadra(chiave) {
+    setRighe((rs) => {
+      const altri = rs.filter((r) => r.chiave !== chiave).map((r) => Number(r.squadra) || 0)
+      const ultima = Math.max(2, Math.min(rs.length, Math.max(0, ...altri) + 1))
+      return rs.map((r) => {
+        if (r.chiave !== chiave) return r
+        const n = Number(r.squadra) || 0
+        return { ...r, squadra: String(n >= ultima ? 1 : n + 1) }
+      })
+    })
+  }
+
+  // Chi si aggiunge a una partita a squadre va nella squadra più corta.
+  useEffect(() => {
+    if (!squadreAttive || !righe.some((r) => !r.squadra)) return
+    setRighe((rs) => {
+      const conta = new Map([['1', 0], ['2', 0]])
+      for (const r of rs) if (r.squadra) conta.set(r.squadra, (conta.get(r.squadra) || 0) + 1)
+      return rs.map((r) => {
+        if (r.squadra) return r
+        const [n] = [...conta.entries()].sort((a, b) => a[1] - b[1] || Number(a[0]) - Number(b[0]))[0]
+        conta.set(n, conta.get(n) + 1)
+        return { ...r, squadra: n }
+      })
+    })
+  }, [squadreAttive, righe])
 
   function azzera() {
     setGioco(null); setRighe([]); setNote(''); setLuogo(eventoScelto?.luogo_nome || luogoIniziale)
     setMinuti(''); setQuando(perCampo(new Date())); setVincitoreScelto(null)
     setCoopScelta(null); setPunteggioSquadra(''); setPuntiATesta(false)
+    setASquadre(false); setPunteggiSquadre({})
     setRivincita(null)
     setSegnapuntiAperto(false)
     setRipresa(false)
@@ -696,20 +817,22 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     cancellaBozza()
   }
 
-  // Stesso gioco, stessi giocatori, stesso luogo e stesso evento; punti,
-  // fazioni e ordine di turno da capo (i giocatori nell'ordine di turno
-  // di quella partita, se era segnato).
+  // Stesso gioco, stessi giocatori, stesso luogo e stesso evento, e le
+  // stesse squadre; punti, fazioni e ordine di turno da capo (i giocatori
+  // nell'ordine di turno di quella partita, se era segnato).
   function fotoRivincita() {
     return {
       gioco,
       luogo,
       coop: tipo === 'coop',
+      aSquadre: squadreAttive,
       eventoId: evento ? evento.id : eventoId,
       righe: [...righe]
         .sort((a, b) => (a.ordine ?? 99) - (b.ordine ?? 99))
         .map((r) => ({
           chiave: r.chiave, utente_id: r.utente_id, ospite_id: r.ospite_id, nome: r.nome,
           punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
+          squadra: squadreAttive ? r.squadra || '' : '',
         })),
     }
   }
@@ -724,6 +847,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     setRighe(r.righe)
     setLuogo(r.luogo)
     setCoopScelta(r.coop)
+    setASquadre(Boolean(r.aSquadre))
+    setPunteggiSquadre({})
     if (!evento) setEventoId(r.eventoId)
     setRipresa('rifatta')
     setRivincita(null)
@@ -737,9 +862,25 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     // Pari in testa: prima si decide chi ha vinto (o la vittoria condivisa),
     // altrimenti la partita resterebbe senza vincitore.
     if (pareggio && !vincitoreScelto) {
-      setErrore('Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso, oppure «Vittoria condivisa», poi registra.')
+      setErrore(squadreAttive
+        ? 'Squadre pari in testa: tocca «ha vinto» accanto alla squadra che ha prevalso, oppure «Vittoria condivisa», poi registra.'
+        : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso, oppure «Vittoria condivisa», poi registra.')
       return
     }
+    if (squadreAttive && squadreUsate.length < 2) {
+      setErrore('A squadre servono almeno due squadre: tocca la squadra accanto a un giocatore per cambiarla.')
+      return
+    }
+    if (squadreAttive && squadreVincenti.length === 0) {
+      setErrore(tipo === 'posizione'
+        ? 'Scrivi il piazzamento delle squadre, oppure tocca «ha vinto» accanto alla squadra vincitrice.'
+        : 'Scrivi i punti delle squadre, oppure tocca «ha vinto» accanto alla squadra vincitrice.')
+      return
+    }
+
+    // Le squadre si salvano numerate da 1 senza buchi, nell'ordine di adesso.
+    const numeroSquadra = new Map(squadreUsate.map((n, i) => [n, String(i + 1)]))
+    const posSquadra = new Map(squadreInOrdine.map((s) => [s.n, s]))
 
     setSalvando(true)
     try {
@@ -758,22 +899,30 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
         tipo_punteggio: tipo,
         esito_coop: tipo === 'coop' ? esitoCoop : null,
         note: note.trim() || null,
-        giocatori: ordinata.map((r) => ({
-          utente_id: r.utente_id || null,
-          ospite_id: r.ospite_id || null,
-          ruolo: gioco.usa_fazioni ? (r.ruolo?.trim() || null) : null,
-          // Nelle cooperative il punteggio di squadra vale per tutti (vuoto:
-          // nessun punteggio); con i punti a testa ognuno ha il suo.
-          punteggio_totale: tipo === 'coop' && !puntiATesta
-            ? (punteggioSquadra === '' ? null : Number(punteggioSquadra))
-            : r.punteggio === '' ? null : Number(r.punteggio),
-          spareggio: r.spareggio === '' ? null : Number(r.spareggio),
-          posizione: tipo === 'coop' ? null : r.pos,
-          vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
-          ordine_turno: r.ordine ?? null,
-          primo_giocatore: r.ordine === 1,
-          parziali: tipo === 'punti' || tipo === 'categorie' ? (r.parziali || null) : null,
-        })),
+        a_squadre: squadreAttive,
+        giocatori: ordinata.map((r) => {
+          // A squadre: punteggio, piazzamento e vittoria sono della squadra.
+          const s = squadreAttive ? posSquadra.get(r.squadra) : null
+          return {
+            utente_id: r.utente_id || null,
+            ospite_id: r.ospite_id || null,
+            ruolo: gioco.usa_fazioni ? (r.ruolo?.trim() || null) : null,
+            // Nelle cooperative il punteggio di squadra vale per tutti (vuoto:
+            // nessun punteggio); con i punti a testa ognuno ha il suo.
+            punteggio_totale: squadreAttive
+              ? (tipo === 'posizione' ? null : s?.valore ?? null)
+              : tipo === 'coop' && !puntiATesta
+                ? (punteggioSquadra === '' ? null : Number(punteggioSquadra))
+                : r.punteggio === '' ? null : Number(r.punteggio),
+            spareggio: squadreAttive || r.spareggio === '' || r.spareggio == null ? null : Number(r.spareggio),
+            posizione: tipo === 'coop' ? null : r.pos,
+            vincitore: tipo === 'coop' ? esitoCoop === 'vinta' : vincitori.includes(r.chiave),
+            ordine_turno: r.ordine ?? null,
+            primo_giocatore: r.ordine === 1,
+            squadra: squadreAttive ? numeroSquadra.get(r.squadra) || null : null,
+            parziali: !squadreAttive && (tipo === 'punti' || tipo === 'categorie') ? (r.parziali || null) : null,
+          }
+        }),
       }
 
       // Una partita nuova che sembra già esserci (arrivata da BGA o BGG, o
@@ -803,7 +952,8 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           setMessaggio('Partita aggiornata.')
           finitaModifica?.()
         } else {
-          const conPunti = tipo !== 'coop' && tipo !== 'posizione'
+          // A squadre i record personali non dicono niente: punti di tutti.
+          const conPunti = tipo !== 'coop' && tipo !== 'posizione' && !squadreAttive
             && dati.giocatori.some((g) => g.punteggio_totale != null)
           setUltimaPartita(ordinata.map((r) => r.chiave))
           const foto = fotoRivincita()
@@ -1031,9 +1181,20 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                 <input
                   type="checkbox"
                   checked={cooperativa}
-                  onChange={(e) => setCoopScelta(e.target.checked)}
+                  onChange={(e) => {
+                    setCoopScelta(e.target.checked)
+                    if (e.target.checked) setASquadre(false)
+                  }}
                 />
                 partita cooperativa
+              </label>
+              <label className="spunta-fazioni">
+                <input
+                  type="checkbox"
+                  checked={squadreAttive}
+                  onChange={(e) => cambiaASquadre(e.target.checked)}
+                />
+                a squadre
               </label>
               {cooperativa !== giocoCoop && possoImpostare(gioco) && (
                 <p className="aiuto">
@@ -1160,7 +1321,9 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           {righe.length === 0 && <p className="aiuto">Nessun giocatore.</p>}
 
           <ul className="elenco elenco-giocatori">
-            {ordinata.map((r) => {
+            {/* A squadre l'elenco resta nell'ordine in cui si sono aggiunti:
+                cambiando squadra con un tocco nessuno salta di posto. */}
+            {(squadreAttive ? righe.map((r) => ordinata.find((o) => o.chiave === r.chiave) || r) : ordinata).map((r) => {
               const vince = vincitori.includes(r.chiave)
               return (
                 <li key={r.chiave} className={vince ? 'vincitore' : ''}>
@@ -1250,7 +1413,15 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
                     )}
                   </div>
 
-                  {(tipo !== 'coop' || puntiATesta) && (
+                  {squadreAttive ? (
+                    <button
+                      className={`tasto-squadra squadra-${((Number(r.squadra) || 1) - 1) % 6 + 1}`}
+                      onClick={() => cambiaSquadra(r.chiave)}
+                      aria-label={`${r.nome} è nella squadra ${r.squadra || '—'}: tocca per cambiarla`}
+                    >
+                      Sq. {r.squadra || '–'}
+                    </button>
+                  ) : (tipo !== 'coop' || puntiATesta) && (
                     <input
                       className="mini" type="number" inputMode="numeric"
                       aria-label={`Punteggio di ${r.nome}`}
@@ -1280,7 +1451,51 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
             })}
           </ul>
 
-          {(tipo === 'punti' || tipo === 'categorie') && righe.length > 0 && (
+          {squadreAttive && righe.length > 0 && (
+            <div className="campo blocco-squadre">
+              <label>{tipo === 'posizione' ? 'Piazzamento delle squadre' : 'Punti delle squadre'}</label>
+              <p className="aiuto">
+                Tocca «Sq.» accanto a un giocatore per cambiargli squadra.
+                {tipo !== 'posizione' && ' Se il gioco non ha punti, tocca «ha vinto» accanto alla squadra vincitrice.'}
+              </p>
+              <ul className="elenco elenco-giocatori elenco-squadre">
+                {squadreUsate.map((n) => {
+                  const s = squadreInOrdine.find((x) => x.n === n)
+                  const vince = squadreVincenti.includes(n)
+                  return (
+                    <li key={n} className={vince ? 'vincitore' : ''}>
+                      <span className="posto" aria-hidden="true">{s?.pos ? `${s.pos}°` : '–'}</span>
+                      <span className={`tasto-squadra squadra-${((Number(n) || 1) - 1) % 6 + 1}`} aria-hidden="true">Sq. {n}</span>
+                      <div className="nome-giocatore">
+                        <span>{s?.giocatori.map((r) => r.nome).join(', ')}</span>
+                        {vince && <span className="etichetta-vince">vince</span>}
+                      </div>
+                      <input
+                        className="mini" type="number" inputMode="numeric"
+                        aria-label={`${tipo === 'posizione' ? 'Piazzamento' : 'Punti'} della squadra ${n}`}
+                        placeholder={tipo === 'posizione' ? 'pos.' : 'punti'}
+                        value={punteggiSquadre[n] ?? ''}
+                        onChange={(e) => setPunteggiSquadre((p) => ({ ...p, [n]: e.target.value }))}
+                      />
+                      {s && mostraSceltaSquadra(s) && !condivisa && (
+                        <button
+                          className={`bottone-piatto scegli-vincitore${vincitoreScelto === `s:${n}` ? ' scelto' : ''}`}
+                          onClick={() => setVincitoreScelto(vincitoreScelto === `s:${n}` ? null : `s:${n}`)}
+                        >
+                          {vincitoreScelto === `s:${n}` ? 'ha vinto ✓' : 'ha vinto'}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+              {squadreUsate.length < 2 && (
+                <p className="aiuto">Serve almeno un&rsquo;altra squadra: tocca «Sq.» accanto a un giocatore.</p>
+              )}
+            </div>
+          )}
+
+          {!squadreAttive && (tipo === 'punti' || tipo === 'categorie') && righe.length > 0 && (
             <button className="bottone bottone-secondario apri-segnapunti" onClick={() => setSegnapuntiAperto(true)}>
               {righe.some((r) => r.parziali) ? 'Riapri il segnapunti' : 'Segnapunti con i parziali'}
               {Array.isArray(gioco.categorie_punteggio) && gioco.categorie_punteggio.length > 0 && (
@@ -1304,9 +1519,13 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           {pareggio && (
             <div className="blocco-pareggio">
               <p className="aiuto avviso-pareggio">
-                {condivisa
-                  ? `Vittoria condivisa fra ${contendenti.length} giocatori.`
-                  : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso secondo lo spareggio del gioco, oppure dichiara la vittoria condivisa.'}
+                {squadreAttive
+                  ? condivisa
+                    ? `Vittoria condivisa fra ${squadreContendenti.length} squadre.`
+                    : 'Squadre pari in testa: tocca «ha vinto» accanto alla squadra che ha prevalso, oppure dichiara la vittoria condivisa.'
+                  : condivisa
+                    ? `Vittoria condivisa fra ${contendenti.length} giocatori.`
+                    : 'Pareggio in testa: tocca «ha vinto» accanto a chi ha prevalso secondo lo spareggio del gioco, oppure dichiara la vittoria condivisa.'}
               </p>
               <button
                 className={`bottone bottone-secondario${condivisa ? ' attivo' : ''}`}

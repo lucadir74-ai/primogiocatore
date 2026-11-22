@@ -89,6 +89,8 @@ export async function scriviPartita(supabase, profilo, dati) {
     // Solo se l'app lo manda: le partite rimaste in coda da prima non
     // toccano l'evento di quelle già salvate.
     ...(dati.evento_id !== undefined ? { evento_id: dati.evento_id } : {}),
+    // Lo stesso per le squadre (partite_a_squadre.sql).
+    ...(dati.a_squadre !== undefined ? { a_squadre: dati.a_squadre } : {}),
     impronta: impronta({
       giocoId: dati.gioco_id,
       giocataIl: dati.giocata_il,

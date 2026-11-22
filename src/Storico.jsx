@@ -1,9 +1,10 @@
 // Primo Giocatore - Storico
-// v4.3.0 - 202611211000 (ogni partita si può rifare con gli stessi giocatori)
+// v4.4.0 - 202611221200 (partite a squadre: giocatori sotto la loro squadra, punteggio una volta)
 
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { eASquadre, squadreDi, compagni, nomeSquadra } from './squadre'
 import { supabase, nomeOspite, COLORI, daMostrare } from './supabase'
 import { useNomiIscritti, nomeIntero, NomeVero } from './nomiIscritti'
 import { archivioInMemoria, leggiArchivio, seguiArchivio, togliDallArchivio, daBga } from './archivio'
@@ -188,7 +189,8 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
           || { chiave: c.identita, nome: c.nome, colore: c.colore, ospite: c.ospite,
                partite: 0, sfide: 0, vittorie: 0, mie: 0 }
         v.partite++
-        if (sfida) {
+        // Un compagno di squadra non è un avversario.
+        if (sfida && !compagni(p, mia, par)) {
           v.sfide++
           if (par.vincitore) v.vittorie++
           if (mia?.vincitore) v.mie++
@@ -304,6 +306,37 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
         const vincitori = classifica.filter((x) => x.vincitore).map((x) => chi(x).nome)
         const coop = p.tipo_punteggio === 'coop'
         const squadra = punteggioSquadra(p)
+        // A squadre: i giocatori sotto la loro squadra, il punteggio una volta.
+        const squadre = !coop && eASquadre(p) ? squadreDi(p, classifica) : null
+        const rigaGiocatore = (par, conPosto) => {
+          const c = chi(par)
+          return (
+            <li key={par.id} className={par.vincitore ? 'vincitore' : ''}>
+              {conPosto && (
+                <span className="posto">{par.posizione ? `${par.posizione}°` : '–'}</span>
+              )}
+              <span className="pallino" style={{ background: c.colore }} aria-hidden="true" />
+              <div className="nome-giocatore">
+                <strong>{c.nome}</strong>
+                {c.ospite && <span className="anno"> ospite</span>}
+                {!c.ospite && <NomeVero id={par.utente_id} nick={c.nome} />}
+                {(par.ruolo || par.ordine_turno != null) && (
+                  <span className="anno block fazione-nota">
+                    {par.ruolo}
+                    {par.ruolo && par.ordine_turno != null ? ' · ' : ''}
+                    {par.ordine_turno != null ? `${par.ordine_turno}° di turno` : ''}
+                  </span>
+                )}
+              </div>
+              {!squadre && par.spareggio != null && (
+                <span className="anno spareggio-nota">sp. {par.spareggio}</span>
+              )}
+              {!squadre && par.punteggio_totale != null && squadra == null && (
+                <span className="punti-finali">{par.punteggio_totale}</span>
+              )}
+            </li>
+          )
+        }
 
         return (
           <div key={p.id} className={`riga-partita${apertaQui ? ' aperta' : ''}`}>
@@ -349,7 +382,9 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                   <span className={`riga-vincitore${coop && p.esito_coop !== 'vinta' ? ' persa' : ''}`}>
                     {coop
                       ? `${p.esito_coop === 'vinta' ? 'Vinta insieme' : 'Persa insieme'}${squadra != null ? ` · ${squadra} punti` : ''}`
-                      : `Vince ${vincitori.join(', ')}`}
+                      : squadre
+                        ? `Vince la squadra di ${vincitori.join(', ')}`
+                        : `Vince ${vincitori.join(', ')}`}
                   </span>
                 )}
               </div>
@@ -359,35 +394,19 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
             {apertaQui && (
               <div className="dettaglio">
                 <ul className="elenco elenco-giocatori">
-                  {classifica.map((par) => {
-                    const c = chi(par)
-                    return (
-                      <li key={par.id} className={par.vincitore ? 'vincitore' : ''}>
-                        {p.tipo_punteggio !== 'coop' && (
-                          <span className="posto">{par.posizione ? `${par.posizione}°` : '–'}</span>
-                        )}
-                        <span className="pallino" style={{ background: c.colore }} aria-hidden="true" />
-                        <div className="nome-giocatore">
-                          <strong>{c.nome}</strong>
-                          {c.ospite && <span className="anno"> ospite</span>}
-                          {!c.ospite && <NomeVero id={par.utente_id} nick={c.nome} />}
-                          {(par.ruolo || par.ordine_turno != null) && (
-                            <span className="anno block fazione-nota">
-                              {par.ruolo}
-                              {par.ruolo && par.ordine_turno != null ? ' · ' : ''}
-                              {par.ordine_turno != null ? `${par.ordine_turno}° di turno` : ''}
-                            </span>
-                          )}
-                        </div>
-                        {par.spareggio != null && (
-                          <span className="anno spareggio-nota">sp. {par.spareggio}</span>
-                        )}
-                        {par.punteggio_totale != null && squadra == null && (
-                          <span className="punti-finali">{par.punteggio_totale}</span>
-                        )}
-                      </li>
-                    )
-                  })}
+                  {squadre
+                    ? squadre.map((s) => (
+                      <Fragment key={`s-${s.squadra}`}>
+                        <li className={`riga-squadra${s.vincitore ? ' vincitore' : ''}`}>
+                          <span className="posto">{s.posizione ? `${s.posizione}°` : '–'}</span>
+                          <span className={`tasto-squadra squadra-${((Number(s.squadra) || 1) - 1) % 6 + 1}`}>{nomeSquadra(s)}</span>
+                          <span className="nome-giocatore" />
+                          {s.punteggio != null && <span className="punti-finali">{s.punteggio}</span>}
+                        </li>
+                        {s.giocatori.map((par) => rigaGiocatore(par, false))}
+                      </Fragment>
+                    ))
+                    : classifica.map((par) => rigaGiocatore(par, p.tipo_punteggio !== 'coop'))}
                 </ul>
 
                 {p.note && <p className="aiuto note-partita">{p.note}</p>}

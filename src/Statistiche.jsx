@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.26.0 - 202611202300 (le cooperative vinte si contano a parte anche gioco per gioco, per giocatore e per fazione)
+// v3.27.0 - 202611221200 (partite a squadre: atteso fra squadre, compagni fuori dal testa a testa, punteggio una volta per squadra)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import { durataLeggibile } from './durata'
@@ -14,6 +14,7 @@ import { inviaABggSeServe } from './invioBgg'
 import BarraScorrevole from './BarraScorrevole.jsx'
 import SpiegaIpg from './SpiegaIpg.jsx'
 import { punteggioSquadra } from './cooperativa'
+import { eASquadre, squadreDi, latiDi, compagni, punteggiPerLato, nomeSquadra } from './squadre'
 
 // L'istogramma chiedeva il nome del mese due volte per ogni partita, e
 // ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
@@ -50,7 +51,7 @@ function contaEsito(v, p, riga) {
     if (p.esito_coop === 'vinta') v.coopVinte++
     return
   }
-  const n = (p.partecipazioni || []).length
+  const n = latiDi(p)   // a squadre: le squadre
   v.competitive++
   if (riga?.vincitore) v.vinte++
   if (n > 0) v.attese += 1 / n
@@ -278,6 +279,9 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
   /* ---------- Motore di calcolo ---------- */
 
   const quanti = (p) => (p.partecipazioni || []).length
+  // Contro quanti si gioca: a squadre sono le squadre, non i giocatori
+  // (in un 2 contro 2 si vince una volta su due, non su quattro).
+  const lati = latiDi
 
   // Statistiche di una persona, chiunque essa sia.
   // Con idGioco: le stesse statistiche, ma solo a quel gioco.
@@ -293,18 +297,18 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
     const competitive = sue.filter((p) => p.tipo_punteggio !== 'coop')
     const cooperative = sue.filter((p) => p.tipo_punteggio === 'coop')
     const vinte = competitive.filter((p) => suaRiga(p)?.vincitore).length
-    const attese = competitive.reduce((t, p) => t + (quanti(p) > 0 ? 1 / quanti(p) : 0), 0)
+    const attese = competitive.reduce((t, p) => t + (lati(p) > 0 ? 1 / lati(p) : 0), 0)
 
-    const conPos = competitive.filter((p) => suaRiga(p)?.posizione != null && quanti(p) > 1)
+    const conPos = competitive.filter((p) => suaRiga(p)?.posizione != null && lati(p) > 1)
     const piazz = conPos.length
-      ? conPos.reduce((t, p) => t + (quanti(p) - suaRiga(p).posizione) / (quanti(p) - 1), 0) / conPos.length
+      ? conPos.reduce((t, p) => t + (lati(p) - suaRiga(p).posizione) / (lati(p) - 1), 0) / conPos.length
       : null
 
     const distanze = []
     for (const p of competitive) {
       const r = suaRiga(p)
       if (!r || r.vincitore || r.punteggio_totale == null) continue
-      const punteggi = (p.partecipazioni || []).map((x) => x.punteggio_totale).filter((v) => v != null)
+      const punteggi = punteggiPerLato(p)
       const massimo = Math.max(...punteggi)
       if (isFinite(massimo) && massimo > 0) distanze.push((massimo - r.punteggio_totale) / massimo)
     }
@@ -355,6 +359,8 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
       const r = suaRiga(p)
       for (const x of p.partecipazioni || []) {
         if (identita(x) === chiave) continue
+        // Il compagno di squadra non è un avversario: vincete o perdete insieme.
+        if (compagni(p, r, x)) continue
         const k = identita(x)
         const v = contro.get(k) || { chiave: k, nome: nomeDi(x), colore: coloreDi(x), insieme: 0, sue: 0, altrui: 0 }
         v.insieme++
@@ -411,7 +417,8 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
     let scarti = []
 
     for (const p of sue) {
-      const punteggi = (p.partecipazioni || []).map((x) => x.punteggio_totale).filter((v) => v != null)
+      // A squadre ogni squadra conta una volta, non una per giocatore.
+      const punteggi = punteggiPerLato(p)
       // Il punteggio di squadra di una cooperativa conta una volta, non
       // una per giocatore, e non c'è distacco fra chi ha giocato insieme.
       const squadra = punteggioSquadra(p)
@@ -450,7 +457,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
         const v = turni.get(x.ordine_turno) || { ordine: x.ordine_turno, partite: 0, vinte: 0, attese: 0, punteggi: [] }
         v.partite++
         if (x.vincitore) v.vinte++
-        if (quanti(p) > 0) v.attese += 1 / quanti(p)
+        if (lati(p) > 0) v.attese += 1 / lati(p)
         if (x.punteggio_totale != null) v.punteggi.push(x.punteggio_totale)
         turni.set(x.ordine_turno, v)
       }
@@ -515,7 +522,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
         if (p.tipo_punteggio !== 'coop') {
           v.competitive++
           if (x.vincitore) v.vinte++
-          if (quanti(p) > 0) v.attese += 1 / quanti(p)
+          if (lati(p) > 0) v.attese += 1 / lati(p)
         }
         persone.set(k, v)
       }
@@ -1022,6 +1029,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
             })
             const vincitori = classifica.filter((x) => x.vincitore).map(nomeDiRiga)
             const squadra = punteggioSquadra(p)
+            const squadre = p.tipo_punteggio !== 'coop' && eASquadre(p) ? squadreDi(p, classifica) : null
 
             return (
               <div className={`riga-partita${apertaQui ? ' aperta' : ''}`} key={p.id}>
@@ -1043,7 +1051,7 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                         ? p.esito_coop
                           ? `${p.esito_coop === 'vinta' ? ' · vinta insieme' : ' · persa insieme'}${squadra != null ? ` · ${squadra} punti` : ''}`
                           : ''
-                        : vincitori.length ? ` · vince ${vincitori.join(', ')}` : ''}
+                        : vincitori.length ? ` · vince ${squadre ? 'la squadra di ' : ''}${vincitori.join(', ')}` : ''}
                     </span>
                   </div>
                   <span className="freccia" aria-hidden="true">{apertaQui ? '−' : '+'}</span>
@@ -1052,9 +1060,20 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                 {apertaQui && (
                   <div className="dettaglio">
                     <ul className="elenco elenco-giocatori">
-                      {classifica.map((x, i) => (
+                      {(squadre
+                        // A squadre: la testata della squadra (piazzamento e punti), poi i suoi giocatori.
+                        ? squadre.flatMap((s) => [{ testata: s }, ...s.giocatori])
+                        : classifica
+                      ).map((x, i) => (x.testata ? (
+                        <li key={`s-${x.testata.squadra}`} className={`riga-squadra${x.testata.vincitore ? ' vincitore' : ''}`}>
+                          <span className="posto">{x.testata.posizione ? `${x.testata.posizione}°` : '–'}</span>
+                          <span className={`tasto-squadra squadra-${((Number(x.testata.squadra) || 1) - 1) % 6 + 1}`}>{nomeSquadra(x.testata)}</span>
+                          <span className="nome-giocatore" />
+                          {x.testata.punteggio != null && <span className="punti-finali">{x.testata.punteggio}</span>}
+                        </li>
+                      ) : (
                         <li key={i} className={x.vincitore ? 'vincitore' : ''}>
-                          {p.tipo_punteggio !== 'coop' && (
+                          {p.tipo_punteggio !== 'coop' && !squadre && (
                             <span className="posto">{x.posizione ? `${x.posizione}°` : '–'}</span>
                           )}
                           <span className="pallino" style={{ background: coloreDiRiga(x) }} aria-hidden="true" />
@@ -1070,11 +1089,11 @@ function PartiteDelGioco({ partite, profilo, onModifica, mostraGioco, onCancella
                               </span>
                             )}
                           </div>
-                          {x.punteggio_totale != null && squadra == null && (
+                          {x.punteggio_totale != null && squadra == null && !squadre && (
                             <span className="punti-finali">{x.punteggio_totale}</span>
                           )}
                         </li>
-                      ))}
+                      )))}
                     </ul>
 
                     {p.note && <p className="aiuto note-partita">{p.note}</p>}

@@ -16,6 +16,16 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.42.0',
+    data: '2026-11-22',
+    voci: [
+      'Partite a squadre: nella partita c’è la spunta «a squadre», accanto a «partita cooperativa». Un tocco su «Sq.» cambia la squadra di un giocatore, e si scrive un punteggio per squadra (o si tocca «ha vinto» se il gioco non ha punti)',
+      'Storico e Statistiche: i giocatori stanno sotto la loro squadra, con il punteggio una volta sola; «Ripeti tavolo» rifà anche le squadre',
+      'Statistiche: in un 2 contro 2 l’atteso è una vittoria su due, non su quattro, e il compagno di squadra non conta più come avversario nel testa a testa',
+      'IPG: le partite a squadre restano fuori, perché non si può sapere quanto ha pesato ognuno',
+    ],
+  },
+  {
     versione: '4.41.1',
     data: '2026-11-22',
     voci: [

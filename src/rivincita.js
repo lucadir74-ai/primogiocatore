@@ -7,6 +7,7 @@
 
 import { supabase, daMostrare } from './supabase'
 import { scriviBozza } from './bozza'
+import { eASquadre } from './squadre'
 
 const nomeDi = (x) => (x.utente_id
   ? daMostrare(x.profili)
@@ -22,6 +23,7 @@ export function giocatoriDaCapo(partecipazioni) {
       ...(x.utente_id ? { utente_id: x.utente_id } : { ospite_id: x.ospite_id }),
       nome: nomeDi(x),
       punteggio: '', posizione: '', spareggio: '', ruolo: '', ordine: null,
+      squadra: x.squadra == null ? '' : String(x.squadra),
     }))
 }
 
@@ -35,6 +37,8 @@ export async function preparaRivincita(partita) {
     righe: giocatoriDaCapo(partita.partecipazioni),
     luogo: partita.luoghi?.nome || '',
     coop: partita.tipo_punteggio === 'coop',
+    // Le stesse squadre di quella volta (Partita.jsx le riprende dalla bozza).
+    aSquadre: partita.tipo_punteggio !== 'coop' && eASquadre(partita),
     rifatta: true,
     accumulati: 0,
     avviatoIl: null,

@@ -125,7 +125,8 @@ export function calcolaPrimeggio(partite, opzioni = {}) {
     .sort((a, b) => b.n - a.n || a.i - b.i)
     .map((x) => x.p)
   const valide = unisciCondivise(copie, [], riportaAccount)
-    .filter((p) => p.giochi?.id && p.tipo_punteggio !== 'coop')
+    // Fuori anche le partite a squadre: non si sa quanto ha pesato ognuno.
+    .filter((p) => p.giochi?.id && p.tipo_punteggio !== 'coop' && !p.a_squadre)
     .sort((a, b) => String(a.giocata_il).localeCompare(String(b.giocata_il)))
 
   const perGioco = new Map()   // gioco -> Map(identità -> { r, partite })
