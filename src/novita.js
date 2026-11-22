@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.43.2',
+    data: '2026-11-22',
+    voci: [
+      'BGA: torna la sincronizzazione automatica ogni 10 minuti anche a telefono spento (dal 10 novembre si fermava sul server; le partite entravano solo aprendo l’app)',
+    ],
+  },
+  {
     versione: '4.43.1',
     data: '2026-11-22',
     voci: [

@@ -2,7 +2,9 @@
 // v1.1.0 - 202610311300 (usabile anche dal server: la sincronizzazione BGA programmata usa lo stesso codice dell'app)
 
 import { createClient } from '@supabase/supabase-js'
-import { fetchConMemoria, reteGiu } from './memoriaRete'
+// Con «.js»: questo file lo carica anche il server (api/sincro.js), e lì
+// un import senza estensione blocca la funzione (successo dal 10/11 al 22/11).
+import { fetchConMemoria, reteGiu } from './memoriaRete.js'
 
 // Questi due valori arrivano dalle variabili d'ambiente (vedi README, passo 4).
 // Sul server (api/sincro.js) import.meta.env non esiste: lì il client lo

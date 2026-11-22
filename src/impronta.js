@@ -29,7 +29,7 @@ export function chiaveDebole({ giocoId, giocataIl, quanti }) {
 // gioco veloce ripetuto. Saltarle tutte perché la prima esiste
 // sarebbe un errore.
 export async function improntePresenti(supabase, profiloId) {
-  const { tutteLeRighe } = await import('./supabase')
+  const { tutteLeRighe } = await import('./supabase.js')   // con «.js»: questo file lo usa anche il server
   const data = await tutteLeRighe(() => supabase
     .from('partite')
     .select('impronta')
