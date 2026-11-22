@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.11.0 - 202611230100 (dopo «trascina giù per aggiornare» si sincronizza subito)
+// v3.12.0 - 202611231200 (ora delle partite salvata con il fuso: niente più sfasamento di un'ora)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -110,13 +110,15 @@ export function segnalibroBga(origine, base = {}) {
 
 const due = (n) => String(n).padStart(2, '0')
 
-// Giorno e ora locali di un istante BGA (secondi).
+// Giorno italiano e istante (con il fuso) di un'ora BGA (secondi).
+// Prima l'istante era l'ora del telefono senza fuso, che il database
+// prendeva per UTC: le partite importate dall'app risultavano un'ora più
+// tardi, quelle del server (che gira in UTC) no. Ora è uguale ovunque.
+// Le partite già salvate le corregge il server (supabase/orari_bga.sql).
+const aRoma = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' })   // «2026-11-22»
 function locale(sec) {
   const d = new Date(sec * 1000)
-  return {
-    giorno: `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`,
-    istante: `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}T${due(d.getHours())}:${due(d.getMinutes())}:00`,
-  }
+  return { giorno: aRoma.format(d), istante: d.toISOString() }
 }
 const numeroGiorno = (g) => Math.floor(Date.parse(`${g}T00:00:00Z`) / 86400000)
 const firma = (punti) => punti.filter((v) => v != null && !Number.isNaN(v)).map(Number).sort((a, b) => a - b).join(',')
