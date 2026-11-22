@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.45.1',
+    data: '2026-11-23',
+    voci: [
+      'BGA: torna l’avviso «Da BGA: partite nuove» in cima, anche per le partite entrate dal server a telefono spento, con «Guarda» per aprire lo storico',
+    ],
+  },
+  {
     versione: '4.45.0',
     data: '2026-11-23',
     voci: [
