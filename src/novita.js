@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.48.0',
+    data: '2026-11-23',
+    voci: [
+      'Primeggio: appena registrata una partita, per ogni giocatore con un account compare quanto sale o scende il suo IPG in quel gioco e quello globale (stima; il valore vero arriva col ricalcolo di notte)',
+    ],
+  },
+  {
     versione: '4.47.0',
     data: '2026-11-23',
     voci: [

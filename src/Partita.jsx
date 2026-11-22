@@ -1,5 +1,5 @@
 // Primo Giocatore - registrazione e modifica partita
-// v4.42.0 - 202611221200 (partite a squadre: spunta «a squadre», un punteggio per squadra)
+// v4.43.0 - 202611231600 (dopo il salvataggio: quanto cambia l’IPG di ognuno, StimaIpg.jsx)
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, COLORI, daMostrare, fetchBgg } from './supabase'
@@ -7,6 +7,7 @@ import { impronta } from './impronta'
 import { assicuraGiocoBgg } from './giochiMiei'
 import Cronometro from './Cronometro.jsx'
 import RiepilogoPartita from './RiepilogoPartita.jsx'
+import StimaIpg from './StimaIpg.jsx'
 import Segnapunti from './Segnapunti.jsx'
 import { accodaPartita, eProblemaDiRete, scriviPartita } from './coda'
 import { inviaABggSeServe } from './invioBgg'
@@ -109,6 +110,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   const [ripresa, setRipresa] = useState(false)
   // Partita appena registrata: se è a punti si mostrano i record.
   const [riepilogo, setRiepilogo] = useState(null)
+  const [stimaIpg, setStimaIpg] = useState(null)   // { giocoId, giocoNome, giocatori }: Primeggio dopo il salvataggio
   // Ciò che serve per rifarla subito con gli stessi giocatori.
   const [rivincita, setRivincita] = useState(null)
 
@@ -856,6 +858,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
     const r = rivincita
     if (!r) return
     setRiepilogo(null)
+    setStimaIpg(null)
     setMessaggio('')
     setErrore('')
     setGioco(r.gioco)
@@ -873,7 +876,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
   }
 
   async function salva() {
-    setErrore(''); setMessaggio('')
+    setErrore(''); setMessaggio(''); setStimaIpg(null)
     if (!gioco) { setErrore('Scegli prima il gioco.'); return }
     if (righe.length < 1) { setErrore('Aggiungi almeno un giocatore.'); return }
     // Pari in testa: prima si decide chi ha vinto (o la vittoria condivisa),
@@ -974,6 +977,11 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
           const conPunti = tipo !== 'coop' && tipo !== 'posizione' && !squadreAttive
             && dati.giocatori.some((g) => g.punteggio_totale != null)
           setUltimaPartita(ordinata.map((r) => r.chiave))
+          // Come cambia l'IPG di ognuno (solo le partite che il Primeggio conta).
+          setStimaIpg(tipo !== 'coop' && !squadreAttive ? {
+            giocoId: gioco.id, giocoNome: gioco.nome,
+            giocatori: dati.giocatori.map((g, i) => ({ ...g, nome: ordinata[i].nome })),
+          } : null)
           const foto = fotoRivincita()
           if (conPunti) {
             setRiepilogo({ id: salvataId, giocoId: gioco.id, giocoNome: gioco.nome })
@@ -1061,16 +1069,20 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
   if (caricamento) return <div className="scheda"><p>Carico la partita&hellip;</p></div>
 
+  const primeggio = stimaIpg && <StimaIpg key={stimaIpg.giocoId + stimaIpg.giocatori.length} {...stimaIpg} />
   if (riepilogo) {
     return (
+      <>
+      {primeggio}
       <RiepilogoPartita
         profilo={profilo}
         partitaId={riepilogo.id}
         giocoId={riepilogo.giocoId}
         giocoNome={riepilogo.giocoNome}
-        onChiudi={() => { setRiepilogo(null); window.scrollTo?.({ top: 0 }) }}
+        onChiudi={() => { setRiepilogo(null); setStimaIpg(null); window.scrollTo?.({ top: 0 }) }}
         onRifai={rivincita ? rifaiConGliStessi : null}
       />
+      </>
     )
   }
 
@@ -1080,6 +1092,7 @@ export default function Partita({ profilo, partitaId, finitaModifica, evento = n
 
       {errore && <div className="avviso errore">{errore}</div>}
       {messaggio && <div className="avviso ok">{messaggio}</div>}
+      {!gioco && primeggio}
 
       {rivincita && !gioco && righe.length === 0 && (
         <button className="bottone rifai-stessi" onClick={rifaiConGliStessi}>
