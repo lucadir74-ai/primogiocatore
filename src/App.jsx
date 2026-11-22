@@ -20,6 +20,8 @@ import { contaRichiesteTavolo } from './RichiesteTavolo.jsx'
 import { sincronizzaSeServe } from './sincroBgg'
 import { sincronizzaBgaSeServe } from './bga'
 import { inviaABggSeServe } from './invioBgg'
+import { aggiornaCollezioneSeServe } from './collezioneBgg'
+import TiraPerAggiornare from './TiraPerAggiornare.jsx'
 
 // Le schede si scaricano solo quando si aprono: il primo caricamento
 // porta la Home e poco altro, il resto arriva a richiesta.
@@ -1139,6 +1141,15 @@ export default function App() {
     return quandoLibero(() => { inviaABggSeServe(profilo) }, 14000)
   }, [profilo?.id])
 
+  // La collezione BGG: una volta al giorno, dopo le altre sincronizzazioni
+  // (tutte insieme BGG risponde «troppe richieste»).
+  useEffect(() => {
+    if (!profilo?.bgg_username || daBga) return
+    return quandoLibero(() => {
+      aggiornaCollezioneSeServe(profilo).catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
+    }, 20000)
+  }, [profilo?.id])
+
   function apriSezione(id) {
     setSezioneProfilo(id)
     try { localStorage.setItem(CHIAVE_SEZIONE, id) } catch { /* resta solo per ora */ }
@@ -1437,6 +1448,7 @@ export default function App() {
       </header>
 
       <Aggiornamento />
+      <TiraPerAggiornare attivo={inApp && scheda !== 'partita'} />
 
       {inApp && ammesso !== false && avvisoEvento && (
         <div className="scheda"><Avviso tipo={avvisoEvento.tipo} testo={avvisoEvento.testo} /></div>

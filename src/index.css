@@ -3144,3 +3144,27 @@ a.contatto .contatto-valore { color: var(--blu); }
 .evento-link { text-align: left; }
 .evento-link-testo { white-space: normal; word-break: break-all; }
 .evento-link .anno { margin: 0; }
+
+/* ---------- Trascina giù per aggiornare ---------- */
+
+.tira-aggiorna {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--inchiostro);
+  border: 1px solid var(--bordo);
+  box-shadow: 0 2px 10px var(--ombra);
+  font-size: 0.9rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.tira-aggiorna-giro { display: inline-block; font-size: 1.2rem; line-height: 1; color: var(--blu); }
+.tira-aggiorna-giro.gira { animation: tira-aggiorna-gira 0.8s linear infinite; }
+@keyframes tira-aggiorna-gira { to { transform: rotate(360deg); } }

@@ -12,6 +12,7 @@
 
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import { impronta, improntePresenti, giaPresente } from './impronta'
+import { sincroForzata } from './forzaSincro'
 import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome, ospitiPerImport } from './giochiMiei'
 
 const CHIAVE_ULTIMA = 'primo-giocatore:ultima-sincro-bgg'
@@ -368,7 +369,7 @@ export async function sincronizzaSeServe(profilo) {
   const utente = profilo?.bgg_username?.trim()
   if (!utente) return null
   const ultima = ultimaSincro()
-  if (ultima && Date.now() - new Date(ultima) < OGNI_ORE * 3600000) return null
+  if (ultima && !sincroForzata() && Date.now() - new Date(ultima) < OGNI_ORE * 3600000) return null
 
   try {
     const inCorso = Number(localStorage.getItem(CHIAVE_IN_CORSO) || 0)

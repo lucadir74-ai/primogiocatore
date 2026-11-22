@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.10.1 - 202611222330 (all'apertura l'app non aspetta più il giro orario del server)
+// v3.11.0 - 202611230100 (dopo «trascina giù per aggiornare» si sincronizza subito)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -29,6 +29,7 @@
 import { supabase, tutteLeRighe } from './supabase.js'
 import { assicuraGiochi, trovaOCreaLuogo, mappaOspitiPerNome } from './giochiMiei.js'
 import { impronta } from './impronta.js'
+import { sincroForzata } from './forzaSincro.js'
 
 const LUOGO_BGA = 'Board Game Arena'
 
@@ -706,7 +707,7 @@ export async function sincronizzaBgaSeServe(profilo) {
 async function sincronizzaBga(profilo) {
   try {
     const ultima = Number(localStorage.getItem(`${CHIAVE_ORA}:${profilo.id}`) || 0)
-    if (Date.now() - ultima < OGNI_ORE_BGA * 3600000) return null
+    if (!sincroForzata() && Date.now() - ultima < OGNI_ORE_BGA * 3600000) return null
     localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
   } catch { /* senza memoria si prova lo stesso */ }
 
@@ -719,7 +720,8 @@ async function sincronizzaBga(profilo) {
     const { data: e } = await supabase.from('bga_esiti').select('quando, in_corso, dal_server')
       .eq('utente_id', profilo.id).maybeSingle()
     const fa = e?.quando ? Date.now() - new Date(e.quando).getTime() : Infinity
-    if (e?.dal_server && fa < 10 * 60000) return null
+    // Dopo «trascina giù per aggiornare» si aspetta solo un giro in corso.
+    if (e?.dal_server && fa < 10 * 60000 && (e.in_corso || !sincroForzata())) return null
   } catch { /* colonna non ancora creata: si va avanti come prima */ }
 
   const chiave = `${CHIAVE_STORICO}:${profilo.id}`
