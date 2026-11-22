@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.45.0',
+    data: '2026-11-23',
+    voci: [
+      'Trascina giù la pagina col dito, dall’inizio, per aggiornare l’app: partono subito anche le sincronizzazioni con BGA e BGG',
+      'Collezione BGG: si aggiorna da sola una volta al giorno, aprendo l’app (per chi l’ha già importata almeno una volta)',
+    ],
+  },
+  {
     versione: '4.44.1',
     data: '2026-11-22',
     voci: [

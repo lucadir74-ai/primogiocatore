@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione da BoardGameGeek
-// v1.0.0 - 202611121200 (tolta da Giochi.jsx: la usano la pagina Giochi e la procedura in Dati e import)
+// v1.1.0 - 202611230100 (si aggiorna da sola una volta al giorno, all'apertura)
 //
 // Porta qui i giochi che su BGG sono segnati come posseduti (giochi base
 // ed espansioni) e li segna come tuoi. Quello che su BGG non possiedi
@@ -7,6 +7,33 @@
 
 import { supabase, tutteLeRighe, fetchBgg } from './supabase'
 import { assicuraGiochi } from './giochiMiei'
+import { sincroForzata } from './forzaSincro'
+
+const CHIAVE_GIORNO = 'primo-giocatore:collezione-bgg-ultima'
+const OGNI = 24 * 3600000
+let inCorso = false
+
+// All'apertura, al massimo una volta al giorno (o subito, dopo «trascina
+// giù per aggiornare»). Solo per chi la collezione l'ha già importata
+// almeno una volta: per gli altri resta una scelta, col pulsante.
+export async function aggiornaCollezioneSeServe(profilo) {
+  const utente = profilo?.bgg_username?.trim()
+  if (!utente || inCorso) return null
+  const chiave = `${CHIAVE_GIORNO}:${profilo.id}`
+  try {
+    const ultima = Number(localStorage.getItem(chiave) || 0)
+    if (!sincroForzata() && Date.now() - ultima < OGNI) return null
+  } catch { /* senza memoria si prova lo stesso */ }
+  inCorso = true
+  try {
+    if (!(await contaCollezioneBgg(profilo.id))) return null
+    const esito = await importaCollezioneBgg({ utente, profiloId: profilo.id })
+    try { localStorage.setItem(chiave, String(Date.now())) } catch { /* niente */ }
+    return esito
+  } finally {
+    inCorso = false
+  }
+}
 
 // Quanti giochi della collezione sono arrivati da BGG (0 = mai importata).
 export async function contaCollezioneBgg(profiloId) {
