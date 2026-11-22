@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.44.1',
+    data: '2026-11-22',
+    voci: [
+      'BGA: aprendo l’app la partita appena finita entra subito, senza aspettare il giro orario del server',
+    ],
+  },
+  {
     versione: '4.44.0',
     data: '2026-11-22',
     voci: [
