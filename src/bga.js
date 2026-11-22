@@ -1,5 +1,5 @@
 // Primo Giocatore - partite da Board Game Arena, senza BG Stats
-// v3.10.0 - 202611030300 (barra della rilettura stimata sulle partite già importate; conteggio delle partite scartate)
+// v3.10.1 - 202611222330 (all'apertura l'app non aspetta più il giro orario del server)
 //
 // BGA non ha un'API pubblica. La sua pagina «Cronologia delle partite»
 // legge lo storico da /gamestats/gamestats/getGames.html, con il token
@@ -710,13 +710,16 @@ async function sincronizzaBga(profilo) {
     localStorage.setItem(`${CHIAVE_ORA}:${profilo.id}`, String(Date.now()))
   } catch { /* senza memoria si prova lo stesso */ }
 
-  // Se il server ha sincronizzato da poco (o lo sta facendo adesso),
-  // l'app non ripete il lavoro: due import insieme si pestano i piedi.
+  // Se il server sta sincronizzando adesso, o ha appena finito (meno di
+  // 10 minuti), l'app non ripete il lavoro: due import insieme si pestano
+  // i piedi. Oltre i 10 minuti l'app controlla lo stesso: il server passa
+  // da ogni iscritto solo una volta all'ora, e una partita appena finita
+  // aspettava fino a un'ora (22/11).
   try {
     const { data: e } = await supabase.from('bga_esiti').select('quando, in_corso, dal_server')
       .eq('utente_id', profilo.id).maybeSingle()
     const fa = e?.quando ? Date.now() - new Date(e.quando).getTime() : Infinity
-    if (e?.dal_server && ((e.in_corso && fa < 10 * 60000) || (!e.in_corso && fa < OGNI_ORE_BGA * 3600000))) return null
+    if (e?.dal_server && fa < 10 * 60000) return null
   } catch { /* colonna non ancora creata: si va avanti come prima */ }
 
   const chiave = `${CHIAVE_STORICO}:${profilo.id}`
