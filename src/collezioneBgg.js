@@ -1,5 +1,5 @@
 // Primo Giocatore - la collezione da BoardGameGeek
-// v1.1.0 - 202611230100 (si aggiorna da sola una volta al giorno, all'apertura)
+// v1.2.0 - 202611231400 (barra di avanzamento)
 //
 // Porta qui i giochi che su BGG sono segnati come posseduti (giochi base
 // ed espansioni) e li segna come tuoi. Quello che su BGG non possiedi
@@ -44,7 +44,9 @@ export async function contaCollezioneBgg(profiloId) {
 }
 
 // Restituisce { giochi, espansioni, tolti, completo }.
-export async function importaCollezioneBgg({ utente, profiloId }) {
+export async function importaCollezioneBgg({ utente, profiloId, avanzamento = () => {} }) {
+  // BGG prepara la collezione con calma: la barra avanza a stima.
+  avanzamento({ fase: 'Chiedo la collezione a BGG', stima: 20 })
   const r = await fetchBgg(`/api/bgg?azione=collezione&utente=${encodeURIComponent(utente)}`)
   const dati = await r.json()
   if (r.status === 202) throw new Error('BGG sta ancora preparando la collezione. Riprova fra poco.')
@@ -61,9 +63,10 @@ export async function importaCollezioneBgg({ utente, profiloId }) {
   // edizioni: una riga ripetuta nello stesso invio fa fallire tutto
   // ("cannot affect row a second time"). Si tiene una riga per gioco.
   const unici = [...new Map(dati.giochi.map((g) => [g.bgg_id, g])).values()]
+  avanzamento({ fase: 'Salvo i giochi', fatto: 0, totale: unici.length })
   const salvati = await assicuraGiochi(unici.map((g) => ({
     bgg_id: g.bgg_id, nome: g.nome, anno: g.anno, espansione: Boolean(g.espansione),
-  })))
+  })), (fatto) => avanzamento({ fase: 'Salvo i giochi', fatto, totale: unici.length }))
 
   const possedute = [...new Map(salvati.filter(Boolean).map((g) => [g.id, {
     utente_id: profiloId,
@@ -71,6 +74,7 @@ export async function importaCollezioneBgg({ utente, profiloId }) {
     origine: 'bgg',
   }])).values()]
   for (let i = 0; i < possedute.length; i += 200) {
+    avanzamento({ fase: 'Segno i tuoi giochi', fatto: i, totale: possedute.length })
     const { error } = await supabase
       .from('collezioni')
       .upsert(possedute.slice(i, i + 200), { onConflict: 'utente_id,gioco_id' })
@@ -84,6 +88,7 @@ export async function importaCollezioneBgg({ utente, profiloId }) {
   let tolti = 0
   const completo = possedute.length > 0 && salvati.length === unici.length && salvati.every(Boolean)
   if (completo) {
+    avanzamento({ fase: 'Tolgo quelli che su BGG non hai più' })
     const oraSuBgg = new Set(possedute.map((x) => x.gioco_id))
     const mie = await tutteLeRighe(() => supabase.from('collezioni')
       .select('gioco_id, origine').eq('utente_id', profiloId), 1000, 'gioco_id')

@@ -44,7 +44,8 @@ const CAMPI_GIOCO = ['bgg_id', 'nome', 'anno', 'min_giocatori', 'max_giocatori',
 
 // Trova o crea i giochi, a blocchi. Restituisce le righe nello stesso
 // ordine di quelle passate.
-export async function assicuraGiochi(righe) {
+// fatti (facoltativa): riceve quanti giochi sono stati salvati, per la barra.
+export async function assicuraGiochi(righe, fatti = () => {}) {
   const fuori = []
   for (let i = 0; i < righe.length; i += 200) {
     const blocco = righe.slice(i, i + 200).map((g) => {
@@ -55,6 +56,7 @@ export async function assicuraGiochi(righe) {
     const { data, error } = await supabase.rpc('assicura_giochi', { p_righe: blocco })
     if (error) throw error
     fuori.push(...(data || []))
+    fatti(Math.min(righe.length, i + 200))
   }
   return fuori
 }

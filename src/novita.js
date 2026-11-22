@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.47.0',
+    data: '2026-11-23',
+    voci: [
+      'Barre di avanzamento: nel ricalcolo dell’IPG, nell’aggiornamento della collezione BGG e in ogni fase dell’import da BGA e da BG Stats (prima, nelle fasi senza totale, la barra restava vuota)',
+    ],
+  },
+  {
     versione: '4.46.0',
     data: '2026-11-23',
     voci: [

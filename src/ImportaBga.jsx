@@ -10,6 +10,7 @@
 // Se non ci sono giochi nuovi da abbinare né partite incerte, importa
 // subito: un aggiornamento normale è un tocco su BGA e uno qui.
 
+import Avanzamento from './Avanzamento.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
@@ -233,14 +234,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
       {errore && <div className="avviso errore">{errore}</div>}
       {avviso && <div className="avviso ok">{avviso}</div>}
 
-      {avanzamento && (
-        <div className="avanzamento">
-          <span>{avanzamento.fase}</span>
-          <div className="barra-avanzamento">
-            <div style={{ width: `${(avanzamento.fatto / Math.max(1, avanzamento.totale)) * 100}%` }} />
-          </div>
-        </div>
-      )}
+      {avanzamento && <Avanzamento {...avanzamento} />}
 
       {fase === 'attesa' && !daLink && collegamento === null && <p className="aiuto">Controllo il collegamento&hellip;</p>}
 
