@@ -3185,3 +3185,12 @@ a.contatto .contatto-valore { color: var(--blu); }
   .barra-avanzamento.indeterminata div { left: 0; width: 100%; animation: barra-pulsa 1.6s ease-in-out infinite; }
   @keyframes barra-pulsa { 50% { opacity: 0.35; } }
 }
+
+/* ---------- Primeggio dopo la partita (StimaIpg.jsx) ---------- */
+.stima-ipg ul { list-style: none; margin: 0.5rem 0; padding: 0; }
+.stima-ipg li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid var(--bordo); }
+.stima-ipg li:last-child { border-bottom: 0; }
+.stima-ipg-nome { font-weight: 600; }
+.stima-ipg-numeri { color: var(--inchiostro-tenue); font-variant-numeric: tabular-nums; }
+.stima-ipg .su { color: var(--verde); }
+.stima-ipg .giu { color: var(--rosso); }
