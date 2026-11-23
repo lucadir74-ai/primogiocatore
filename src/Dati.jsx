@@ -127,6 +127,8 @@ export default function Dati({ profilo }) {
   const [avanzamento, setAvanzamento] = useState(null)
   const [avanzamentoCollezione, setAvanzamentoCollezione] = useState(null)
   const [stimaBgstats, setStimaBgstats] = useState(null)   // da quando: partite BG Stats per il Primeggio
+  const [stimaBgg, setStimaBgg] = useState(null)           // da quando: partite BGG per il Primeggio
+  const segnaStimaBgg = () => setStimaBgg((x) => x || new Date(Date.now() - 60000).toISOString())
   const [anteprima, setAnteprima] = useState(null)   // { doc, analisi }
   const [miei, setMiei] = useState([])               // id dei profili che sono io
   const [cercaGiocatore, setCercaGiocatore] = useState('')
@@ -325,10 +327,12 @@ export default function Dati({ profilo }) {
   // Aggiornamento rapido: legge da BGG e mostra solo cosa c'è di nuovo.
   async function sincronizzaBgg() {
     setErrore(''); setMessaggio('')
+    segnaStimaBgg()
     await leggiDaBgg({ automatico: true })
   }
 
   async function confermaBgg(includiSospette) {
+    segnaStimaBgg()
     setErrore(''); setMessaggio(''); setLavorando(true)
     tieniAcceso(true)
     try {
@@ -751,11 +755,13 @@ export default function Dati({ profilo }) {
           })}.`}
         </p>
         {barra}
+        {/* Si rilegge a ogni esito: le partite BGG entrate da quando si è cominciato. */}
+        {stimaBgg && !lavorando && <StimaIpgBga key={stimaBgg + String(messaggio)} profiloId={profilo.id} dal={stimaBgg} origine="bgg" />}
         <InvioBggStato invio={invio} profilo={profilo} />
         <details className="dettagli-piccoli">
           <summary>Altre azioni</summary>
           <p className="aiuto">Rilegge tutto l&rsquo;archivio BGG: serve se hai pubblicato partite vecchie. Parte comunque da solo una volta a settimana.</p>
-          <button className="bottone bottone-secondario" onClick={() => leggiDaBgg()} disabled={lavorando}>
+          <button className="bottone bottone-secondario" onClick={() => { segnaStimaBgg(); leggiDaBgg() }} disabled={lavorando}>
             Rileggi tutto da BGG
           </button>
           <InvioBggAzioni invio={invio} profilo={profilo} />
