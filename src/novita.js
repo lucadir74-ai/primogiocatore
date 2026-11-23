@@ -16,11 +16,25 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
-    versione: '4.53.0',
-    data: '2026-11-23',
+    versione: '4.54.0',
+    data: '2026-11-24',
     voci: [
       'Eventi: alla creazione si mettono luogo e indirizzo (con «Trova»), e si possono cambiare nei dati dell’evento',
       'Tavoli di un evento: nel modulo «Dove» mostra la sede e l’indirizzo dell’evento; chi è socio può comunque scegliere un altro luogo',
+    ],
+  },
+  {
+    versione: '4.53.0',
+    data: '2026-11-24',
+    voci: [
+      'Ricalcolo dell’IPG più veloce: le partite si leggono in quattro parti insieme, e i pesi BGG mancanti si chiedono dopo, col tempo che avanza (prima fino a 30 secondi a ogni ricalcolo). L’esito dice quanto dura ogni passaggio',
+    ],
+  },
+  {
+    versione: '4.52.2',
+    data: '2026-11-24',
+    voci: [
+      'Ricalcolo dell’IPG: se il database impiega troppo, il server legge a pezzi più piccoli da solo e scrive più blocchi insieme; se non riesce, l’errore dice in quale passaggio',
     ],
   },
   {
