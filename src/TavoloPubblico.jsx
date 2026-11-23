@@ -1,5 +1,5 @@
 // Primo Giocatore - pagina pubblica del tavolo
-// v4.11.0 - 202611181900 (tavoli degli eventi: tasto per creare l'account dell'evento)
+// v4.12.0 - 202611231230 (senza foto, nel cerchio di chi spiega l'iniziale del nome al posto del «?»)
 //
 // Si apre con il link condiviso, anche senza account.
 // Mostra il tavolo e permette di iscriversi lasciando i contatti,
@@ -10,6 +10,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { copertinaTavolo } from './immagini'
 import { linkMappa } from './indirizzo'
+
+// Senza foto, nel cerchio di chi spiega va l'iniziale del nome.
+const iniziale = (nome) => (String(nome || '').match(/[\p{L}\p{N}]/u)?.[0] || '?').toUpperCase()
 
 const quando = (d) =>
   new Date(d).toLocaleString('it-IT', {
@@ -176,7 +179,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo, codiceEven
 
       {libero ? (chiSpiega.length > 0 && (
         <div className="dimostratore">
-          <span className="foto-dimostratore vuota" aria-hidden="true">?</span>
+          <span className="foto-dimostratore vuota" aria-hidden="true">{iniziale(nomeIscritto(chiSpiega[0]))}</span>
           <div className="dimostratore-nome">
             <span className="etichetta-dato">{chiSpiega.length === 1 ? 'Spiega i giochi' : 'Spiegano i giochi'}</span>
             <strong>{chiSpiega.map(nomeIscritto).join(', ')}</strong>
@@ -186,7 +189,7 @@ export default function TavoloPubblico({ tavoloId, sessione, profilo, codiceEven
         <div className="dimostratore">
           {tavolo.dimostratore_foto
             ? <img src={tavolo.dimostratore_foto} alt="" className="foto-dimostratore" />
-            : <span className="foto-dimostratore vuota" aria-hidden="true">?</span>}
+            : <span className="foto-dimostratore vuota" aria-hidden="true">{iniziale(tavolo.dimostratore_nome)}</span>}
           <div className="dimostratore-nome">
             <span className="etichetta-dato">Spiega il gioco</span>
             <strong>{tavolo.dimostratore_nome}</strong>
