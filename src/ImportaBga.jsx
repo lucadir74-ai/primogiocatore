@@ -1,5 +1,5 @@
 // Primo Giocatore - importa da Board Game Arena
-// v3.5.0 - 202611030300 (barra nella rilettura dello storico; quante partite BGA sono scartate e perché)
+// v3.6.0 - 202611231800 (dopo l'import: come cambia l'IPG)
 //
 // Due modi di arrivare qui:
 // - dal profilo (Dati e import): istruzioni, segnalibro da salvare,
@@ -11,6 +11,7 @@
 // subito: un aggiornamento normale è un tocco su BGA e uno qui.
 
 import Avanzamento from './Avanzamento.jsx'
+import { StimaIpgBga } from './StimaIpg.jsx'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
@@ -208,10 +209,12 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
 
   async function importa(a = analisi, c = classi) {
     setErrore(''); setFase('lavoro')
+    // Per il Primeggio: le partite entrate da qui in poi (un minuto di margine sull'orologio).
+    const dal = new Date(Date.now() - 60000).toISOString()
     try {
       const r = await inEsclusiva(() => importaBga({ profilo, analisi: a, classi: c, incerteNuove, avanzamento: setAvanzamento }))
       setAvanzamento(null)
-      setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati, scartate: a.scartate })
+      setEsito({ ...r, senzaGioco: c.senzaGioco, giaImportati: a.giaImportati, scartate: a.scartate, dal })
       setFase('fatto')
       azzeraSospese()
     } catch (e) { setErrore(e.message); setAvanzamento(null); setFase('anteprima') }
@@ -419,6 +422,7 @@ export default function ImportaBga({ profilo, daLink = false, onChiudi, incorpor
               : `Fatto: ${esito.nuove} partite nuove, ${esito.collegate} già presenti collegate a BGA.`}
             {esito.senzaGioco ? ` ${esito.senzaGioco} partite di giochi lasciati fuori torneranno la prossima volta.` : ''}
           </div>
+          {esito.nuove > 0 && <StimaIpgBga profiloId={profilo.id} dal={esito.dal} />}
           {(esito.scartate?.abbandonate > 0 || esito.scartate?.annullate > 0) && (
             <p className="aiuto">
               Non importate perché su BGA non sono finite normalmente:

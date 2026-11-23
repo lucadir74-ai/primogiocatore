@@ -22,6 +22,7 @@ import { sincronizzaBgaSeServe, nuoveDaBga, bgaAvvisoVisto } from './bga'
 import { inviaABggSeServe } from './invioBgg'
 import { aggiornaCollezioneSeServe } from './collezioneBgg'
 import TiraPerAggiornare from './TiraPerAggiornare.jsx'
+import { StimaIpgBga } from './StimaIpg.jsx'
 
 // Le schede si scaricano solo quando si aprono: il primo caricamento
 // porta la Home e poco altro, il resto arriva a richiesta.
@@ -1117,7 +1118,7 @@ export default function App() {
           if (r?.nuove) inviaABggSeServe(profilo)
           // L'avviso conta anche quelle importate dal server.
           const n = await nuoveDaBga(profilo.id).catch(() => ({ nuove: 0 }))
-          if (r || n.nuove) setAvvisoBga({ ...(r || {}), nuove: n.nuove, fino: n.fino })
+          if (r || n.nuove) setAvvisoBga({ ...(r || {}), nuove: n.nuove, dal: n.dal, fino: n.fino })
         })
     }, 9000)
   }, [profilo?.id])
@@ -1600,6 +1601,9 @@ export default function App() {
               </div>
             )
           })()}
+
+          {/* Con l'avviso delle partite nuove da BGA: come cambia l'IPG. */}
+          {avvisoBga?.nuove > 0 && <StimaIpgBga profiloId={profilo.id} dal={avvisoBga.dal} fino={avvisoBga.fino} />}
 
           <NomeBga profilo={profilo} quando={controlloBga} />
 

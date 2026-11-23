@@ -623,7 +623,7 @@ const CHIAVE_AVVISO = 'primo-giocatore:bga-avviso-dal'
 // chiunque importate: l'app o il server (a telefono spento). Prima
 // l'avviso compariva solo se importava l'app, e da quando il server è
 // ripartito (22/11) non compariva più. La prima volta su un telefono si
-// guardano le ultime 24 ore. Restituisce { nuove, fino } («fino» va
+// guardano le ultime 24 ore. Restituisce { nuove, dal, fino } («fino» va
 // passato a bgaAvvisoVisto quando si chiude l'avviso).
 export async function nuoveDaBga(profiloId) {
   let dal = null
@@ -635,7 +635,7 @@ export async function nuoveDaBga(profiloId) {
     .order('creata_il', { ascending: false }).limit(1)
   if (error) return { nuove: 0 }
   if (!count) { bgaAvvisoVisto(profiloId, dal); return { nuove: 0 } }
-  return { nuove: count, fino: data?.[0]?.creata_il || dal }
+  return { nuove: count, dal, fino: data?.[0]?.creata_il || dal }
 }
 
 export function bgaAvvisoVisto(profiloId, fino) {
