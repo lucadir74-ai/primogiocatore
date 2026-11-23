@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il calcolo dell'IPG
-// v1.4.0 - 202611182200 (inClassifica e minGlobale: per la classifica della Tana e per quella degli eventi)
+// v1.5.0 - 202611232100 (suPartita: IPG prima e dopo di ogni partita, per lo Storico)
 //
 // Primeggio è il sistema di classifica; IPG (Indice Primo Giocatore)
 // è il numero di ciascuno, per gioco e globale.
@@ -112,6 +112,13 @@ export function posti(righe) {
 // (in un evento di tre giorni ne bastano poche).
 // opzioni.ancheOspiti: righe anche per gli ospiti senza account, con
 // profilo_id «ospite:<id>» (la classifica di un evento li mostra).
+// opzioni.suPartita (v1.5.0): chiamata per ogni partita contata con
+// (ids, righe): ids = la partita e le sue copie (la stessa partita
+// registrata da altri), righe = [{ profilo_id, gioco_prima, gioco_dopo,
+// globale_prima, globale_dopo }] per i giocatori con account. Prima/dopo
+// sono gli IPG di quel gioco e globale subito prima e subito dopo quella
+// partita (null = non c'era ancora). Il globale è la stessa media pesata
+// della classifica, aggiornata partita dopo partita.
 export function calcolaPrimeggio(partite, opzioni = {}) {
   const inClassifica = opzioni.inClassifica || (() => true)
   const minGlobale = opzioni.minGlobale ?? MIN_PARTITE_GLOBALE
@@ -124,13 +131,22 @@ export function calcolaPrimeggio(partite, opzioni = {}) {
     .map((p, i) => ({ p, i, n: contaAccount(p) }))
     .sort((a, b) => b.n - a.n || a.i - b.i)
     .map((x) => x.p)
-  const valide = unisciCondivise(copie, [], riportaAccount)
+  // Le copie assorbite si ricordano: la variazione vale anche per loro.
+  const suUnione = (tenuta, scartata) => {
+    riportaAccount(tenuta, scartata)
+    tenuta._copie = [...(tenuta._copie || []), scartata.id, ...(scartata._copie || [])]
+  }
+  const valide = unisciCondivise(copie, [], suUnione)
     // Fuori anche le partite a squadre: non si sa quanto ha pesato ognuno.
     .filter((p) => p.giochi?.id && p.tipo_punteggio !== 'coop' && !p.a_squadre)
     .sort((a, b) => String(a.giocata_il).localeCompare(String(b.giocata_il)))
 
   const perGioco = new Map()   // gioco -> Map(identità -> { r, partite })
   const pesi = new Map()       // gioco -> peso effettivo
+  // Per suPartita: il globale di ogni account, aggiornato partita dopo partita.
+  const corsa = new Map()      // account -> { somma, tot }
+  const quota = (gioco, ipg, n) => (n > 0 ? pesi.get(gioco) * Math.min(n, TETTO_PARTITE) : 0)
+  const globaleDi = (k) => { const c = corsa.get(k); return c && c.tot ? Math.round(c.somma / c.tot) : null }
   for (const p of valide) {
     // Una persona una volta sola per partita.
     const viste = new Set()
@@ -155,11 +171,27 @@ export function calcolaPrimeggio(partite, opzioni = {}) {
       return v
     })
     const nuovi = rate(voci.map((v) => [v.r]), { rank })
+    const storia = []
     voci.forEach((v, i) => {
+      const k = righe[i].k
+      const giocoPrima = v.partite ? ipgDa(v.r) : null
+      const globalePrima = opzioni.suPartita && eAccount(k) ? globaleDi(k) : null
       v.r = nuovi[i][0]
       v.partite++
       if (righe[i].vincitore) v.vittorie++
+      if (!opzioni.suPartita || !eAccount(k)) return
+      const giocoDopo = ipgDa(v.r)
+      const c = corsa.get(k) || { somma: 0, tot: 0 }
+      corsa.set(k, c)
+      const wPrima = quota(gioco, giocoPrima, v.partite - 1)
+      const wDopo = quota(gioco, giocoDopo, v.partite)
+      c.somma += giocoDopo * wDopo - (giocoPrima ?? 0) * wPrima
+      c.tot += wDopo - wPrima
+      storia.push({ profilo_id: k, gioco_prima: giocoPrima, gioco_dopo: giocoDopo, globale_prima: globalePrima, globale_dopo: globaleDi(k) })
     })
+    if (opzioni.suPartita && storia.length) {
+      opzioni.suPartita([p.id, ...(p._copie || [])].filter(Boolean), storia)
+    }
   }
 
   const righeIpg = []

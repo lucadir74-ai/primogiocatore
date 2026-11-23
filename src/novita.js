@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.52.0',
+    data: '2026-11-23',
+    voci: [
+      'Storico: aprendo una partita, sotto ogni giocatore con un account c’è quanto quella partita ha fatto salire o scendere il suo IPG (nel gioco e globale). Vale per tutte le partite, anche le vecchie, dopo il primo ricalcolo',
+    ],
+  },
+  {
     versione: '4.51.0',
     data: '2026-11-23',
     voci: [

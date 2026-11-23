@@ -3195,3 +3195,6 @@ a.contatto .contatto-valore { color: var(--blu); }
 .stima-ipg .su { color: var(--verde); }
 .stima-ipg .giu { color: var(--rosso); }
 .stima-ipg-numeri { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.variazione-ipg { font-variant-numeric: tabular-nums; }
+.variazione-ipg .su { color: var(--verde); }
+.variazione-ipg .giu { color: var(--rosso); }

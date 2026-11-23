@@ -1,5 +1,5 @@
 // Primo Giocatore - Storico
-// v4.4.0 - 202611221200 (partite a squadre: giocatori sotto la loro squadra, punteggio una volta)
+// v4.5.0 - 202611232100 (partita aperta: quanto ha cambiato l'IPG di ognuno, dalla tabella ipg_partite)
 
 import { durataLeggibile } from './durata'
 import { unisciCondivise } from './condivise'
@@ -71,6 +71,22 @@ function trova(testo, scritto) {
   return parole.length > 1 && parole.every((w) => testo.includes(w))
 }
 
+const segnoIpg = (n) => (n > 0 ? `+${n}` : n < 0 ? `\u2212${-n}` : '±0')
+const classeIpg = (n) => (n > 0 ? 'su' : n < 0 ? 'giu' : '')
+
+// «IPG 1520 → 1555 +35 · globale +4» sotto il nome, nella partita aperta.
+function VariazioneIpg({ r }) {
+  if (!r) return null
+  const dGioco = r.gioco_prima == null ? null : r.gioco_dopo - r.gioco_prima
+  const dGlob = r.globale_prima == null ? null : r.globale_dopo - r.globale_prima
+  return (
+    <span className="anno block variazione-ipg">
+      IPG {r.gioco_prima == null ? <>{r.gioco_dopo} (prima partita)</> : <>{r.gioco_prima} &rarr; {r.gioco_dopo} <strong className={classeIpg(dGioco)}>{segnoIpg(dGioco)}</strong></>}
+      {dGlob != null && <> · globale <strong className={classeIpg(dGlob)}>{segnoIpg(dGlob)}</strong></>}
+    </span>
+  )
+}
+
 export default function Storico({ profilo, onModifica, onApri, onNuova, ripristina }) {
   // Una partita lasciata a metà sul telefono: si riprende quella.
   const [inCorso] = useState(() => Boolean(leggiBozza()))
@@ -86,6 +102,23 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
   const inMemoria = archivioInMemoria(profilo.id)
   const [partite, setPartite] = useState(() => (inMemoria ? ordina(inMemoria) : []))
   const [aperta, setAperta] = useState(null)
+  // IPG prima e dopo la partita aperta (supabase/ipg_partite.sql, scritta
+  // dal ricalcolo): account -> riga. Vuota se la tabella non c'è ancora o
+  // la partita è entrata dopo l'ultimo ricalcolo.
+  const [ipgAperta, setIpgAperta] = useState({ id: null, righe: new Map() })
+  useEffect(() => {
+    if (!aperta) return
+    let vivo = true
+    supabase.from('ipg_partite')
+      .select('profilo_id, gioco_prima, gioco_dopo, globale_prima, globale_dopo, aggiornato_il')
+      .eq('partita_id', aperta).order('aggiornato_il')
+      .then(({ data, error }) => {
+        if (!vivo || error) return
+        // Con due ricalcoli sovrapposti vale il più recente.
+        setIpgAperta({ id: aperta, righe: new Map((data || []).map((r) => [r.profilo_id, r])) })
+      }, () => {})
+    return () => { vivo = false }
+  }, [aperta])
   const [caricamento, setCaricamento] = useState(!inMemoria)
   const [quante, setQuante] = useState(PER_PAGINA)
   const [cerca, setCerca] = useState('')
@@ -320,6 +353,7 @@ export default function Storico({ profilo, onModifica, onApri, onNuova, ripristi
                 <strong>{c.nome}</strong>
                 {c.ospite && <span className="anno"> ospite</span>}
                 {!c.ospite && <NomeVero id={par.utente_id} nick={c.nome} />}
+                <VariazioneIpg r={ipgAperta.id === p.id ? ipgAperta.righe.get(par.utente_id || par.ospiti?.utente_collegato) : null} />
                 {(par.ruolo || par.ordine_turno != null) && (
                   <span className="anno block fazione-nota">
                     {par.ruolo}
