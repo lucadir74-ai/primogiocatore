@@ -29,10 +29,19 @@ $pgdump = Find-Strumento 'pg_dump'
 $psql = Find-Strumento 'psql'
 $pgrestore = Find-Strumento 'pg_restore'
 if (-not $pgdump -or -not $psql -or -not $pgrestore) {
-  Stop-ConErrore ("Mancano gli strumenti di PostgreSQL (pg_dump).`n" +
-    "Installali una volta sola da PowerShell con:`n" +
-    "  winget install --id PostgreSQL.PostgreSQL.17 --override `"--mode unattended --disable-components server,pgAdmin,stackbuilder`"`n" +
-    "poi rilancia il backup.")
+  Write-Host 'Mancano gli strumenti di PostgreSQL (pg_dump): servono una volta sola.' -ForegroundColor Yellow
+  Write-Host 'Si installano solo i programmi per copiare il database, non un database.'
+  Write-Host 'Windows chiedera'' il permesso di amministratore: rispondi Si''.'
+  $si = Read-Host 'Li installo adesso? (s/n)'
+  if ($si -notmatch '^[sS]') { Stop-ConErrore 'Backup non fatto: senza pg_dump non si puo''.' }
+  & winget install --id PostgreSQL.PostgreSQL.17 --accept-source-agreements --accept-package-agreements `
+    --override '--mode unattended --disable-components server,pgAdmin,stackbuilder'
+  $pgdump = Find-Strumento 'pg_dump'
+  $psql = Find-Strumento 'psql'
+  $pgrestore = Find-Strumento 'pg_restore'
+  if (-not $pgdump -or -not $psql -or -not $pgrestore) {
+    Stop-ConErrore 'Installazione non riuscita o non ancora finita: rilancia il backup tra un minuto.'
+  }
 }
 Write-Host "Uso $pgdump"
 
@@ -70,11 +79,17 @@ try {
 
   Write-Passo 'Tabelle, funzioni e regole (qualche minuto)'
   & $pgdump @base -n public -Fc -f $dati
-  if ($LASTEXITCODE -ne 0) { Stop-ConErrore 'Copia delle tabelle NON riuscita (vedi il messaggio sopra).' }
+  if ($LASTEXITCODE -ne 0) {
+    Remove-Item $dati -ErrorAction SilentlyContinue
+    Stop-ConErrore 'Copia delle tabelle NON riuscita (vedi il messaggio sopra; password sbagliata?).'
+  }
 
   Write-Passo 'Account'
   & $pgdump @base --data-only -t auth.users -t auth.identities -Fc -f $account
-  if ($LASTEXITCODE -ne 0) { Stop-ConErrore 'Copia degli account NON riuscita (vedi il messaggio sopra).' }
+  if ($LASTEXITCODE -ne 0) {
+    Remove-Item $dati, $account -ErrorAction SilentlyContinue
+    Stop-ConErrore 'Copia degli account NON riuscita (vedi il messaggio sopra).'
+  }
 
   Write-Passo 'Lavori programmati'
   $dest = $lavori -replace '\\', '/'
