@@ -1,5 +1,5 @@
 // Primo Giocatore - quanto cambia l'IPG con le partite appena entrate
-// v1.1.0 - 202611231800 (anche per le partite importate da BGA, una o più)
+// v1.2.0 - 202611231900 (anche per le partite importate da BG Stats)
 //
 // Per ogni giocatore con un account: l'IPG di quel gioco prima e dopo, e
 // di quanto si muove l'IPG globale. È una STIMA: parte dai valori
@@ -116,9 +116,10 @@ export async function calcolaStimaIpg(partite) {
   })
 }
 
-// Le partite BGA entrate fra «dal» e «fino» (creata_il), nel formato di
+// Le partite entrate fra «dal» e «fino» (creata_il), nel formato di
 // calcolaStimaIpg. Quelle già comprese nell'ultimo ricalcolo si saltano.
-export async function partiteBgaPerStima(profiloId, dal, fino = null) {
+// origine: 'bga' (numero del tavolo BGA) o 'bgstats' (chiave «bgstats:»).
+export async function partitePerStima(profiloId, dal, fino = null, origine = 'bga') {
   const { data: ultimo } = await supabase.from('ipg').select('aggiornato_il')
     .order('aggiornato_il', { ascending: false }).limit(1)
   const ricalcolo = ultimo?.[0]?.aggiornato_il
@@ -127,8 +128,9 @@ export async function partiteBgaPerStima(profiloId, dal, fino = null) {
     .select(`giocata_il, tipo_punteggio, a_squadre, giochi ( id, nome ),
       partecipazioni ( utente_id, ospite_id, posizione, punteggio_totale, vincitore,
         profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome, cognome, utente_collegato ) )`)
-    .eq('registrata_da', profiloId).not('bga_tavolo', 'is', null).gt('creata_il', da)
+    .eq('registrata_da', profiloId).gt('creata_il', da)
     .order('giocata_il').limit(MASSIMO_PARTITE + 1)
+  q = origine === 'bgstats' ? q.like('chiave_esterna', 'bgstats:%') : q.not('bga_tavolo', 'is', null)
   if (fino) q = q.lte('creata_il', fino)
   const { data, error } = await q
   if (error) throw error
@@ -190,18 +192,18 @@ export default function StimaIpg({ giocoId, giocoNome, giocatori }) {
   return <Riquadro righe={righe} titolo="Primeggio" />
 }
 
-// Le partite arrivate da BGA (in automatico o dall'import a mano).
-export function StimaIpgBga({ profiloId, dal, fino = null }) {
+// Le partite arrivate da BGA (in automatico o dall'import a mano) o da BG Stats.
+export function StimaIpgBga({ profiloId, dal, fino = null, origine = 'bga' }) {
   const [righe, setRighe] = useState(null)
   useEffect(() => {
     if (!profiloId || !dal) return
     let vivo = true
-    partiteBgaPerStima(profiloId, dal, fino)
+    partitePerStima(profiloId, dal, fino, origine)
       .then((partite) => calcolaStimaIpg(partite))
       .then((r) => { if (vivo) setRighe(r || []) })
       .catch(() => { if (vivo) setRighe([]) })
     return () => { vivo = false }
-  }, [profiloId, dal, fino])
+  }, [profiloId, dal, fino, origine])
   if (!righe?.length) return null
-  return <Riquadro righe={righe} titolo="Primeggio, partite da BGA" />
+  return <Riquadro righe={righe} titolo={origine === 'bgstats' ? 'Primeggio, partite da BG Stats' : 'Primeggio, partite da BGA'} />
 }
