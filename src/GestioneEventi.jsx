@@ -1,5 +1,5 @@
 // Primo Giocatore - gestione degli eventi
-// v1.1.0 - 202611222330 (si nominano solo gli organizzatori; in cima i tavoli dell'evento)
+// v1.2.0 - 202611241000 (Partecipazione: quanti hanno giocato, quante partite, quanti entrati col link)
 //
 // Per chi organizza: crea un evento, ne cambia nome, date e luogo, ne
 // chiude gli ingressi, e lo fa conoscere (link da copiare, QR a tutto
@@ -23,6 +23,7 @@ import QRCode from 'qrcode'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import { eventiVisibili, mieiEventi, statoEvento, dateEvento, linkEvento, giorniEvento } from './evento'
 import { trovaOCreaLuogo } from './giochiMiei'
+import { contiEvento } from './eventoConti'
 import CampoIndirizzo from './CampoIndirizzo.jsx'
 
 // L'indirizzo della sede dell'evento: lo prendono da soli i suoi tavoli
@@ -110,6 +111,7 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
   const [organizzatori, setOrganizzatori] = useState(null)
   const [partecipanti, setPartecipanti] = useState(null)   // quanti sono entrati con il link
   const [tavoli, setTavoli] = useState(null)               // per il riepilogo in cima
+  const [gioco, setGioco] = useState(null)                 // quanti hanno giocato e quante partite
   const [tutti, setTutti] = useState([])     // fra chi scegliere un organizzatore
   const [cerca, setCerca] = useState('')
   const [errore, setErrore] = useState('')
@@ -145,6 +147,10 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
     if (org.error) { setErrore(org.error.message); return }
     setOrganizzatori((org.data || []).sort((a, b) => daMostrare(a.profili).localeCompare(daMostrare(b.profili), 'it')))
     setPartecipanti(altri.error ? null : (altri.count ?? 0))
+    // Chi ha giocato davvero: soci, partecipanti e ospiti senza account.
+    supabase.rpc('classifica_evento', { p_evento: evento.id }).then(({ data, error }) => {
+      if (!error) { const c = contiEvento(data); setGioco({ giocatori: c.giocatori, ospiti: c.ospiti, partite: c.totale }) }
+    })
   }
 
   async function caricaTavoli() {
@@ -240,6 +246,19 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
         <p className="sottotitolo">{dateEvento(evento)}{evento.luogo_nome ? ` · ${evento.luogo_nome}` : ''}</p>
         {errore && <div className="avviso errore">{errore}</div>}
         {messaggio && <div className="avviso ok">{messaggio}</div>}
+
+        {/* Quanti hanno partecipato: si conta da chi ha giocato, senza un'iscrizione a parte. */}
+        <h3 className="titolo-sezione">Partecipazione</h3>
+        <div className="evento-numeri">
+          <span><strong>{gioco ? gioco.giocatori : '…'}</strong> hanno giocato</span>
+          <span><strong>{gioco ? gioco.partite : '…'}</strong> partite</span>
+          <span><strong>{partecipanti ?? '…'}</strong> col link o QR</span>
+        </div>
+        <p className="aiuto">
+          Chi ha giocato conta tutti quelli in almeno una partita registrata dell&rsquo;evento: soci,
+          partecipanti{gioco?.ospiti ? ` e ${gioco.ospiti === 1 ? '1 ospite' : `${gioco.ospiti} ospiti`} senza account` : ' e ospiti senza account'}.
+          «Col link o QR» sono quelli entrati nell&rsquo;app dell&rsquo;evento (i soci non ne hanno bisogno).
+        </p>
 
         <h3 className="titolo-sezione">
           Tavoli {tavoli && <span className="conteggio">{tavoli.length}</span>}

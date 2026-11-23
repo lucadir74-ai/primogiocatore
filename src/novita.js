@@ -16,6 +16,18 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.55.0',
+    data: '2026-11-24',
+    voci: [
+      'Home: i tavoli di un evento hanno l’etichetta col nome dell’evento, che apre il suo programma',
+      'Nuovo tavolo: se il giorno scelto cade in un evento, l’app chiede se il tavolo ne fa parte',
+      'Tavolo: senza foto, nel cerchio di chi spiega c’è l’iniziale del nome al posto del «?»',
+      'Classifica dell’evento: in cima partite, giocatori e giochi; nuove classifiche avversari diversi, giochi diversi, giochi impegnativi, e i Premi',
+      'Classifiche → Eventi si vede anche prima che l’evento cominci; tasto «Classifica dell’evento» nella pagina dell’evento; durante l’evento in Statistiche la riga «come sto andando»',
+      'Gestisci l’evento: Partecipazione, cioè quanti hanno giocato, quante partite e quanti sono entrati col link',
+    ],
+  },
+  {
     versione: '4.54.1',
     data: '2026-11-24',
     voci: [

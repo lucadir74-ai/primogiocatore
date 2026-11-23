@@ -1052,6 +1052,7 @@ export default function App() {
   const [scheda, setScheda] = useState(() => leggiPercorso()?.scheda || 'home')
   // Tavolo da aprire subito arrivando dalla Home: { id, quando }.
   const [apriTavolo, setApriTavolo] = useState(null)
+  const [classificaEvento, setClassificaEvento] = useState(null)   // le Classifiche aperte sulla scheda di un evento
   const [erroreProfilo, setErroreProfilo] = useState('')
   const [riprova, setRiprova] = useState(0)
   const [partitaId, setPartitaId] = useState(() => leggiPercorso()?.partitaId || null)
@@ -1659,6 +1660,14 @@ export default function App() {
               key={apriTavolo?.quando || 'tavoli'}
               apriSubito={apriTavolo?.id}
               apriEvento={apriTavolo?.evento}
+              onClassificaEvento={(id) => {
+                statoProssimo.current = { ritornoA: '/tavoli' }
+                // Tornando indietro si ritrova il programma dell'evento.
+                setApriTavolo({ evento: id, quando: Date.now() })
+                setClassificaEvento({ id, da: 'Tavoli' })
+                setScheda('classifiche')
+                window.scrollTo({ top: 0 })
+              }}
               profilo={profilo}
               onRichieste={() => contaRichiesteTavolo().then(setTavoliChiesti)}
               onRegistraPartita={apriPartita}
@@ -1682,7 +1691,12 @@ export default function App() {
             <Statistiche
               profilo={profilo}
               mira={mira}
-              onClassifiche={() => { statoProssimo.current = { ritornoA: '/statistiche' }; setScheda('classifiche') }}
+              onClassifiche={(evento) => {
+                statoProssimo.current = { ritornoA: '/statistiche' }
+                setClassificaEvento(evento ? { id: evento, da: 'Statistiche' } : null)
+                setScheda('classifiche')
+                if (evento) window.scrollTo({ top: 0 })
+              }}
               onGiocatori={() => { statoProssimo.current = { ritornoA: '/statistiche' }; setScheda('giocatori'); window.scrollTo({ top: 0 }) }}
               onModifica={(id, dove) => {
                 setRitorno(dove || null)
@@ -1690,9 +1704,10 @@ export default function App() {
               }}
             />
           ) : scheda === 'classifiche' ? (
-            <Classifiche profilo={profilo} onIndietro={() => {
+            <Classifiche key={classificaEvento?.id || 'classifiche'} profilo={profilo} apriEvento={classificaEvento?.id}
+              indietroA={classificaEvento?.da || 'Statistiche'} onIndietro={() => {
               const da = window.history.state?.ritornoA
-              if (da === '/statistiche' || da === '/') window.history.back()
+              if (da === '/statistiche' || da === '/' || da === '/tavoli') window.history.back()
               else setScheda('statistiche')
             }} />
           ) : scheda === 'contatti' ? (

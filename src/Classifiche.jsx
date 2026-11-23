@@ -1,5 +1,5 @@
 // Primo Giocatore - Classifiche
-// v1.6.0 - 202611182200 (scheda Eventi: la classifica di ogni evento)
+// v1.7.0 - 202611241000 (scheda Eventi anche per gli eventi in arrivo; apriEvento la apre su un evento)
 //
 // Le classifiche Primeggio di tutti gli iscritti: generale e per gioco.
 // Legge solo la tabella ipg, che il server riempie con i numeri (IPG,
@@ -90,26 +90,30 @@ function mioPosto(mia, g) {
   return null
 }
 
-export default function Classifiche({ profilo, onIndietro }) {
+export default function Classifiche({ profilo, onIndietro, apriEvento = null, indietroA = 'Statistiche' }) {
   const [tutti, setTutti] = useState([])          // righe della classifica generale
   const [primiGiochi, setPrimiGiochi] = useState([])
   const [senzaNomi, setSenzaNomi] = useState(false)
   const [mie, setMie] = useState(() => new Map())   // gioco_id -> la mia riga
   const [caricamento, setCaricamento] = useState(true)
   const [errore, setErrore] = useState('')
-  const [vista, setVista] = useState('generale')   // generale | giochi
+  const [vista, setVista] = useState(apriEvento ? 'eventi' : 'generale')   // generale | giochi | eventi
   const [cerca, setCerca] = useState('')
   const [trovati, setTrovati] = useState({ q: '', giochi: [], errore: '' })
   const [giocoAperto, setGiocoAperto] = useState(null)
   const [personaAperta, setPersonaAperta] = useState(null)
-  // Gli eventi già cominciati: ognuno ha la sua classifica.
+  // Ogni evento ha la sua classifica, anche quelli in arrivo: così si sa
+  // che c'è (dentro dice quando comincia). Si apre su quello in corso,
+  // altrimenti sul più recente già cominciato, altrimenti sul prossimo.
   const [eventi, setEventi] = useState([])
-  const [eventoScelto, setEventoScelto] = useState('')
+  const [eventoScelto, setEventoScelto] = useState(apriEvento || '')
   useEffect(() => {
     eventiVisibili().then((lista) => {
-      const partiti = lista.filter((e) => statoEvento(e) !== 'in_arrivo')
-      setEventi(partiti)
-      setEventoScelto((x) => x || partiti[0]?.id || '')
+      setEventi(lista)
+      const prima = lista.find((e) => statoEvento(e) === 'in_corso')
+        || lista.find((e) => statoEvento(e) === 'concluso')
+        || lista.filter((e) => statoEvento(e) === 'in_arrivo').at(-1)   // in ordine dal più lontano
+      setEventoScelto((x) => (x && lista.some((e) => e.id === x) ? x : prima?.id || ''))
     })
   }, [])
 
@@ -274,7 +278,7 @@ export default function Classifiche({ profilo, onIndietro }) {
 
   return (
     <div className="scheda">
-      {onIndietro && <button className="bottone-piatto" onClick={onIndietro}>← Statistiche</button>}
+      {onIndietro && <button className="bottone-piatto" onClick={onIndietro}>← {indietroA}</button>}
       <h2>Classifiche</h2>
 
       {errore && <div className="avviso errore">{errore}</div>}

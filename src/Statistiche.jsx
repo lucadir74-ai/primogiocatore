@@ -1,5 +1,5 @@
 // Primo Giocatore - Statistiche
-// v3.27.0 - 202611221200 (partite a squadre: atteso fra squadre, compagni fuori dal testa a testa, punteggio una volta per squadra)
+// v3.28.0 - 202611241000 (durante un evento, sotto le Classifiche, la riga «come sto andando» che apre la sua classifica)
 // Un solo motore di calcolo, quattro soggetti: giocatore, gioco, luogo, gruppo.
 
 import Avanzamento from './Avanzamento.jsx'
@@ -16,6 +16,42 @@ import BarraScorrevole from './BarraScorrevole.jsx'
 import SpiegaIpg from './SpiegaIpg.jsx'
 import { punteggioSquadra } from './cooperativa'
 import { eASquadre, squadreDi, latiDi, compagni, punteggiPerLato, nomeSquadra } from './squadre'
+import { eventiVisibili, statoEvento } from './evento'
+import { contiEvento, posti } from './eventoConti'
+
+// Durante un evento, sotto le Classifiche: come sto andando lì, e un tocco
+// apre la sua classifica. Fuori dagli eventi non si vede.
+function EventoInCorso({ profilo, onApri }) {
+  const [riga, setRiga] = useState(null)
+  useEffect(() => {
+    let vivo = true
+    eventiVisibili().then(async (lista) => {
+      const ev = lista.find((e) => statoEvento(e) === 'in_corso')
+      if (!ev) return
+      const { data, error } = await supabase.rpc('classifica_evento', { p_evento: ev.id })
+      if (!vivo) return
+      if (error) { setRiga({ ev, testo: 'guarda la classifica' }); return }
+      const conti = contiEvento(data)
+      const mia = posti(conti.vittorie, 'vittorie').find((r) => r.k === profilo.id)
+      const giocate = conti.partite.find((r) => r.k === profilo.id)?.partite || 0
+      setRiga({
+        ev,
+        testo: mia ? `sei ${mia.posto}° per vittorie su ${conti.giocatori}`
+          : giocate ? `${giocate === 1 ? '1 partita' : `${giocate} partite`}, ancora nessuna vittoria`
+            : conti.totale ? `${conti.totale === 1 ? '1 partita' : `${conti.totale} partite`} giocate: guarda la classifica`
+              : 'la classifica parte con la prima partita',
+      })
+    }).catch(() => { /* niente riga */ })
+    return () => { vivo = false }
+  }, [profilo.id])
+  if (!riga) return null
+  return (
+    <button type="button" className="tasto-classifiche-evento" onClick={() => onApri(riga.ev.id)}>
+      <span><strong>{riga.ev.nome}</strong>: {riga.testo}</span>
+      <span aria-hidden="true">›</span>
+    </button>
+  )
+}
 
 // L'istogramma chiedeva il nome del mese due volte per ogni partita, e
 // ogni chiamata a toLocaleDateString costruisce un formattatore nuovo: con
@@ -620,7 +656,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
     <div className="scheda">
       <h2>Statistiche</h2>
       {onClassifiche && (
-        <button type="button" className="tasto-classifiche" onClick={onClassifiche}>
+        <button type="button" className="tasto-classifiche" onClick={() => onClassifiche()}>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M8 4h8v5a4 4 0 0 1-8 0V4z M8 6H5a3 3 0 0 0 3 4 M16 6h3a3 3 0 0 1-3 4 M12 13v4 M8.5 20h7 M10 17h4" />
@@ -636,6 +672,7 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
           <span className="tasto-classifiche-freccia" aria-hidden="true">›</span>
         </button>
       )}
+      {onClassifiche && <EventoInCorso profilo={profilo} onApri={(id) => onClassifiche(id)} />}
 
       {errore && <div className="avviso errore">{errore}</div>}
 

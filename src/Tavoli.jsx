@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.30.0 - 202611231200 (nel modulo: «quel giorno c'è un evento, il tavolo ne fa parte?»)
+// v2.31.0 - 202611241000 (nella testata dell'evento il tasto «Classifica dell'evento»)
 //
 // evento: aperta dentro un evento (l'app di chi partecipa, o la scheda
 // dell'evento toccata qui), solo i tavoli di quell'evento, giorno per
@@ -63,7 +63,7 @@ const VUOTO = {
 const RAGGI = [5, 10, 25]
 
 export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste, evento = null, soloEvento = false,
-  organizzo = false, apriEvento = null, onIndietro = null }) {
+  organizzo = false, apriEvento = null, onIndietro = null, onClassificaEvento = null }) {
   // Gli eventi che vedo: per scegliere l'evento di un tavolo nuovo e per
   // il codice nelle locandine dei tavoli degli eventi.
   const [eventi, setEventi] = useState(evento ? [evento] : [])
@@ -764,7 +764,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     return (
       <Tavoli key={eventoInVista.id} profilo={profilo} evento={eventoInVista} onRegistraPartita={onRegistraPartita}
         organizzo={organizzoEvento(eventoInVista.id) || Boolean(profilo.organizzatore && eventoInVista.tana_id != null)}
-        onIndietro={() => { setEventoVisto(null); carica(); window.scrollTo({ top: 0 }) }} />
+        onIndietro={() => { setEventoVisto(null); carica(); window.scrollTo({ top: 0 }) }}
+        onClassificaEvento={onClassificaEvento} />
     )
   }
 
@@ -1544,6 +1545,11 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <p className="evento-occhiello">Evento · {STATI_EVENTO[statoEvento(evento)]}</p>
         <h2>{evento.nome}</h2>
         <span className="anno block">{dateEvento(evento)}{evento.luogo_nome ? ` · ${evento.luogo_nome}` : ''}</span>
+        {onClassificaEvento && (
+          <button className="bottone bottone-secondario classifica-evento-tasto" onClick={() => onClassificaEvento(evento.id)}>
+            Classifica dell&rsquo;evento
+          </button>
+        )}
         {organizzo && (
           <button className="bottone bottone-secondario" onClick={() => { setGestisciEvento(true); window.scrollTo({ top: 0 }) }}>
             Gestisci l&rsquo;evento
