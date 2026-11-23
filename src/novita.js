@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.50.0',
+    data: '2026-11-23',
+    voci: [
+      'Primeggio: anche dopo l’import da BG Stats compare quanto sale o scende l’IPG (fino a 30 partite nuove)',
+    ],
+  },
+  {
     versione: '4.49.0',
     data: '2026-11-23',
     voci: [

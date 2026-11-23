@@ -11,6 +11,7 @@ import ImportaBga from './ImportaBga.jsx'
 import { useInvioBgg, InvioBggStato, InvioBggAzioni } from './InvioBgg.jsx'
 import Sezione from './Sezione.jsx'
 import Avanzamento from './Avanzamento.jsx'
+import { StimaIpgBga } from './StimaIpg.jsx'
 import { importaCollezioneBgg, contaCollezioneBgg, fraseCollezione } from './collezioneBgg'
 import { risposteLente, svuotaRisposteLente } from './memoriaRete'
 import { ARCHIVIO_LOCALE, archivioLocaleAttivo, impostaArchivioLocale, ricaricaTuttoArchivio } from './archivio'
@@ -125,6 +126,7 @@ export default function Dati({ profilo }) {
   const bgsRef = useRef(null)
   const [avanzamento, setAvanzamento] = useState(null)
   const [avanzamentoCollezione, setAvanzamentoCollezione] = useState(null)
+  const [stimaBgstats, setStimaBgstats] = useState(null)   // da quando: partite BG Stats per il Primeggio
   const [anteprima, setAnteprima] = useState(null)   // { doc, analisi }
   const [miei, setMiei] = useState([])               // id dei profili che sono io
   const [cercaGiocatore, setCercaGiocatore] = useState('')
@@ -356,7 +358,7 @@ export default function Dati({ profilo }) {
   async function importa(evento) {
     const file = evento.target.files?.[0]
     if (!file) return
-    setErrore(''); setMessaggio(''); setLavorando(true)
+    setErrore(''); setMessaggio(''); setLavorando(true); setStimaBgstats(null)
     try {
       const testo = await file.text()
       const doc = JSON.parse(testo)
@@ -494,10 +496,13 @@ export default function Dati({ profilo }) {
   }
 
   async function confermaBgstats() {
-    setErrore(''); setMessaggio(''); setLavorando(true)
+    setErrore(''); setMessaggio(''); setLavorando(true); setStimaBgstats(null)
     tieniAcceso(true)
+    // Per il Primeggio: le partite entrate da qui in poi (un minuto di margine sull'orologio).
+    const dal = new Date(Date.now() - 60000).toISOString()
     try {
       const esito = await importaBgstats(anteprima.doc, profilo, miei, setAvanzamento)
+      if (esito.importate > 0) setStimaBgstats(dal)
       setMessaggio(
         `Importate ${esito.importate} partite` +
         (esito.saltate ? `, ${esito.saltate} già presenti e saltate` : '') +
@@ -792,6 +797,7 @@ export default function Dati({ profilo }) {
           />
         </label>
         {barra}
+        {stimaBgstats && <StimaIpgBga profiloId={profilo.id} dal={stimaBgstats} origine="bgstats" />}
         <p className="aiuto">
           Dopo aver scelto il file tieni la pagina aperta finché non compare l&rsquo;esito.
           Gli altri giocatori entrano come ospiti. Altre app: va bene qualunque file nel formato di BG Stats;
