@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.7.0 - 202611240100 (tempo scaduto nel database: blocchi più piccoli da soli, scritture in parallelo, l'errore dice il passaggio)
+// v1.8.0 - 202611241200 (partite lette in quattro parti insieme; pesi BGG dopo la classifica, col tempo che resta; tempi di ogni passaggio)
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -14,9 +14,9 @@
 //   CRON_SECRET                una stringa a caso, lunga
 //   BGG_TOKEN                  lo stesso già usato da api/bgg.js
 //
-// Prima del calcolo recupera da BGG il peso dei giochi che ancora non
-// l'hanno, entro un tempo massimo: quelli che restano arrivano al
-// ricalcolo successivo e intanto valgono come un gioco medio.
+// Dopo aver scritto la classifica, col tempo che resta, recupera da BGG il
+// peso dei giochi che ancora non l'hanno: vale dal ricalcolo successivo, e
+// intanto quei giochi valgono come un gioco medio.
 // L'indirizzo del database è lo stesso dell'app (VITE_SUPABASE_URL).
 //
 // Il traffico verso Supabase era quasi tutto qui. Ora:
@@ -41,7 +41,7 @@ const URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PAGINA = 1000
 const BLOCCO = 2000        // partite per ogni chiamata a primeggio_partite
-const TEMPO_PESI = 30000   // al massimo 30 secondi per i pesi, su 60 disponibili
+const TEMPO_PESI_FINO = 50000   // i pesi BGG si chiedono fino a 50 secondi dall'inizio, su 60 disponibili
 // L'ora scritta nella tabella è un po' indietro rispetto all'inizio della
 // lettura: una partita salvata mentre si legge risulta comunque «dopo»,
 // e la notte seguente si ricalcola.
@@ -98,26 +98,62 @@ async function leggiGiochi(db, ids) {
 
 // Le partite in forma compatta, un blocco dopo l'altro (in ordine di id),
 // poi i giochi una volta sola. Restituisce anche quanti byte sono arrivati.
-export async function tutteLePartite(db) {
+// Una parte delle partite: dopo «da» (escluso) fino a «a» (compreso; null =
+// fino in fondo), a blocchi. Con il tempo scaduto il blocco si dimezza.
+async function leggiParte(db, da, a) {
   const partite = []
-  let dopo = null
+  let dopo = da
   let byte = 0
   let blocco = BLOCCO
   for (;;) {
     const { data, error } = await db.rpc('primeggio_partite', { p_dopo: dopo, p_limite: blocco })
     if (error) {
-      if (dopo === null && funzioneMancante(error)) return { partite: await partiteComePrima(db), compatta: false }
-      // Tempo scaduto nel database: lo stesso pezzo, più piccolo.
       if (tempoScaduto(error) && blocco > 250) { blocco = Math.floor(blocco / 2); continue }
       throw error
     }
     byte += JSON.stringify(data).length
-    partite.push(...decodificaBlocco(data))
+    const righe = decodificaBlocco(data)
+    // Il numero della partita (ipg_partite.sql) dice dove finisce la parte;
+    // senza, si legge tutto da qui in fondo in una parte sola.
+    const dentro = a ? righe.filter((p) => !p.id || p.id <= a) : righe
+    partite.push(...dentro)
+    if (dentro.length < righe.length) break
     if (!data?.quante || data.quante < blocco || !data.ultimo) break
     dopo = data.ultimo
   }
+  return { partite, byte }
+}
+
+// I confini delle parti: gli id delle partite a 1/4, 2/4 e 3/4 (in ordine
+// di id, come le legge primeggio_partite). Se qualcosa non va, una parte sola.
+async function confini(db, parti) {
+  try {
+    const { count, error } = await db.from('partite').select('id', { count: 'exact', head: true })
+    if (error || !count || count < parti * BLOCCO) return []
+    const ids = await Promise.all(Array.from({ length: parti - 1 }, async (_, k) => {
+      const da = Math.floor((count * (k + 1)) / parti)
+      const { data, error: e } = await db.from('partite').select('id').order('id').range(da, da)
+      if (e) throw e
+      return data?.[0]?.id
+    }))
+    return ids.every(Boolean) ? ids : []
+  } catch { return [] }
+}
+
+// Le partite si leggono in quattro parti insieme, ognuna a blocchi: prima
+// erano una ventina di richieste in fila. L'ordine finale è lo stesso
+// (per id), quindi l'IPG non cambia.
+export async function tutteLePartite(db, parti = 4) {
+  const prova = await db.rpc('primeggio_partite', { p_dopo: null, p_limite: 1 })
+  if (prova.error && funzioneMancante(prova.error)) return { partite: await partiteComePrima(db), compatta: false }
+  // Il numero della partita serve a fermare ogni parte al suo confine.
+  const conNumero = Boolean(decodificaBlocco(prova.data)[0]?.id)
+  const c = conNumero ? await confini(db, parti) : []
+  const inizi = [null, ...c]
+  const pezzi = await Promise.all(inizi.map((da, k) => leggiParte(db, da, c[k] || null)))
+  const partite = pezzi.flatMap((x) => x.partite)
   aggiungiGiochi(partite, await leggiGiochi(db, idGiochi(partite)))
-  return { partite, compatta: true, byte }
+  return { partite, compatta: true, byte: pezzi.reduce((t, x) => t + x.byte, 0), parti: inizi.length }
 }
 
 // Di notte: serve ricalcolare? Sì se dopo l'ultimo ricalcolo una partita
@@ -217,11 +253,11 @@ async function completaPesi(db, partite, scadenza) {
     console.warn('Pesi BGG non recuperati:', e.message)
   }
 
-  for (const [bggId, peso] of pesi) {
+  await inParallelo([...pesi].map(([bggId, peso]) => async () => {
     const { error } = await db.from('giochi').update({ peso_bgg: peso }).eq('bgg_id', bggId)
     if (error) throw error
     for (const g of senza.get(bggId) || []) g.peso_bgg = peso
-  }
+  }), 6)
   return { recuperati: pesi.size, mancanti: senza.size - pesi.size }
 }
 
@@ -307,17 +343,24 @@ async function scriviStoria(db, righe, ora) {
 export async function ricalcola(db) {
   const inizio = Date.now()
   const ora = new Date((await oraDelDatabase(db)) - MARGINE).toISOString()
-  const { partite, compatta, byte } = await passo('lettura delle partite', () => tutteLePartite(db))
-  const pesi = await passo('pesi BGG', () => completaPesi(db, partite, inizio + TEMPO_PESI))
+  const tempi = {}
+  const misura = async (nome, etichetta, fn) => {
+    const t = Date.now()
+    try { return await passo(etichetta, fn) } finally { tempi[nome] = Math.round((Date.now() - t) / 100) / 10 }
+  }
+  const { partite, compatta, byte, parti } = await misura('lettura', 'lettura delle partite', () => tutteLePartite(db))
   // Chi partecipa solo a un evento (non è socio) gioca e conta come
   // avversario, ma nella classifica della Tana non compare.
   const soloEvento = await passo('iscritti solo agli eventi', () => soloPartecipanti(db))
   const storia = []
+  const tCalcolo = Date.now()
   const righe = calcolaPrimeggio(partite, {
     inClassifica: (id) => !soloEvento.has(String(id)),
     // Senza il numero della partita (script non lanciato) non si salva niente.
     suPartita: (ids, r) => { for (const id of ids) for (const x of r) storia.push({ partita_id: id, ...x }) },
   })
+
+  tempi.calcolo = Math.round((Date.now() - tCalcolo) / 100) / 10
 
   // Nome e colore vanno nella tabella: chi guarda la classifica può
   // non avere accesso al profilo di persone con cui non ha giocato.
@@ -347,11 +390,20 @@ export async function ricalcola(db) {
 
   // Una classifica vuota non sostituisce quella che c'è.
   if (!righe.length) throw new Error('Nessuna riga calcolata: la classifica resta com’era.')
-  const scrittura = await passo('scrittura della classifica', () => scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora }))))
+  const scrittura = await misura('classifica', 'scrittura della classifica', () => scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora }))))
   // Solo se resta tempo (limite di 60 secondi): altrimenti restano le righe
   // dell'ultimo ricalcolo, e si riprova al prossimo.
+  const tStoria = Date.now()
   const partitaPerPartita = Date.now() - inizio < 40000
     ? await scriviStoria(db, storia, ora) : 'saltata: poco tempo, al prossimo ricalcolo'
+  tempi.storico = Math.round((Date.now() - tStoria) / 100) / 10
+
+  // I pesi BGG mancanti per ultimi, solo col tempo che resta (prima fino a
+  // 30 secondi PRIMA del calcolo, a ogni ricalcolo): valgono dal prossimo.
+  // Intanto quei giochi contano come un gioco medio, come prima.
+  const pesi = Date.now() - inizio < TEMPO_PESI_FINO
+    ? await misura('pesi', 'pesi BGG', () => completaPesi(db, partite, inizio + TEMPO_PESI_FINO))
+    : { recuperati: 0, mancanti: [...new Set(partite.filter((p) => p.giochi?.bgg_id && p.giochi.peso_bgg == null).map((p) => p.giochi.bgg_id))].length }
 
   return {
     partite: partite.length,
@@ -362,6 +414,8 @@ export async function ricalcola(db) {
     pesi_mancanti: pesi.mancanti,
     lettura: compatta ? 'compatta' : 'come prima',
     kb_partite: byte ? Math.round(byte / 1024) : undefined,
+    parti_lette_insieme: parti,
+    tempi,
     secondi: Math.round((Date.now() - inizio) / 100) / 10,
   }
 }

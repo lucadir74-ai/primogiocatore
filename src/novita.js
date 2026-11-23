@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.53.0',
+    data: '2026-11-24',
+    voci: [
+      'Ricalcolo dell’IPG più veloce: le partite si leggono in quattro parti insieme, e i pesi BGG mancanti si chiedono dopo, col tempo che avanza (prima fino a 30 secondi a ogni ricalcolo). L’esito dice quanto dura ogni passaggio',
+    ],
+  },
+  {
     versione: '4.52.2',
     data: '2026-11-24',
     voci: [

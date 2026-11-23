@@ -184,7 +184,11 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
       const vecchio = j.scrittura && j.scrittura !== 'tutto o niente' ? ` Classifica scritta ${j.scrittura}.` : ''
       // Le variazioni partita per partita (supabase/ipg_partite.sql): righe scritte o perché no.
       const storia = j.partita_per_partita ? ` Variazioni nello Storico: ${j.partita_per_partita}.` : ''
-      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}${vecchio}${storia}`)
+      // Quanto ha preso ogni passaggio (server dalla v1.8.0).
+      const t = j.tempi || {}
+      const nomi = [['lettura', 'lettura'], ['calcolo', 'calcolo'], ['classifica', 'classifica'], ['storico', 'Storico'], ['pesi', 'pesi BGG']]
+      const tempi = nomi.filter(([k]) => t[k] != null).map(([k, n]) => `${n} ${t[k]} s`).join(', ')
+      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s${tempi ? ` (${tempi})` : ''}.${pesi}${vecchio}${storia}`)
       try { if (j.secondi > 0) localStorage.setItem(DURATA_IPG, String(j.secondi)) } catch { /* niente */ }
       dimenticaIpg()
       setPrimeggio([])

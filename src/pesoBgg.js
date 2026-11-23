@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: il peso dei giochi da BoardGameGeek
-// v1.0.0 - 202610061200
+// v1.1.0 - 202611241200 (se BGG si inceppa a metà, i pesi già letti si tengono)
 //
 // Il peso BGG (averageweight, da 1 a 5) misura la complessità di un
 // gioco. Il Primeggio lo usa per far contare di più, nell'IPG globale,
@@ -42,7 +42,12 @@ export async function leggiPesiBgg(bggIds, { token, scadenza }) {
     if (Date.now() + PAUSA > scadenza) break   // il resto alla prossima volta
     if (i > 0) await attesa(PAUSA)
     const gruppo = bggIds.slice(i, i + PER_CHIAMATA)
-    const dati = await chiama(gruppo, token)
+    let dati
+    try { dati = await chiama(gruppo, token) } catch (e) {
+      // Prima l'errore buttava anche i pesi già letti: ora si tengono.
+      if (pesi.size) break
+      throw e
+    }
     for (const item of elenco(dati?.items?.item)) {
       const p = Number(item?.statistics?.ratings?.averageweight?.value)
       pesi.set(Number(item.id), Number.isFinite(p) ? Math.round(p * 100) / 100 : 0)
