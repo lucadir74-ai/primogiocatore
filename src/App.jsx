@@ -1093,8 +1093,10 @@ export default function App() {
   useEffect(() => {
     if (!profilo?.bgg_username) return
     return quandoLibero(() => {
+      // Per il Primeggio: le partite entrate da qui in poi (un minuto di margine sull'orologio).
+      const dal = new Date(Date.now() - 60000).toISOString()
       sincronizzaSeServe(profilo)
-        .then((r) => { if (r?.fatte) { setDaBgg(r); setControlloBga(Date.now()) } })
+        .then((r) => { if (r?.fatte) { setDaBgg({ ...r, dal }); setControlloBga(Date.now()) } })
         .catch(() => { /* niente rete o BGG giù: si riprova alla prossima apertura */ })
     }, 4000)
   }, [profilo?.id])
@@ -1604,6 +1606,7 @@ export default function App() {
 
           {/* Con l'avviso delle partite nuove da BGA: come cambia l'IPG. */}
           {avvisoBga?.nuove > 0 && <StimaIpgBga profiloId={profilo.id} dal={avvisoBga.dal} fino={avvisoBga.fino} />}
+          {daBgg?.fatte > 0 && <StimaIpgBga profiloId={profilo.id} dal={daBgg.dal} origine="bgg" />}
 
           <NomeBga profilo={profilo} quando={controlloBga} />
 

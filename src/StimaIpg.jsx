@@ -1,5 +1,5 @@
 // Primo Giocatore - quanto cambia l'IPG con le partite appena entrate
-// v1.2.0 - 202611231900 (anche per le partite importate da BG Stats)
+// v1.3.0 - 202611232000 (anche per le partite arrivate da BGG)
 //
 // Per ogni giocatore con un account: l'IPG di quel gioco prima e dopo, e
 // di quanto si muove l'IPG globale. È una STIMA: parte dai valori
@@ -118,7 +118,7 @@ export async function calcolaStimaIpg(partite) {
 
 // Le partite entrate fra «dal» e «fino» (creata_il), nel formato di
 // calcolaStimaIpg. Quelle già comprese nell'ultimo ricalcolo si saltano.
-// origine: 'bga' (numero del tavolo BGA) o 'bgstats' (chiave «bgstats:»).
+// origine: 'bga' (numero del tavolo BGA), 'bgstats' (chiave «bgstats:») o 'bgg' (chiave «bgg:»).
 export async function partitePerStima(profiloId, dal, fino = null, origine = 'bga') {
   const { data: ultimo } = await supabase.from('ipg').select('aggiornato_il')
     .order('aggiornato_il', { ascending: false }).limit(1)
@@ -130,7 +130,7 @@ export async function partitePerStima(profiloId, dal, fino = null, origine = 'bg
         profili:utente_id ( nome, nickname ), ospiti:ospite_id ( nome, cognome, utente_collegato ) )`)
     .eq('registrata_da', profiloId).gt('creata_il', da)
     .order('giocata_il').limit(MASSIMO_PARTITE + 1)
-  q = origine === 'bgstats' ? q.like('chiave_esterna', 'bgstats:%') : q.not('bga_tavolo', 'is', null)
+  q = origine === 'bga' ? q.not('bga_tavolo', 'is', null) : q.like('chiave_esterna', `${origine}:%`)
   if (fino) q = q.lte('creata_il', fino)
   const { data, error } = await q
   if (error) throw error
@@ -205,5 +205,5 @@ export function StimaIpgBga({ profiloId, dal, fino = null, origine = 'bga' }) {
     return () => { vivo = false }
   }, [profiloId, dal, fino, origine])
   if (!righe?.length) return null
-  return <Riquadro righe={righe} titolo={origine === 'bgstats' ? 'Primeggio, partite da BG Stats' : 'Primeggio, partite da BGA'} />
+  return <Riquadro righe={righe} titolo={`Primeggio, partite da ${{ bgstats: 'BG Stats', bgg: 'BGG' }[origine] || 'BGA'}`} />
 }
