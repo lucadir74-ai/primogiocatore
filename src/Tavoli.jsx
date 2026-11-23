@@ -1,5 +1,5 @@
 // Primo Giocatore - Tavoli
-// v2.29.0 - 202611222330 (programma dell'evento a giorni; gli eventi in cima ai Tavoli; chi organizza l'evento ne gestisce i tavoli)
+// v2.30.0 - 202611231200 (nel modulo: «quel giorno c'è un evento, il tavolo ne fa parte?»)
 //
 // evento: aperta dentro un evento (l'app di chi partecipa, o la scheda
 // dell'evento toccata qui), solo i tavoli di quell'evento, giorno per
@@ -977,6 +977,17 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     // lo decide il tavolo (nessuna preferenza per i dimostratori della Tana).
     const eventoModulo = evento || eventoDi(modulo.evento_id)
     const giorniModulo = eventoModulo ? giorniDaScegliere(eventoModulo) : null
+    // Un tavolo della Tana messo in un giorno in cui c'è un evento: forse è dell'evento.
+    const eventoDelGiorno = !evento && !modulo.evento_id && !modulo.noEvento && modulo.inizio
+      ? eventiAperti.find((ev) => giorniEvento(ev).includes(modulo.inizio.slice(0, 10))) : null
+    const scegliEvento = (ev) => {
+      // Un giorno fuori dall'evento diventa un orario dei suoi giorni.
+      const giorni = ev ? giorniDaScegliere(ev) : []
+      const fuori = ev && giorni.length > 0 && !giorni.includes(modulo.inizio.slice(0, 10))
+      const inizio = fuori ? perCampo(inizioPropostoEvento(ev)) : modulo.inizio
+      setModulo((m) => ({ ...m, evento_id: ev?.id || null, luogo: ev?.luogo_nome || m.luogo, inizio }))
+      caricaDisponibili(ev ? '' : inizio)
+    }
     const ioSpiego = modulo.libero
       ? modulo.dimostratori.some((x) => x.chiave === `p:${profilo.id}`)
       : modulo.dimostratore_id === profilo.id
@@ -1054,16 +1065,17 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         {!evento && (eventiAperti.length > 0 || modulo.evento_id) && (
           <div className="campo">
             <label htmlFor="t-evento">Evento</label>
+            {eventoDelGiorno && (
+              <div className="avviso proposta-evento">
+                <span>Quel giorno c&rsquo;è <strong>{eventoDelGiorno.nome}</strong>: il tavolo fa parte dell&rsquo;evento?</span>
+                <span className="riga-tasti">
+                  <button type="button" className="tasto-piccolo primario" onClick={() => scegliEvento(eventoDelGiorno)}>Sì, dell&rsquo;evento</button>
+                  <button type="button" className="tasto-piccolo" onClick={() => setModulo((m) => ({ ...m, noEvento: true }))}>No, della Tana</button>
+                </span>
+              </div>
+            )}
             <select id="t-evento" value={modulo.evento_id || ''}
-              onChange={(e) => {
-                const ev = eventoDi(e.target.value)
-                // Un giorno fuori dall'evento diventa un orario dei suoi giorni.
-                const giorni = ev ? giorniDaScegliere(ev) : []
-                const fuori = ev && giorni.length > 0 && !giorni.includes(modulo.inizio.slice(0, 10))
-                const inizio = fuori ? perCampo(inizioPropostoEvento(ev)) : modulo.inizio
-                setModulo((m) => ({ ...m, evento_id: ev?.id || null, luogo: ev?.luogo_nome || m.luogo, inizio }))
-                caricaDisponibili(ev ? '' : inizio)
-              }}>
+              onChange={(e) => scegliEvento(eventoDi(e.target.value))}>
               <option value="">Nessuno: tavolo della Tana</option>
               {[...eventiAperti, ...(modulo.evento_id && !eventiAperti.some((x) => x.id === modulo.evento_id) && eventoDi(modulo.evento_id) ? [eventoDi(modulo.evento_id)] : [])]
                 .map((ev) => <option key={ev.id} value={ev.id}>{ev.nome}</option>)}

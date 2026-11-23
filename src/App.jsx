@@ -1618,6 +1618,7 @@ export default function App() {
               onNuovaPartita={() => { setPartitaId(null); setScheda('partita'); window.scrollTo({ top: 0 }) }}
               onTavoli={() => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
               onApriTavolo={(id) => { setApriTavolo({ id, quando: Date.now() }); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
+              onApriEvento={(evento) => { setApriTavolo({ evento, quando: Date.now() }); setScheda('tavoli'); window.scrollTo({ top: 0 }) }}
               onPrimeggio={() => { statoProssimo.current = { ritornoA: '/' }; setScheda('classifiche'); window.scrollTo({ top: 0 }) }}
               onStorico={() => { setRitornoStorico(null); setScheda('storico'); window.scrollTo({ top: 0 }) }}
               onDati={() => { apriSezione('dati'); setScheda('profilo'); window.scrollTo({ top: 0 }) }}

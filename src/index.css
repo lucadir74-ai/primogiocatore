@@ -2453,6 +2453,23 @@ button.numerone:active { transform: scale(0.98); }
 }
 .home-riga:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
 
+/* Tavolo di un evento: filo colorato a sinistra e l'etichetta col nome,
+   che apre il programma dell'evento. */
+.home-di-evento { box-shadow: inset 3px 0 0 var(--attivo); }
+.home-etichetta-evento {
+  display: block; max-width: 100%; margin: 0; padding: 0.6rem 0.9rem 0;
+  border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer;
+  font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  color: var(--attivo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.home-etichetta-evento:hover { text-decoration: underline; }
+.home-etichetta-evento:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+.home-di-evento > .home-riga { padding-top: 0.35rem; }
+
+/* Nel modulo del tavolo: «quel giorno c'è un evento, ne fa parte?» */
+.proposta-evento { display: grid; gap: 0.55rem; margin-bottom: 0.5rem; }
+.proposta-evento .riga-tasti { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
 .home-data { display: flex; flex-direction: column; align-items: center; width: 2.4rem; flex: none; }
 .home-data > span { font-size: 0.72rem; color: var(--inchiostro-tenue); }
 .home-data > strong { font-family: var(--display); font-size: 1.25rem; line-height: 1.1; }

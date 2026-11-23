@@ -1,5 +1,5 @@
 // Primo Giocatore - Home di atterraggio
-// v1.8.0 - 202611211000 (rifai l'ultima passa da rivincita.js, come il tasto dello Storico)
+// v1.9.0 - 202611231200 (i tavoli di un evento hanno l'etichetta dell'evento, che apre il suo programma)
 //
 // La pagina che si apre all'avvio e toccando il logo. Prima il gioco:
 // nuova partita, tavoli, IPG, rifai l'ultima. Le notizie della Tana
@@ -13,6 +13,7 @@ import { unisciCondivise } from './condivise'
 import { leggiBozza } from './bozza'
 import { preparaRivincita } from './rivincita'
 import { copertinaTavolo } from './immagini'
+import { eventiVisibili } from './evento'
 import DallaTana from './DallaTana.jsx'
 
 const giornoBreve = (d) => new Date(d).toLocaleDateString('it-IT', { weekday: 'short' })
@@ -38,7 +39,7 @@ const giaOrdinate = new WeakMap()
 // I tavoli e l'IPG dell'ultima volta che la Home è stata aperta, finché
 // l'app resta aperta: tornando alla Home si vedono subito, e la pagina
 // non si ridisegna due volte (prima senza i tavoli, poi con).
-let ricordo = { id: null, tavoli: null, ipg: null }
+let ricordo = { id: null, tavoli: null, ipg: null, eventi: null }
 
 function Icona({ d }) {
   return (
@@ -49,7 +50,7 @@ function Icona({ d }) {
   )
 }
 
-export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onPrimeggio, onStorico, onDati, onContatti }) {
+export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, onApriEvento, onPrimeggio, onStorico, onDati, onContatti }) {
   const [tavoli, setTavoli] = useState(() => (ricordo.id === profilo.id ? ricordo.tavoli : null))
   // Il primo passo che manca: nome BGG nel profilo ma nessuna partita
   // importata (la lettura automatica parte solo dopo il primo import), o
@@ -73,6 +74,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
     profilo.bga_username?.trim() && !profilo.bga_id ? 'BGA' : null,
   ].filter(Boolean)
   const [ipg, setIpg] = useState(() => (ricordo.id === profilo.id ? ricordo.ipg : null))
+  const [eventi, setEventi] = useState(() => (ricordo.id === profilo.id && ricordo.eventi) || new Map())
   // Unire le copie su tutto l'archivio costa: se arriva di nuovo lo stesso
   // elenco (apertura, poi rilettura senza novità), il risultato si riusa.
   const ordina = (righe) => {
@@ -94,7 +96,7 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       .from('tavoli')
       .select(`id, titolo, descrizione, inizio, posti_max, stato, pubblicato,
         giochi:tavoli_gioco_id_fkey ( id, nome, immagine_url ),
-        host_id, dimostratore_id, su_approvazione,
+        host_id, dimostratore_id, su_approvazione, evento_id,
         luoghi ( nome, creato_da, nome_per_altri ), iscrizioni_tavolo ( stato, utente_id, ruolo )`)
       .eq('stato', 'aperto')
       .gte('inizio', new Date().toISOString())
@@ -118,6 +120,14 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
       ricordo = { ...ricordo, id: profilo.id, ipg: nuovo }
       setIpg(nuovo)
     }).catch(() => { /* tabella assente: il riquadro mostra il trattino */ })
+
+    // I nomi degli eventi, per l'etichetta dei loro tavoli.
+    eventiVisibili().then((l) => {
+      if (finito) return
+      const nuovi = new Map(l.map((e) => [e.id, e]))
+      ricordo = { ...ricordo, id: profilo.id, eventi: nuovi }
+      setEventi(nuovi)
+    }).catch(() => { /* senza eventi: nessuna etichetta */ })
 
     leggiArchivio(profilo.id).then((r) => { if (!finito) setPartite(ordina(r)) }).catch(() => {
       if (!finito) setPartite((p) => p || [])
@@ -237,8 +247,16 @@ export default function Home({ profilo, onNuovaPartita, onTavoli, onApriTavolo, 
         <ul className="home-elenco">
           {tavoli.slice(0, 3).map((t) => {
             const liberi = postiLiberi(t)
+            const ev = t.evento_id ? eventi.get(t.evento_id) : null
             return (
-              <li key={t.id}>
+              <li key={t.id} className={ev ? 'home-di-evento' : undefined}>
+                {/* Tavolo di un evento: l'etichetta col nome porta al programma dell'evento. */}
+                {ev && (
+                  <button type="button" className="home-etichetta-evento"
+                    onClick={() => (onApriEvento ? onApriEvento(ev.id) : onApriTavolo(t.id))}>
+                    Evento · {ev.nome} <span aria-hidden="true">›</span>
+                  </button>
+                )}
                 <button type="button" className="home-riga" onClick={() => onApriTavolo(t.id)}>
                   <span className="home-data">
                     <span>{giornoBreve(t.inizio)}</span>
