@@ -22,7 +22,8 @@ const chiave = (chiavi, n) => (n == null ? null : chiavi[n] ?? null)
 //   vincitore, n_collegato], ...]], ...] }
 export function decodificaBlocco(blocco) {
   const chiavi = blocco?.chiavi || []
-  return (blocco?.righe || []).map(([giocata_il, reg, tipo_punteggio, gioco, parti]) => ({
+  return (blocco?.righe || []).map(([giocata_il, reg, tipo_punteggio, gioco, parti, id]) => ({
+    id: id ?? null,   // dalla v1.0.0 di supabase/ipg_partite.sql
     giocata_il,
     registrata_da: chiave(chiavi, reg),
     tipo_punteggio,

@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.5.0 - 202611222200 (la tabella ipg si sostituisce tutta insieme: un ricalcolo interrotto non lascia classifiche a metà)
+// v1.6.0 - 202611232100 (salva anche l'IPG prima e dopo ogni partita: tabella ipg_partite)
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -257,6 +257,28 @@ async function scriviIpg(db, righe) {
   }
 }
 
+// IPG prima e dopo ogni partita (supabase/ipg_partite.sql): le righe nuove
+// con un lotto, poi pubblica_ipg_partite toglie quelle vecchie. Se lo
+// script non c'è ancora, o qualcosa va storto, la classifica resta scritta
+// lo stesso: questa è solo un'aggiunta per lo Storico.
+async function scriviStoria(db, righe, ora) {
+  if (!righe.length) return 'nessuna partita'
+  const lotto = randomUUID()
+  try {
+    for (let i = 0; i < righe.length; i += 1000) {
+      const { error } = await db.from('ipg_partite')
+        .insert(righe.slice(i, i + 1000).map((r) => ({ ...r, lotto, aggiornato_il: ora })))
+      if (error) throw error
+    }
+    const { error } = await db.rpc('pubblica_ipg_partite', { p_lotto: lotto })
+    if (error) throw error
+    return `${righe.length} righe`
+  } catch (e) {
+    await db.from('ipg_partite').delete().eq('lotto', lotto).then(() => {}, () => {})
+    return mancaScript(e) ? 'manca ipg_partite.sql' : `non scritta (${String(e.message || e).slice(0, 80)})`
+  }
+}
+
 // Il calcolo vero e proprio, senza la parte web: lo usa anche la prova
 // in locale. Restituisce il riepilogo e le righe scritte.
 export async function ricalcola(db) {
@@ -267,7 +289,12 @@ export async function ricalcola(db) {
   // Chi partecipa solo a un evento (non è socio) gioca e conta come
   // avversario, ma nella classifica della Tana non compare.
   const soloEvento = await soloPartecipanti(db)
-  const righe = calcolaPrimeggio(partite, { inClassifica: (id) => !soloEvento.has(String(id)) })
+  const storia = []
+  const righe = calcolaPrimeggio(partite, {
+    inClassifica: (id) => !soloEvento.has(String(id)),
+    // Senza il numero della partita (script non lanciato) non si salva niente.
+    suPartita: (ids, r) => { for (const id of ids) for (const x of r) storia.push({ partita_id: id, ...x }) },
+  })
 
   // Nome e colore vanno nella tabella: chi guarda la classifica può
   // non avere accesso al profilo di persone con cui non ha giocato.
@@ -298,11 +325,16 @@ export async function ricalcola(db) {
   // Una classifica vuota non sostituisce quella che c'è.
   if (!righe.length) throw new Error('Nessuna riga calcolata: la classifica resta com’era.')
   const scrittura = await scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora })))
+  // Solo se resta tempo (limite di 60 secondi): altrimenti restano le righe
+  // dell'ultimo ricalcolo, e si riprova al prossimo.
+  const partitaPerPartita = Date.now() - inizio < 40000
+    ? await scriviStoria(db, storia, ora) : 'saltata: poco tempo, al prossimo ricalcolo'
 
   return {
     partite: partite.length,
     righe: righe.length,
     scrittura,
+    partita_per_partita: partitaPerPartita,
     pesi_recuperati: pesi.recuperati,
     pesi_mancanti: pesi.mancanti,
     lettura: compatta ? 'compatta' : 'come prima',
