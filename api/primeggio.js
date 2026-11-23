@@ -1,5 +1,5 @@
 // Primo Giocatore - Primeggio: ricalcolo dell'IPG sul server
-// v1.6.0 - 202611232100 (salva anche l'IPG prima e dopo ogni partita: tabella ipg_partite)
+// v1.7.0 - 202611240100 (tempo scaduto nel database: blocchi più piccoli da soli, scritture in parallelo, l'errore dice il passaggio)
 //
 // Legge TUTTE le partite (con la chiave di servizio, che vede oltre la
 // riservatezza), calcola l'IPG e riscrive la tabella ipg. Le partite
@@ -102,15 +102,18 @@ export async function tutteLePartite(db) {
   const partite = []
   let dopo = null
   let byte = 0
+  let blocco = BLOCCO
   for (;;) {
-    const { data, error } = await db.rpc('primeggio_partite', { p_dopo: dopo, p_limite: BLOCCO })
+    const { data, error } = await db.rpc('primeggio_partite', { p_dopo: dopo, p_limite: blocco })
     if (error) {
       if (dopo === null && funzioneMancante(error)) return { partite: await partiteComePrima(db), compatta: false }
+      // Tempo scaduto nel database: lo stesso pezzo, più piccolo.
+      if (tempoScaduto(error) && blocco > 250) { blocco = Math.floor(blocco / 2); continue }
       throw error
     }
     byte += JSON.stringify(data).length
     partite.push(...decodificaBlocco(data))
-    if (!data?.quante || data.quante < BLOCCO || !data.ultimo) break
+    if (!data?.quante || data.quante < blocco || !data.ultimo) break
     dopo = data.ultimo
   }
   aggiungiGiochi(partite, await leggiGiochi(db, idGiochi(partite)))
@@ -229,6 +232,27 @@ async function completaPesi(db, partite, scadenza) {
 // metà lasciava le classifiche vuote o a pezzi, anche per giorni.
 // Se lo script non c'è ancora (tabella o funzione mancanti), si fa come prima.
 const mancaScript = (e) => ['42P01', 'PGRST205', '42883', 'PGRST202'].includes(e?.code)
+// «canceling statement due to statement timeout»: Supabase ferma ogni
+// singola richiesta oltre un certo tempo (supabase/tempo_server.sql lo alza
+// per il solo server).
+const tempoScaduto = (e) => e?.code === '57014' || /statement timeout/i.test(e?.message || '')
+
+// Più richieste insieme, al massimo «quante» alla volta.
+async function inParallelo(lavori, quante = 4) {
+  let i = 0
+  const uno = async () => { while (i < lavori.length) { const k = i++; await lavori[k]() } }
+  await Promise.all(Array.from({ length: Math.min(quante, lavori.length) }, uno))
+}
+const aBlocchi = (righe, n) => Array.from({ length: Math.ceil(righe.length / n) }, (_, i) => righe.slice(i * n, i * n + n))
+
+// L'errore dice in quale passaggio è successo.
+async function passo(nome, fn) {
+  try { return await fn() } catch (e) {
+    const err = new Error(`${nome}: ${e?.message || e}${tempoScaduto(e) ? ' (lancia supabase/tempo_server.sql)' : ''}`)
+    err.code = e?.code
+    throw err
+  }
+}
 
 async function scriviIpg(db, righe) {
   const lotto = randomUUID()
@@ -237,10 +261,10 @@ async function scriviIpg(db, righe) {
     const { error: e0 } = await db.from('ipg_nuova').delete()
       .lt('messo_il', new Date(Date.now() - 3600000).toISOString())
     if (e0) throw e0
-    for (let i = 0; i < righe.length; i += 500) {
-      const { error } = await db.from('ipg_nuova').insert(righe.slice(i, i + 500).map((r) => ({ ...r, lotto })))
+    await inParallelo(aBlocchi(righe, 1000).map((b) => async () => {
+      const { error } = await db.from('ipg_nuova').insert(b.map((r) => ({ ...r, lotto })))
       if (error) throw error
-    }
+    }))
     const { error } = await db.rpc('pubblica_ipg', { p_lotto: lotto })
     if (error) throw error
     return 'tutto o niente'
@@ -265,11 +289,10 @@ async function scriviStoria(db, righe, ora) {
   if (!righe.length) return 'nessuna partita'
   const lotto = randomUUID()
   try {
-    for (let i = 0; i < righe.length; i += 1000) {
-      const { error } = await db.from('ipg_partite')
-        .insert(righe.slice(i, i + 1000).map((r) => ({ ...r, lotto, aggiornato_il: ora })))
+    await inParallelo(aBlocchi(righe, 1000).map((b) => async () => {
+      const { error } = await db.from('ipg_partite').insert(b.map((r) => ({ ...r, lotto, aggiornato_il: ora })))
       if (error) throw error
-    }
+    }))
     const { error } = await db.rpc('pubblica_ipg_partite', { p_lotto: lotto })
     if (error) throw error
     return `${righe.length} righe`
@@ -284,11 +307,11 @@ async function scriviStoria(db, righe, ora) {
 export async function ricalcola(db) {
   const inizio = Date.now()
   const ora = new Date((await oraDelDatabase(db)) - MARGINE).toISOString()
-  const { partite, compatta, byte } = await tutteLePartite(db)
-  const pesi = await completaPesi(db, partite, inizio + TEMPO_PESI)
+  const { partite, compatta, byte } = await passo('lettura delle partite', () => tutteLePartite(db))
+  const pesi = await passo('pesi BGG', () => completaPesi(db, partite, inizio + TEMPO_PESI))
   // Chi partecipa solo a un evento (non è socio) gioca e conta come
   // avversario, ma nella classifica della Tana non compare.
-  const soloEvento = await soloPartecipanti(db)
+  const soloEvento = await passo('iscritti solo agli eventi', () => soloPartecipanti(db))
   const storia = []
   const righe = calcolaPrimeggio(partite, {
     inClassifica: (id) => !soloEvento.has(String(id)),
@@ -324,7 +347,7 @@ export async function ricalcola(db) {
 
   // Una classifica vuota non sostituisce quella che c'è.
   if (!righe.length) throw new Error('Nessuna riga calcolata: la classifica resta com’era.')
-  const scrittura = await scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora })))
+  const scrittura = await passo('scrittura della classifica', () => scriviIpg(db, righe.map((r) => ({ ...r, aggiornato_il: ora }))))
   // Solo se resta tempo (limite di 60 secondi): altrimenti restano le righe
   // dell'ultimo ricalcolo, e si riprova al prossimo.
   const partitaPerPartita = Date.now() - inizio < 40000

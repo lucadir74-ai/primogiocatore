@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.52.2',
+    data: '2026-11-24',
+    voci: [
+      'Ricalcolo dell’IPG: se il database impiega troppo, il server legge a pezzi più piccoli da solo e scrive più blocchi insieme; se non riesce, l’errore dice in quale passaggio',
+    ],
+  },
+  {
     versione: '4.52.1',
     data: '2026-11-23',
     voci: [
