@@ -1072,14 +1072,26 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
           </div>
         )}
 
-        {soloEvento ? (
-          evento?.luogo_nome && (
-            <div className="campo">
-              <label>Dove</label>
-              <p className="indirizzo-scelto"><strong>{evento.luogo_nome}</strong></p>
-            </div>
-          )
-        ) : (
+        {/* Tavolo di un evento: la sede e l'indirizzo sono quelli dell'evento,
+            decisi quando è stato creato. Chi è socio può spostarlo altrove. */}
+        {eventoModulo?.luogo_nome && (soloEvento || (!modulo.altroLuogo && luogoModulo === eventoModulo.luogo_nome)) ? (
+          <div className="campo">
+            <label>Dove</label>
+            <p className="indirizzo-scelto">
+              <strong>{eventoModulo.luogo_nome}</strong>
+              <span className="anno block">
+                {luogoNoto?.ha_posizione && luogoNoto.indirizzo ? luogoNoto.indirizzo
+                  : luogoNoto?.zona ? luogoNoto.zona
+                  : luogoNoto ? 'Indirizzo non ancora messo: lo mette chi organizza, nei dati dell’evento.'
+                  : 'Un attimo…'}
+              </span>
+              {!soloEvento && (
+                <button type="button" className="bottone-piatto"
+                  onClick={() => setModulo((m) => ({ ...m, altroLuogo: true }))}>altro luogo</button>
+              )}
+            </p>
+          </div>
+        ) : soloEvento ? null : (
         <div className="campo">
           <label htmlFor="t-luogo">Dove</label>
           <input id="t-luogo" value={modulo.luogo}
@@ -1091,7 +1103,8 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         </div>
         )}
 
-        {luogoModulo && luogoNoto && !soloEvento && (
+        {luogoModulo && luogoNoto && !soloEvento
+          && !(eventoModulo?.luogo_nome && !modulo.altroLuogo && luogoModulo === eventoModulo.luogo_nome) && (
           <div className="campo">
             <label htmlFor="t-indirizzo">Indirizzo</label>
             {luogoNoto.ha_posizione && !modulo.posizione ? (

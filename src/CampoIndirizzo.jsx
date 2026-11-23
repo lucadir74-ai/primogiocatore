@@ -1,5 +1,5 @@
 // Primo Giocatore - campo indirizzo con «Trova»
-// v1.0.0 - 202610282000
+// v1.1.0 - 202611231000 (senzaCasa)
 //
 // Si scrive l'indirizzo, si preme «Trova» e si tocca il risultato giusto.
 // Niente risultati mentre si scrive: Nominatim (OpenStreetMap) non lo
@@ -11,7 +11,8 @@
 import { useState } from 'react'
 import { cercaIndirizzo } from './indirizzo'
 
-export default function CampoIndirizzo({ id = 'campo-indirizzo', valore, onCambia, casa = false }) {
+// senzaCasa: per i luoghi sempre pubblici (la sede di un evento), niente spunta «casa privata».
+export default function CampoIndirizzo({ id = 'campo-indirizzo', valore, onCambia, casa = false, senzaCasa = false }) {
   const [testo, setTesto] = useState(valore?.indirizzo || '')
   const [risultati, setRisultati] = useState(null)
   const [cercando, setCercando] = useState(false)
@@ -75,7 +76,7 @@ export default function CampoIndirizzo({ id = 'campo-indirizzo', valore, onCambi
         </>
       )}
 
-      {valore && (
+      {valore && !senzaCasa && (
         <label className="spunta-fazioni">
           <input type="checkbox" checked={!valore.pubblica}
             onChange={(e) => onCambia({ ...valore, pubblica: !e.target.checked })} />

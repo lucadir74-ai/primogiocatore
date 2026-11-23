@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.53.0',
+    data: '2026-11-23',
+    voci: [
+      'Eventi: alla creazione si mettono luogo e indirizzo (con «Trova»), e si possono cambiare nei dati dell’evento',
+      'Tavoli di un evento: nel modulo «Dove» mostra la sede e l’indirizzo dell’evento; chi è socio può comunque scegliere un altro luogo',
+    ],
+  },
+  {
     versione: '4.52.1',
     data: '2026-11-23',
     voci: [

@@ -23,6 +23,25 @@ import QRCode from 'qrcode'
 import { supabase, daMostrare, tutteLeRighe } from './supabase'
 import { eventiVisibili, mieiEventi, statoEvento, dateEvento, linkEvento, giorniEvento } from './evento'
 import { trovaOCreaLuogo } from './giochiMiei'
+import CampoIndirizzo from './CampoIndirizzo.jsx'
+
+// L'indirizzo della sede dell'evento: lo prendono da soli i suoi tavoli
+// (stesso luogo), ed è sempre pubblico.
+async function salvaIndirizzo(luogoId, pos) {
+  if (!luogoId || !pos) return
+  const { error } = await supabase.from('luoghi_posizione').upsert({
+    luogo_id: luogoId, indirizzo: pos.indirizzo, zona: pos.zona,
+    latitudine: pos.lat, longitudine: pos.lon, pubblica: true,
+  }, { onConflict: 'luogo_id' })
+  if (error) throw new Error(`L’indirizzo non è stato salvato: ${error.message}`)
+}
+
+// L'indirizzo già registrato per un luogo (null se non c'è).
+async function indirizzoDi(nomeLuogo) {
+  if (!nomeLuogo?.trim()) return null
+  const { data, error } = await supabase.rpc('posizione_luogo_nome', { p_nome: nomeLuogo.trim() })
+  return !error && data?.ha_posizione ? data : null
+}
 
 const STATI = { in_arrivo: 'In arrivo', in_corso: 'In corso', concluso: 'Concluso' }
 const giornoCorto = (g) => new Date(g + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -98,10 +117,17 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
   const [salvando, setSalvando] = useState(false)
   const [confermaCodice, setConfermaCodice] = useState(false)
   const [confermaCancella, setConfermaCancella] = useState(false)
+  const [indirizzoNoto, setIndirizzoNoto] = useState(undefined)   // undefined = lo sto leggendo
+  const [indirizzo, setIndirizzo] = useState(null)                 // quello nuovo, scelto qui
+  const [cambiaIndirizzo, setCambiaIndirizzo] = useState(false)
   const link = linkEvento(evento.codice)
   const qr = useQr(link, 600)
 
   useEffect(() => { caricaPersone(); caricaTavoli() }, [evento.id])
+  useEffect(() => { indirizzoDi(evento.luogo_nome).then(setIndirizzoNoto, () => setIndirizzoNoto(null)) }, [evento.luogo_id])
+  // L'indirizzo registrato vale finché il luogo resta lo stesso.
+  const stessoLuogo = modulo.luogo.trim() === (evento.luogo_nome || '')
+  const mostraNoto = stessoLuogo && indirizzoNoto && !cambiaIndirizzo && !indirizzo
   useEffect(() => {
     if (!puoNominare) return
     tutteLeRighe(() => supabase.from('profili').select('id, nome, cognome, nickname'))
@@ -132,14 +158,21 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
   async function salva() {
     if (!modulo.nome.trim()) { sbagliato('Serve il nome dell’evento.'); return }
     if (!modulo.inizio || !modulo.fine || modulo.fine < modulo.inizio) { sbagliato('Controlla le date: la fine non può venire prima dell’inizio.'); return }
+    if (!modulo.luogo.trim()) { sbagliato('Serve il luogo dell’evento.'); return }
+    if (!mostraNoto && !indirizzo) { sbagliato('Serve l’indirizzo: scrivilo, premi «Trova» e tocca quello giusto.'); return }
     setSalvando(true)
     try {
-      const luogoId = modulo.luogo.trim() === (evento.luogo_nome || '') ? evento.luogo_id
+      const luogoId = stessoLuogo ? evento.luogo_id
         : await trovaOCreaLuogo(modulo.luogo, profilo.id, 'sede')
       const { error } = await supabase.from('eventi').update({
         nome: modulo.nome.trim(), inizio: modulo.inizio, fine: modulo.fine, luogo_id: luogoId || null, chiuso: modulo.chiuso,
       }).eq('id', evento.id)
       if (error) throw error
+      if (indirizzo) {
+        await salvaIndirizzo(luogoId, indirizzo)
+        setIndirizzoNoto({ ha_posizione: true, indirizzo: indirizzo.indirizzo, zona: indirizzo.zona })
+        setIndirizzo(null); setCambiaIndirizzo(false)
+      }
       fatto('Evento salvato.')
       onCambiato()
     } catch (e) { sbagliato(e) } finally { setSalvando(false) }
@@ -289,8 +322,19 @@ function SchedaEvento({ evento, profilo, puoNominare, puoCancellare, onCambiato,
         <div className="campo">
           <label htmlFor="ev-luogo">Luogo</label>
           <input id="ev-luogo" value={modulo.luogo} onChange={(e) => setModulo({ ...modulo, luogo: e.target.value })}
-            placeholder="Dove si gioca" />
-          <p className="aiuto">Lo prendono da soli i tavoli e le partite dell&rsquo;evento.</p>
+            placeholder="Nome della sede, es. Hotel Esplanade" />
+          <p className="aiuto">Luogo e indirizzo li prendono da soli i tavoli e le partite dell&rsquo;evento.</p>
+        </div>
+        <div className="campo">
+          <label htmlFor="ev-indirizzo">Indirizzo</label>
+          {indirizzoNoto === undefined ? <p className="aiuto">Un attimo&hellip;</p> : mostraNoto ? (
+            <p className="indirizzo-scelto">
+              <strong>{indirizzoNoto.indirizzo || indirizzoNoto.zona || 'Posizione registrata'}</strong>
+              <button type="button" className="bottone-piatto" onClick={() => setCambiaIndirizzo(true)}>cambia</button>
+            </p>
+          ) : (
+            <CampoIndirizzo id="ev-indirizzo" valore={indirizzo} onCambia={setIndirizzo} senzaCasa />
+          )}
         </div>
         <label className="consenso">
           <input type="checkbox" checked={modulo.chiuso} onChange={(e) => setModulo({ ...modulo, chiuso: e.target.checked })} />
@@ -409,13 +453,19 @@ export default function GestioneEventi({ profilo, soloEventoId = null, onApriTav
     if (!nuovo.nome.trim()) { setErrore('Serve il nome dell’evento.'); return }
     if (!nuovo.inizio || !nuovo.fine || nuovo.fine < nuovo.inizio) { setErrore('Controlla le date: la fine non può venire prima dell’inizio.'); return }
     if (!globale && !nuovo.tana_id) { setErrore('Scegli la Tana dell’evento.'); return }
+    if (!nuovo.luogo.trim()) { setErrore('Serve il luogo dell’evento.'); return }
     try {
+      // Senza indirizzo scelto qui va bene solo un luogo che ce l'ha già.
+      if (!nuovo.indirizzo && !(await indirizzoDi(nuovo.luogo))) {
+        setErrore('Serve l’indirizzo: scrivilo, premi «Trova» e tocca quello giusto.'); return
+      }
       const luogoId = await trovaOCreaLuogo(nuovo.luogo, profilo.id, 'sede')
       const { data, error } = await supabase.from('eventi').insert({
         nome: nuovo.nome.trim(), inizio: nuovo.inizio, fine: nuovo.fine, luogo_id: luogoId || null,
         tana_id: nuovo.tana_id ? Number(nuovo.tana_id) : null, codice: nuovoCodice(),
       }).select('id').single()
       if (error) throw error
+      await salvaIndirizzo(luogoId, nuovo.indirizzo)
       setNuovo(null)
       await carica()
       setAperto(data.id)
@@ -462,7 +512,13 @@ export default function GestioneEventi({ profilo, soloEventoId = null, onApriTav
           </div>
           <div className="campo">
             <label htmlFor="nv-luogo">Luogo</label>
-            <input id="nv-luogo" value={nuovo.luogo} onChange={(e) => setNuovo({ ...nuovo, luogo: e.target.value })} placeholder="Dove si gioca" />
+            <input id="nv-luogo" value={nuovo.luogo} onChange={(e) => setNuovo({ ...nuovo, luogo: e.target.value })}
+              placeholder="Nome della sede, es. Hotel Esplanade" />
+          </div>
+          <div className="campo">
+            <label htmlFor="nv-indirizzo">Indirizzo</label>
+            <CampoIndirizzo id="nv-indirizzo" valore={nuovo.indirizzo} onCambia={(v) => setNuovo((n) => ({ ...n, indirizzo: v }))} senzaCasa />
+            <p className="aiuto">Compare in ogni tavolo dell&rsquo;evento, con il tasto per aprire la mappa.</p>
           </div>
           <div className="campo">
             <label htmlFor="nv-tana">Tana</label>
@@ -476,7 +532,7 @@ export default function GestioneEventi({ profilo, soloEventoId = null, onApriTav
           <button className="bottone bottone-secondario" onClick={() => setNuovo(null)}>Annulla</button>
         </div>
       ) : puoCreare && (
-        <button className="bottone" onClick={() => setNuovo({ nome: '', inizio: '', fine: '', luogo: '', tana_id: globale ? '' : String(mieTane[0] || '') })}>
+        <button className="bottone" onClick={() => setNuovo({ nome: '', inizio: '', fine: '', luogo: '', indirizzo: null, tana_id: globale ? '' : String(mieTane[0] || '') })}>
           Nuovo evento
         </button>
       )}
