@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.52.1',
+    data: '2026-11-23',
+    voci: [
+      'Ricalcola ora: l’esito dice anche quante variazioni di IPG partita per partita sono state salvate per lo Storico',
+    ],
+  },
+  {
     versione: '4.52.0',
     data: '2026-11-23',
     voci: [
