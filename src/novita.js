@@ -16,6 +16,13 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.54.1',
+    data: '2026-11-24',
+    voci: [
+      'Indirizzi: se scritto per intero non si trova, la ricerca riprova da sola senza CAP e con il nome della via accorciato (OpenStreetMap scrive per esempio «Piazza J. F. Kennedy»)',
+    ],
+  },
+  {
     versione: '4.54.0',
     data: '2026-11-24',
     voci: [

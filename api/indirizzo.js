@@ -1,5 +1,5 @@
 // Primo Giocatore - da un indirizzo (o una zona) alle coordinate
-// v1.0.0 - 202610282000 (prima versione: Nominatim di OpenStreetMap)
+// v1.1.0 - 202611241200 (se non trova, riprova con l'indirizzo semplificato)
 //
 // Serve in due momenti, sempre su richiesta di chi usa l'app:
 // - chi pubblica un tavolo scrive l'indirizzo e preme «Trova»;
@@ -69,6 +69,25 @@ async function cerca(q) {
   return risultati
 }
 
+// OpenStreetMap spesso ha i nomi abbreviati («Piazza J. F. Kennedy»): se
+// l'indirizzo scritto per intero non si trova, si riprova senza CAP e
+// sigla della provincia, poi tenendo della via solo il tipo e l'ultima
+// parola del nome («Piazza Kennedy 28, Montesilvano»).
+function varianti(q) {
+  const out = [q]
+  const pulito = q.replace(/\b\d{5}\b/g, ' ').replace(/\(\s*[A-Z]{2}\s*\)|\b[A-Z]{2}\b$/g, ' ')
+    .replace(/\s*,\s*(,\s*)*/g, ', ').replace(/\s+/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '')
+  out.push(pulito)
+  const parti = pulito.split(',').map((s) => s.trim()).filter(Boolean)
+  const strada = (parti[0] || '').replace(/\s+\d+\w?$/, '')
+  const civico = (parti[0] || '').match(/\s(\d+\w?)$/)?.[1] || (parti[1]?.match(/^\d+\w?$/) ? parti[1] : '')
+  const resto = parti.slice(1).filter((p) => p !== civico)
+  const parole = strada.split(' ')
+  const tipoVia = /^(via|viale|piazza|piazzale|corso|largo|vicolo|lungomare|strada|contrada|circonvallazione)$/i
+  if (parole.length > 2 && tipoVia.test(parole[0]) && resto.length) out.push([[parole[0], parole.at(-1), civico].filter(Boolean).join(' '), ...resto].join(', '))
+  return [...new Set(out.filter((x) => x.length >= 3))]
+}
+
 export default async function handler(req, res) {
   // Solo per chi è entrato nell'app: il servizio è gratuito e condiviso.
   const token = (req.headers.authorization || '').replace(/^Bearer /, '')
@@ -87,7 +106,11 @@ export default async function handler(req, res) {
   if (q.length < 3) return res.status(400).json({ errore: 'Scrivi almeno via e città, o il nome di una zona.' })
 
   try {
-    const risultati = await cerca(q)
+    let risultati = []
+    for (const v of varianti(q)) {
+      risultati = await cerca(v)
+      if (risultati.length) break
+    }
     return res.status(200).json({ risultati })
   } catch (e) {
     return res.status(502).json({ errore: `Ricerca dell\u2019indirizzo non riuscita: ${e.message}.` })

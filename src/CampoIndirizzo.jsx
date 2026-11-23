@@ -25,7 +25,7 @@ export default function CampoIndirizzo({ id = 'campo-indirizzo', valore, onCambi
     try {
       const r = await cercaIndirizzo(testo)
       setRisultati(r)
-      if (r.length === 0) setErrore('Nessun indirizzo trovato: aggiungi la città o controlla la via.')
+      if (r.length === 0) setErrore('Nessun indirizzo trovato. Prova con meno parole (es. «Piazza Kennedy 28, Montesilvano») oppure col nome del posto («Grand Hotel Montesilvano»).')
     } catch (e) {
       setErrore(e.message)
     } finally {
