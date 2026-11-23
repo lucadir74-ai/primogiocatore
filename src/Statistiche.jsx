@@ -182,7 +182,9 @@ export default function Statistiche({ profilo, onModifica, mira, onClassifiche, 
         : ''
       // Se il database non ha ancora ipg_e_tane.sql, il server lo dice qui.
       const vecchio = j.scrittura && j.scrittura !== 'tutto o niente' ? ` Classifica scritta ${j.scrittura}.` : ''
-      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}${vecchio}`)
+      // Le variazioni partita per partita (supabase/ipg_partite.sql): righe scritte o perché no.
+      const storia = j.partita_per_partita ? ` Variazioni nello Storico: ${j.partita_per_partita}.` : ''
+      setRicalcolo(`Fatto: ${j.partite} partite lette in ${j.secondi} s.${pesi}${vecchio}${storia}`)
       try { if (j.secondi > 0) localStorage.setItem(DURATA_IPG, String(j.secondi)) } catch { /* niente */ }
       dimenticaIpg()
       setPrimeggio([])
