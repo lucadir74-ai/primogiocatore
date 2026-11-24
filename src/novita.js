@@ -20,7 +20,8 @@ export const NOVITA = [
     data: '2026-11-24',
     voci: [
       'Calendario interno con un link: /tavoli/calendario (o /tavoli/calendario/2026-12 per un mese) apre i Tavoli già sul calendario; chi non è entrato passa dall’accesso e poi ci arriva',
-      'Aperto dal link, in cima le serate del mese a cui non hai ancora risposto, con Sì / Forse / No a portata di dito, e un bordo giallo sui loro giorni',
+      'Aperto dal link, in cima le serate del mese a cui non hai ancora risposto, con Sì / Forse / No a portata di dito',
+      'Calendario: pallino rosso sulle serate scoperte, dove nessun dimostratore ha ancora detto sì; toccando un giorno, subito sotto vedi chi c’è e chi forse',
       'Organizzatori: «Invita a segnarsi su WhatsApp» (messaggio pronto con il link al mese e l’elenco delle serate) e «Copia link»',
     ],
   },

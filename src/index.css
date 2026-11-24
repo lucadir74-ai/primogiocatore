@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.22.0 - 202611241400 (calendario interno: serate senza la tua risposta e invito su WhatsApp)
+/* Primo Giocatore - foglio di stile v1.23.0 - 202611241600 (calendario interno: pallino rosso sulle serate scoperte e chi c'è sotto il calendario)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -1391,15 +1391,6 @@ button.tasto-squadra { cursor: pointer; }
 .cella:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
 
 /* Aperto dal link del gruppo: le serate che aspettano la tua risposta. */
-.cella.manca-risposta { border: 2px solid var(--giallo); }
-.cella.manca-risposta::after {
-  content: '';
-  position: absolute;
-  top: 0.2rem; right: 0.2rem;
-  width: 0.4rem; height: 0.4rem;
-  border-radius: 50%;
-  background: var(--giallo);
-}
 .riquadro-manuale.da-rispondere { border-left: 4px solid var(--giallo); margin: 0 0 0.8rem; }
 .da-rispondere-titolo { margin: 0 0 0.2rem; font-weight: 700; }
 .da-rispondere-titolo.fatto { color: var(--verde); }
@@ -1461,16 +1452,23 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 /* Testi non selezionabili dove il tocco serve ad altro */
 .barra-basso button, .cella, .sottoschede button { user-select: none; }
 
-/* Un puntino sui giorni che hanno tavoli pubblicati */
-.punto-tavoli {
+/* Un puntino rosso sulle serate scoperte: ancora nessun dimostratore ha detto sì */
+.punto-scoperta {
   position: absolute;
   top: 0.2rem;
   right: 0.25rem;
-  width: 0.35rem;
-  height: 0.35rem;
+  width: 0.45rem;
+  height: 0.45rem;
   border-radius: 50%;
-  background: var(--blu);
+  background: var(--rosso);
 }
+
+/* Subito sotto il calendario: chi c'è nel giorno scelto */
+.presenti-giorno { margin: 0.6rem 0 0; }
+.presenti-giorno .presenti-titolo { margin: 0 0 0.35rem; font-weight: 700; }
+.presenti-giorno .presenti-riga { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin: 0.25rem 0; }
+.presenti-giorno .presenti-etichetta { font-size: 0.85rem; color: var(--inchiostro-tenue); min-width: 3.2rem; }
+.presenti-giorno .scoperta { color: var(--rosso); font-weight: 700; margin: 0; }
 
 /* ---------- Locandina del tavolo, formato A5 ---------- */
 

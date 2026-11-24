@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.12.0 - 202611241400 (invito su WhatsApp e «Copia link» per gli organizzatori; dal link, in evidenza le serate senza la tua risposta)
+// v4.13.0 - 202611241600 (pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
 //
 // meseIniziale ('AAAA-MM'): il mese da aprire, dal link /tavoli/calendario/AAAA-MM.
 // daLink: si arriva dal link mandato nel gruppo; in cima le serate del mese
@@ -513,7 +513,8 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
           const numero = Number(giorno.slice(8))
           const disponibili = s ? (s.disponibilita || []).filter((d) => d.stato === 'si').length : 0
           const mia = s ? (s.disponibilita || []).find((d) => d.profilo_id === profilo.id) : null
-          const manca = daLink && s && senzaRisposta.includes(s)
+          // Scoperta: serata aperta, da oggi in poi, e nessuno ha ancora detto sì.
+          const scoperta = s && !s.annullata && giorno >= oggiIso && disponibili === 0
 
           return (
             <button
@@ -525,9 +526,8 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                 giorno === oggiIso ? 'oggi' : '',
                 giorno === scelto ? 'scelta' : '',
                 mia ? `mia-${mia.stato}` : '',
-                manca ? 'manca-risposta' : '',
               ].join(' ').trim()}
-              aria-label={manca ? `${numero}: manca la tua risposta` : undefined}
+              aria-label={scoperta ? `${numero}: ancora nessun dimostratore` : undefined}
               onClick={() => setScelto(giorno === scelto ? null : giorno)}
             >
               <span className="numero">{numero}</span>
@@ -535,7 +535,7 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                 <span className="ora">{s.ora_inizio.slice(0, 5)}</span>
               )}
               {s && disponibili > 0 && <span className="conta">{disponibili}</span>}
-              {tavoliDelGiorno(giorno).length > 0 && <span className="punto-tavoli" aria-hidden="true" />}
+              {scoperta && <span className="punto-scoperta" aria-hidden="true" />}
             </button>
           )
         })}
@@ -543,11 +543,50 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
 
       {caricamento && <p className="aiuto">Carico&hellip;</p>}
 
+      {/* Subito sotto il calendario: chi c'è nel giorno toccato. */}
+      {scelto && serataScelta && (() => {
+        const risposte = serataScelta.disponibilita || []
+        const di = (st) => risposte.filter((d) => d.stato === st)
+          .map((d) => (d.profilo_id === profilo.id ? 'Tu' : nomeDi(d)))
+          .sort((a, b) => (a === 'Tu' ? -1 : b === 'Tu' ? 1 : a.localeCompare(b, 'it')))
+        const si = di('si')
+        const forse = di('forse')
+        return (
+          <div className="riquadro-manuale presenti-giorno">
+            <p className="presenti-titolo">
+              {dataLunga(scelto)}
+              {!serataScelta.annullata && ` · ${serataScelta.ora_inizio.slice(0, 5)}`}
+              {serataScelta.annullata && ' · saltata'}
+            </p>
+            {serataScelta.annullata ? (
+              <p className="aiuto" style={{ margin: 0 }}>Serata saltata: la sede resta chiusa.</p>
+            ) : (
+              <>
+                {si.length === 0 ? (
+                  <p className="scoperta">Ancora nessun dimostratore: serata scoperta.</p>
+                ) : (
+                  <div className="presenti-riga">
+                    <span className="presenti-etichetta">Ci sono</span>
+                    {si.map((n, i) => <span key={i} className="pastiglia-stato piccola si">{n}</span>)}
+                  </div>
+                )}
+                {forse.length > 0 && (
+                  <div className="presenti-riga">
+                    <span className="presenti-etichetta">Forse</span>
+                    {forse.map((n, i) => <span key={i} className="pastiglia-stato piccola forse">{n}</span>)}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })()}
+
       <p className="aiuto legenda">
         Bordo e ora: serata aperta (barrata se annullata). Numero in basso: quanti
-        dimostratori ci sono. Striscia in alto: la tua risposta (verde sì, giallo
-        forse, rosso no). Puntino: quel giorno ci sono tavoli in programma.
-        {daLink && ' Bordo giallo spesso: serata a cui non hai ancora risposto.'}
+        dimostratori ci sono. Pallino rosso: serata scoperta, ancora nessun
+        dimostratore. Striscia in alto: la tua risposta (verde sì, giallo forse,
+        rosso no). Tocca un giorno per vedere chi c&rsquo;è.
       </p>
 
       {profilo.organizzatore && (
