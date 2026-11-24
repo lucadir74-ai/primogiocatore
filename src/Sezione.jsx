@@ -7,8 +7,10 @@ import { useState } from 'react'
 const CHIAVE_APERTE = 'primo-giocatore:dati-aperte'
 
 // id: per ricordare se era aperta (unico in tutta l'app).
-export default function Sezione({ id, titolo, nota, children }) {
+// apri: parte aperta comunque (es. c'è qualcosa di nuovo da guardare).
+export default function Sezione({ id, titolo, nota, apri, children }) {
   const [aperta, setAperta] = useState(() => {
+    if (apri) return true
     try { return JSON.parse(localStorage.getItem(CHIAVE_APERTE) || '[]').includes(id) } catch { return false }
   })
   function cambia(e) {

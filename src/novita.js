@@ -16,6 +16,14 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.57.0',
+    data: '2026-11-24',
+    voci: [
+      'Organizzatori: in Profilo → Persone → Soci la nuova sezione «Non soci ai tavoli»: chi ha giocato come ospite a un tavolo della Tana senza risultare nell’elenco soci, con partite, ultimo gioco e chi l’ha registrata',
+      'Organizzatori: avviso in «Da guardare» quando ai tavoli gioca qualcuno che non è socio; «visto» lo toglie per tutti finché quella persona non gioca di nuovo',
+    ],
+  },
+  {
     versione: '4.56.0',
     data: '2026-11-24',
     voci: [

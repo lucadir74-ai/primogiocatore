@@ -1,5 +1,5 @@
 // Primo Giocatore - soci delle Tane (per gli organizzatori)
-// v1.8.0 - 202611220000 (ex soci: da quanti giorni, eliminazione dell'account)
+// v1.9.0 - 202611241200 (non soci ai tavoli)
 //
 // - Controllo dell'accesso: acceso, solo i soci (e le eccezioni) usano
 //   l'app. Lo cambia solo l'amministratore dell'app.
@@ -9,6 +9,8 @@
 //   Dal file si leggono solo nickname, nome, cognome, email e tana: le
 //   altre colonne non arrivano mai al database.
 // - Non nell'elenco: gli account che non risultano soci, da decidere.
+// - Non soci ai tavoli: ospiti che hanno giocato a un tavolo senza essere
+//   nell'elenco (NonSociTavoli.jsx).
 // - Elenco soci, con ricerca e rimozione.
 // - Organizzatori delle Tane.
 // L'elenco soci lo leggono solo gli organizzatori della Tana: le
@@ -23,6 +25,7 @@ import Registro from './Registro.jsx'
 import { GestioneInformativa } from './Informativa.jsx'
 import { conNomiVeri } from './nomiIscritti'
 import ExSoci from './ExSoci.jsx'
+import NonSociTavoli from './NonSociTavoli.jsx'
 
 const vuoto = { nickname: '', nome: '', cognome: '', email: '' }
 const COLONNE_SOCI = 'id, tana_id, nickname, nome, cognome, email, aggiunto_il'
@@ -86,7 +89,7 @@ function forseLui(account, soci) {
   return soci.map((s) => ({ s, p: punti(s) })).filter((x) => x.p >= 2).sort((a, b) => b.p - a.p).slice(0, 3).map((x) => x.s)
 }
 
-export default function Soci({ profilo }) {
+export default function Soci({ profilo, onNonSoci }) {
   // Tutte le Tane, il controllo soci e gli organizzatori di Tana: solo
   // l'amministratore dell'app (amministratore.sql).
   const globale = Boolean(profilo.amministratore)
@@ -453,7 +456,9 @@ export default function Soci({ profilo }) {
         )}
       </Sezione>
 
-      <Sezione id="soci-elenco" titolo="Elenco soci" nota={`${soci.filter((s) => !tana || s.tana_id === tana).length}`}>
+      <NonSociTavoli onCambio={onNonSoci} />
+
+      <Sezione id="soci-elenco"titolo="Elenco soci" nota={`${soci.filter((s) => !tana || s.tana_id === tana).length}`}>
         <input className="campo-cerca" value={cerca} onChange={(e) => setCerca(e.target.value)} placeholder="Cerca per nickname, nome o email" aria-label="Cerca un socio" />
         <ul className="elenco">
           {sociVisti.slice(0, 100).map((s) => (

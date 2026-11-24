@@ -1,4 +1,4 @@
-// Primo Giocatore v4.56.0 - 202611241400 (link /tavoli/calendario[/AAAA-MM]: apre il calendario interno, anche dopo l'accesso)
+// Primo Giocatore v4.57.0 - 202611241500 (non soci ai tavoli: avviso e sezione per gli organizzatori)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -1222,15 +1222,27 @@ export default function App() {
     if (!profilo) return
     // Numeri di un altro account su questo telefono: via, prima di mostrarli.
     if (leggiAvvisi().id && leggiAvvisi().id !== profilo.id) {
-      setDaApprovare(0); setTavoliChiesti(0); setSospeseBga(0)
-      salvaAvvisi(profilo.id, { daApprovare: 0, tavoliChiesti: 0, sospeseBga: 0 })
+      setDaApprovare(0); setTavoliChiesti(0); setSospeseBga(0); setNonSoci(0)
+      salvaAvvisi(profilo.id, { daApprovare: 0, tavoliChiesti: 0, sospeseBga: 0, nonSoci: 0 })
     }
     const ora = Date.now()
     if (ultimiAvvisi.current.id === profilo.id && ora - ultimiAvvisi.current.il < 60000) return
     ultimiAvvisi.current = { id: profilo.id, il: ora }
     contaDaGuardare().then((n) => { setDaApprovare(n); salvaAvvisi(profilo.id, { daApprovare: n }) })
     contaRichiesteTavolo().then((n) => { setTavoliChiesti(n); salvaAvvisi(profilo.id, { tavoliChiesti: n }) })
+    contaNonSoci()
   }, [profilo?.id, scheda])
+
+  // Organizzatori: ospiti non soci ai tavoli, da guardare (0 per gli altri:
+  // lo decide il database). Senza lo script lanciato: niente avviso.
+  const [nonSoci, setNonSoci] = useState(() => leggiAvvisi().nonSoci || 0)
+  function contaNonSoci() {
+    if (!profilo) return
+    supabase.rpc('conta_non_soci_ai_tavoli').then(({ data, error }) => {
+      const n = error ? 0 : (data || 0)
+      setNonSoci(n); salvaAvvisi(profilo.id, { nonSoci: n })
+    }, () => {})
+  }
 
   // Una volta entrato su questo telefono, la prossima volta si parte dall'accesso.
   useEffect(() => {
@@ -1612,6 +1624,9 @@ export default function App() {
             if (scheda !== 'tavoli' && tavoliChiesti > 0) voci.push({ id: 'tavoli',
               guarda: () => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) },
               testo: tavoliChiesti === 1 ? 'Qualcuno ti chiede di organizzare un tavolo.' : `${tavoliChiesti} richieste di organizzare un tavolo.` })
+            if (!(scheda === 'profilo' && sezioneProfilo === 'soci') && nonSoci > 0) voci.push({ id: 'non-soci', guarda: () => vai('soci'),
+              testo: nonSoci === 1 ? 'Ai tavoli ha giocato una persona che non risulta fra i soci.'
+                : `Ai tavoli hanno giocato ${nonSoci} persone che non risultano fra i soci.` })
             if (voci.length === 0) return null
             return (
               <div className="scheda scheda-sottile da-fare">
@@ -1806,7 +1821,7 @@ export default function App() {
                   ) : attiva === 'giochi' ? (
                     <GiochiDoppi profilo={profilo} />
                   ) : attiva === 'soci' ? (
-                    <Soci profilo={profilo} />
+                    <Soci profilo={profilo} onNonSoci={contaNonSoci} />
                   ) : attiva === 'info' ? (
                     <Info />
                   ) : attiva === 'eventi' ? (
