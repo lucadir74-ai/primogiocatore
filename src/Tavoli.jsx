@@ -837,15 +837,16 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
                     {i.ruolo !== 'dimostratore' && i.disposto_a_dimostrare && (
                       <span className="distintivo verde">Disposto a spiegare</span>
                     )}
-                    <span className="anno block">
-                      {i.stato === 'attesa' ? (gestito.su_approvazione ? 'da accettare · ' : 'in attesa · ')
-                        : i.stato === 'annullato' ? 'annullato · ' : ''}
-                      {c.email || c.telefono
-                        ? <>{c.email || '—'}{c.telefono ? ` · ${c.telefono}` : ''}</>
-                        : i.stato === 'attesa' && !profilo.organizzatore
-                          ? 'contatti visibili dopo la conferma'
-                          : '—'}
-                    </span>
+                    {(() => {
+                      const stato = i.stato === 'attesa' ? (gestito.su_approvazione ? 'da accettare' : 'in attesa')
+                        : i.stato === 'annullato' ? 'annullato' : ''
+                      const recapito = c.email || c.telefono
+                        ? [c.email, c.telefono].filter(Boolean).join(' · ')
+                        : i.stato === 'attesa' && !profilo.organizzatore ? 'contatti visibili dopo la conferma' : ''
+                      const riga = [stato, recapito].filter(Boolean).join(' · ')
+                      return riga ? <span className="anno block">{riga}</span> : null
+                    })()}
+                    {(c.telefono || c.email || i.stato === 'attesa' || (!gestito.gioco_id && i.stato !== 'annullato')) && (
                     <span className="azioni-iscritto">
                       {c.telefono && (
                         <a className="bottone-piatto" href={`https://wa.me/${c.telefono.replace(/\D/g, '')}`}
@@ -869,16 +870,19 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
                           </button>
                         )
                       )}
-                      <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>
-                        {i.stato === 'attesa' && gestito.su_approvazione ? 'rifiuta' : 'togli'}
-                      </button>
                     </span>
+                    )}
                   </div>
-                  <label className="vince">
-                    <input type="checkbox" checked={i.presente === true}
-                      onChange={(e) => cambiaIscrizione(i.id, { presente: e.target.checked })} />
-                    c'era
-                  </label>
+                  <div className="lato-iscritto">
+                    <label className="vince">
+                      <input type="checkbox" checked={i.presente === true}
+                        onChange={(e) => cambiaIscrizione(i.id, { presente: e.target.checked })} />
+                      c'era
+                    </label>
+                    <button className="bottone-piatto pericolo" onClick={() => togliIscritto(i.id)}>
+                      {i.stato === 'attesa' && gestito.su_approvazione ? 'rifiuta' : 'togli'}
+                    </button>
+                  </div>
                 </li>
               )
             })}
