@@ -1,14 +1,16 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.8.0 - 202611250300 (secondo nome del socio; «forse è» per errori di battitura e nomi senza cognome)
+-- v1.9.0 - 202611250400 (la Tana si riconosce dal nome del luogo, non dal tipo «sede»)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato senza account alla Tana di Roma e non risulta
 -- nell'elenco soci viene segnalato agli organizzatori, in Profilo → Soci
 -- e nel riquadro «Da guardare».
--- - Alla Tana: il luogo è la sede (luoghi.tipo = 'sede') oppure un luogo
---   riconducibile alla Tana di Roma («TdG Roma», «Tana dei Goblin di
---   Roma», «tana»…: e_luogo_tana(), script luogo_tana_unico.sql), che non
---   sia una casa o online. Le Tane di altre città no.
+-- - Alla Tana: il nome del luogo è quello della Tana di Roma o riconducibile
+--   («Tana dei Goblin Roma», «TdG Roma», «tana»…: e_luogo_tana(), script
+--   luogo_tana_unico.sql), e il luogo non è una casa o online. Le Tane di
+--   altre città no. Il tipo «sede» NON basta (v1.9): l'app lo dà a ogni
+--   luogo condiviso (tavoli con indirizzo pubblico, eventi, scelta a mano),
+--   per esempio «Il rifugio di Tessie».
 -- - Si guardano: tutte le partite giocate lì (inserite a mano o da un
 --   tavolo), le partite dei tavoli che si tengono lì, e gli iscritti
 --   confermati a quei tavoli (anche di domani), così una persona si vede
@@ -114,11 +116,10 @@ revoke all on public.non_soci_visti_nomi from anon, authenticated;
 
 -- 2c. Luoghi della Tana di Roma ----------------------------------------------
 -- La regola per i nomi è e_luogo_tana() (luogo_tana_unico.sql, la stessa
--- dell'app). Qui si sceglie solo quali luoghi contano.
+-- dell'app): conta solo il nome, il tipo esclude case e online.
 create or replace function public.luogo_e_tana(p_tipo text, p_nome text)
  returns boolean language sql stable set search_path to 'public' as $f$
-  select coalesce(p_tipo, '') = 'sede'
-      or (coalesce(p_tipo, '') not in ('casa', 'online') and coalesce(public.e_luogo_tana(p_nome), false))
+  select coalesce(p_tipo, '') not in ('casa', 'online') and coalesce(public.e_luogo_tana(p_nome), false)
 $f$;
 
 -- 3. Il calcolo (interno) ------------------------------------------------------
@@ -363,6 +364,8 @@ select
   (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria'
           and public.nome_parole('Michele Marino marino') @> public.nome_parole('marino MICHELE') then 'sì' else 'no' end) as confronto_nomi,
   (case when exists (select 1 from public.luoghi where tipo = 'sede') then 'sì' else 'no' end) as sede_trovata,
-  (case when public.luogo_e_tana(null, 'TdG Roma') and not public.luogo_e_tana(null, 'Tana dei Goblin Milano')
-          and not public.luogo_e_tana('casa', 'Tana') then 'sì' else 'no' end) as regola_tana,
+  (case when public.luogo_e_tana('sede', 'Tana dei Goblin Roma') and public.luogo_e_tana(null, 'TdG Roma')
+          and not public.luogo_e_tana(null, 'Tana dei Goblin Milano') and not public.luogo_e_tana('casa', 'Tana')
+          and not public.luogo_e_tana('sede', 'Il rifugio di Tessie') then 'sì' else 'no' end) as regola_tana,
+  (select string_agg(nome, ', ' order by nome) from public.luoghi where public.luogo_e_tana(tipo, nome)) as luoghi_che_valgono_tana,
   (select count(*) from public.calcola_non_soci_ai_tavoli(120)) as non_soci_adesso;
