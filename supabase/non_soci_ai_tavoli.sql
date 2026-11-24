@@ -1,5 +1,5 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.5.0 - 202611250000 (tutte le partite alla Tana, anche inserite a mano; luoghi «Tana» scritti in altri modi)
+-- v1.6.0 - 202611250100 (riconosce anche il nick del socio: «Laura Hatake», «Hatake»)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato senza account alla Tana di Roma e non risulta
@@ -18,7 +18,9 @@
 --   nome e cognome contano come una sola. Un tavolo e la partita che ne
 --   nasce contano una volta. Il confronto (anche con l'elenco
 --   soci) ignora maiuscole, accenti, spazi e apostrofi, e prova anche
---   cognome prima del nome.
+--   cognome prima del nome. Vale anche il nick del socio, da solo o con
+--   il nome (v1.6: «Laura Hatake» o «Hatake» per la socia Laura, nick
+--   Hatake); nick di almeno 3 lettere.
 -- - Chi ha un account non conta: l'account è già passato dal controllo soci.
 -- - «Visto» (per tutti gli organizzatori): la persona sparisce finché non
 --   gioca di nuovo alla Tana (altra partita o altro tavolo).
@@ -124,6 +126,13 @@ begin
     select nome_confronto(concat(s.nome, s.cognome)) as n from soci s
     union
     select nome_confronto(concat(s.cognome, s.nome)) from soci s
+    union
+    select x.n from soci s
+     cross join lateral (values
+       (nome_confronto(s.nickname)),
+       (nome_confronto(concat(s.nome, s.nickname))),
+       (nome_confronto(concat(s.nickname, s.nome)))) x(n)
+     where length(nome_confronto(s.nickname)) >= 3
   ),
   fuori as materialized (
     select c.* from con_nome c

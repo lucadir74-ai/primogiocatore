@@ -77,7 +77,7 @@ export default function NonSociTavoli({ onCambio }) {
       <p className="aiuto">
         Chi negli ultimi 4 mesi ha giocato senza account alla Tana di Roma (in una partita inserita a mano
         o da un tavolo, oppure iscritto confermato a un tavolo) e non risulta nell&rsquo;elenco soci, per nome
-        e cognome. Gli eventi non contano. Se è un socio scritto in modo diverso,
+        e cognome o per nick. Gli eventi non contano. Se è un socio scritto in modo diverso,
         correggi il nome nell&rsquo;elenco soci oppure segna «visto».
       </p>
       {errore && <div className="avviso errore">{errore}</div>}
