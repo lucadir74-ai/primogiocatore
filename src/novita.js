@@ -23,7 +23,7 @@ export const NOVITA = [
       'Aperto dal link, in cima le serate del mese a cui non hai ancora risposto, con Sì / Forse / No a portata di dito',
       'Calendario: pallino rosso sulle serate scoperte, dove nessun dimostratore ha ancora detto sì; toccando un giorno, subito sotto vedi chi c’è e chi forse',
       'Organizzatori: aprendo la sede puoi dare un titolo alla serata (torneo, demo…); nel calendario l’ora è sottolineata e, toccando il giorno, il titolo compare sopra chi c’è',
-      'Organizzatori: «Invita a segnarsi su WhatsApp» (messaggio pronto con il link al mese e l’elenco delle serate) e «Copia link»',
+      'Organizzatori: «Invita a segnarsi su WhatsApp» (messaggio pronto con il link al mese) e «Copia link»',
     ],
   },
   {

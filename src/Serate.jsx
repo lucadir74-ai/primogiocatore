@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.14.1 - 202611241730 («N serate da segnare» in cima dal link; titolo della serata già all'apertura della sede, visibile sotto il calendario; pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
+// v4.14.2 - 202611241745 (invito WhatsApp con il solo link, senza elenco delle serate;«N serate da segnare» in cima dal link; titolo della serata già all'apertura della sede, visibile sotto il calendario; pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
 //
 // meseIniziale ('AAAA-MM'): il mese da aprire, dal link /tavoli/calendario/AAAA-MM.
 // daLink: si arriva dal link mandato nel gruppo; in cima le serate del mese
@@ -49,12 +49,6 @@ const STATI = [
   { id: 'forse', etichetta: 'Forse', corta: 'Forse' },
   { id: 'no', etichetta: 'Non posso', corta: 'No' },
 ]
-
-// «mar 2 dicembre, 20:45–01:00 · Torneo»: una riga dell'invito.
-const rigaInvito = (s) =>
-  `• ${new Date(s.data + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'long' })}`
-  + `, ${s.ora_inizio.slice(0, 5)}${s.ora_fine ? `–${s.ora_fine.slice(0, 5)}` : ''}`
-  + (s.titolo ? ` · ${s.titolo}` : '')
 
 // Negli appunti, anche dove navigator.clipboard non c'è (pagina non sicura,
 // browser dentro qualche app).
@@ -421,13 +415,10 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
     else await dai(s.id, stato)
   }
 
-  // L'invito per il gruppo WhatsApp: link al mese ed elenco delle serate.
+  // L'invito per il gruppo WhatsApp: una riga con il link al mese.
   const linkMese = `${window.location.origin}/tavoli/calendario/${primoDelMese.slice(0, 7)}`
-  const testoInvito = [
-    `Calendario di ${nomeMese} aperto: segna se ci sei 👉 ${linkMese}`,
-    '',
-    ...prossime.map(rigaInvito),
-  ].join('\n')
+  // Solo il link: l'elenco delle serate nel messaggio confondeva.
+  const testoInvito = `Calendario di ${nomeMese} aperto: segna se ci sei 👉 ${linkMese}`
 
   // L'esito si vede sul tasto stesso: un avviso in cima resterebbe fuori vista.
   async function copiaLink() {
@@ -706,7 +697,7 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                   <input id="a-titolo" value={apertura.titolo || ''} maxLength={60}
                     onChange={(e) => setApertura({ ...apertura, titolo: e.target.value })}
                     placeholder="Serata libera, torneo di Azul, demo novità…" />
-                  <p className="aiuto">Facoltativo: lo vedono i dimostratori nel calendario e nell&rsquo;invito su WhatsApp.</p>
+                  <p className="aiuto">Facoltativo: lo vedono i dimostratori nel calendario.</p>
                 </div>
                 <div className="riga-bottoni">
                   <button className="bottone" onClick={() => creaSerata(scelto, apertura)}>
