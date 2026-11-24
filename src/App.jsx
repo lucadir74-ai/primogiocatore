@@ -1625,8 +1625,8 @@ export default function App() {
               guarda: () => { setApriTavolo(null); setScheda('tavoli'); window.scrollTo({ top: 0 }) },
               testo: tavoliChiesti === 1 ? 'Qualcuno ti chiede di organizzare un tavolo.' : `${tavoliChiesti} richieste di organizzare un tavolo.` })
             if (!(scheda === 'profilo' && sezioneProfilo === 'soci') && nonSoci > 0) voci.push({ id: 'non-soci', guarda: () => vai('soci'),
-              testo: nonSoci === 1 ? 'Alla Tana ha giocato una persona che non risulta fra i soci.'
-                : `Alla Tana hanno giocato ${nonSoci} persone che non risultano fra i soci.` })
+              testo: nonSoci === 1 ? 'A un tavolo della Tana c’è una persona che non risulta fra i soci.'
+                : `Ai tavoli della Tana ci sono ${nonSoci} persone che non risultano fra i soci.` })
             if (voci.length === 0) return null
             return (
               <div className="scheda scheda-sottile da-fare">
