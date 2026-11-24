@@ -1,5 +1,5 @@
 // Primo Giocatore - giocatori non soci alla Tana (per gli organizzatori)
-// v1.4.0 - 202611250000 (tutte le partite alla Tana, anche inserite a mano)
+// v1.5.0 - 202611250300 (suggerimento «forse è» dal database)
 //
 // Chi ha giocato senza account alla Tana di Roma (fuori dagli eventi):
 // ospite di una partita lì (a mano o da un tavolo) o iscritto confermato
@@ -61,6 +61,11 @@ export default function NonSociTavoli({ onCambio }) {
           {' · ultimo '}{giorno(r.ultima)}{r.ultimo_gioco ? `, ${r.ultimo_gioco}` : ''}
           {r.registrata_da ? ` · registrata da ${r.registrata_da}` : ''}
         </span>
+        {r.forse && (
+          <span className="anno block">
+            Forse è <strong>{r.forse}</strong>: se sì, correggi il nome della partita oppure segna «visto».
+          </span>
+        )}
       </div>
       {r.nuove > 0 && (
         <span className="azioni-iscritto">
