@@ -1,13 +1,14 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.0.0 - 202611241200
+-- v1.1.0 - 202611241600 (anche le partite inserite a mano in sede)
 -- Si può rilanciare senza danni.
 --
--- Quando un tavolo della Tana diventa una partita, chi ci ha giocato come
--- ospite (nome e cognome, senza account) e non risulta nell'elenco soci
--- viene segnalato agli organizzatori, in Profilo → Soci e nel riquadro
--- «Da guardare».
--- - Solo le partite nate da un tavolo (partite.tavolo_id) e fuori dagli
---   eventi: agli eventi i non soci sono normali.
+-- Chi ha giocato come ospite (nome e cognome, senza account) a una
+-- partita della Tana e non risulta nell'elenco soci viene segnalato agli
+-- organizzatori, in Profilo → Soci e nel riquadro «Da guardare».
+-- - Partite della Tana: quelle nate da un tavolo (partite.tavolo_id) e
+--   quelle inserite a mano con luogo la sede (luoghi.tipo = 'sede').
+--   Le partite a casa o importate da altri luoghi non contano.
+-- - Fuori dagli eventi: agli eventi i non soci sono normali.
 -- - Il confronto con l'elenco soci ignora maiuscole, accenti, spazi e
 --   apostrofi, e prova anche cognome prima del nome.
 -- - Gli ospiti già collegati a un account non contano: l'account è già
@@ -54,7 +55,8 @@ create or replace function public.calcola_non_soci_ai_tavoli(p_giorni int)
       join ospiti o on o.id = pa.ospite_id and o.utente_collegato is null
       left join giochi g on g.id = p.gioco_id
       left join profili pr on pr.id = p.registrata_da
-     where p.tavolo_id is not null
+     where (p.tavolo_id is not null
+            or exists (select 1 from luoghi l where l.id = p.luogo_id and l.tipo = 'sede'))
        and p.evento_id is null
        and coalesce(p.giocata_il, p.creata_il) > now() - make_interval(days => p_giorni)
   ),
@@ -128,4 +130,5 @@ select
   (case when exists (select 1 from pg_proc where proname = 'non_soci_ai_tavoli') then 'sì' else 'no' end) as elenco,
   (case when exists (select 1 from pg_proc where proname = 'conta_non_soci_ai_tavoli') then 'sì' else 'no' end) as conteggio,
   (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria' then 'sì' else 'no' end) as confronto_nomi,
+  (case when exists (select 1 from public.luoghi where tipo = 'sede') then 'sì' else 'no' end) as sede_trovata,
   (select count(*) from public.calcola_non_soci_ai_tavoli(120)) as non_soci_adesso;

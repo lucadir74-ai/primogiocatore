@@ -1,11 +1,12 @@
-// Primo Giocatore - giocatori non soci ai tavoli (per gli organizzatori)
-// v1.0.0 - 202611241200
+// Primo Giocatore - giocatori non soci alla Tana (per gli organizzatori)
+// v1.1.0 - 202611241600 (anche le partite inserite a mano in sede)
 //
-// Chi ha giocato come ospite a un tavolo della Tana (fuori dagli eventi)
+// Chi ha giocato come ospite a un tavolo della Tana o in una partita
+// inserita a mano con luogo la sede (fuori dagli eventi)
 // e non risulta nell'elenco soci. Il confronto lo fa il database
 // (supabase/non_soci_ai_tavoli.sql): l'elenco soci non arriva al telefono.
 // «Visto» vale per tutti gli organizzatori: la persona torna fra le
-// nuove solo se gioca un'altra partita a un tavolo.
+// nuove solo se gioca un'altra partita alla Tana.
 
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
@@ -69,17 +70,17 @@ export default function NonSociTavoli({ onCambio }) {
   return (
     // Con persone nuove si apre da sola (la chiave la ricrea a dati arrivati).
     <Sezione key={nuove.length > 0 ? 'nuove' : 'niente'} apri={nuove.length > 0}
-      id="soci-non-soci-tavoli" titolo="Non soci ai tavoli" nota={nota}>
+      id="soci-non-soci-tavoli" titolo="Non soci alla Tana" nota={nota}>
       <p className="aiuto">
-        Chi ha giocato come ospite a un tavolo della Tana negli ultimi 4 mesi e non risulta nell&rsquo;elenco soci
-        (nome e cognome; le partite degli eventi non contano). Se è un socio scritto in modo diverso,
+        Chi negli ultimi 4 mesi ha giocato come ospite alla Tana (partita creata da un tavolo, oppure inserita a mano
+        con luogo la sede) e non risulta nell&rsquo;elenco soci, per nome e cognome. Le partite degli eventi non contano. Se è un socio scritto in modo diverso,
         correggi il nome nell&rsquo;elenco soci oppure segna «visto».
       </p>
       {errore && <div className="avviso errore">{errore}</div>}
       {righe == null ? (
         <p className="aiuto">Sto controllando…</p>
       ) : righe.length === 0 ? (
-        !errore && <p className="aiuto">Nessun non socio ai tavoli.</p>
+        !errore && <p className="aiuto">Nessun non socio alla Tana.</p>
       ) : (
         <>
           {nuove.length > 0 && <ul className="elenco">{nuove.map(riga)}</ul>}
