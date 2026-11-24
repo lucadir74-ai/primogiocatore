@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.14.0 - 202611241700 (titolo della serata già all'apertura della sede, visibile sotto il calendario; pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
+// v4.14.1 - 202611241730 («N serate da segnare» in cima dal link; titolo della serata già all'apertura della sede, visibile sotto il calendario; pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
 //
 // meseIniziale ('AAAA-MM'): il mese da aprire, dal link /tavoli/calendario/AAAA-MM.
 // daLink: si arriva dal link mandato nel gruppo; in cima le serate del mese
@@ -472,8 +472,8 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
             ) : (
               <p className="da-rispondere-titolo">
                 {senzaRisposta.length === 1
-                  ? 'Ti manca 1 serata: ci sei?'
-                  : `Ti mancano ${senzaRisposta.length} serate: ci sei?`}
+                  ? '1 serata da segnare'
+                  : `${senzaRisposta.length} serate da segnare`}
               </p>
             )}
             {daMostrareInCima.map((s) => {
