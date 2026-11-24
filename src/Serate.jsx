@@ -1,5 +1,5 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.13.0 - 202611241600 (pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
+// v4.14.0 - 202611241700 (titolo della serata già all'apertura della sede, visibile sotto il calendario; pallino rosso sulle serate scoperte, chi c'è subito sotto il calendario; tolti il pallino dei tavoli e il bordo giallo)
 //
 // meseIniziale ('AAAA-MM'): il mese da aprire, dal link /tavoli/calendario/AAAA-MM.
 // daLink: si arriva dal link mandato nel gruppo; in cima le serate del mese
@@ -91,7 +91,7 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
   const [dimostratori, setDimostratori] = useState([])
   const [cercaSerata, setCercaSerata] = useState('')
   const [trovatiSerata, setTrovatiSerata] = useState([])
-  const [apertura, setApertura] = useState({ inizio: '20:45', fine: '01:00' }) // orario per aprire un giorno
+  const [apertura, setApertura] = useState({ inizio: '20:45', fine: '01:00', titolo: '' }) // orario e titolo per aprire un giorno
   const [assegna, setAssegna] = useState(null)    // modulo del tavolo da assegnare
   const [bozzeNote, setBozzeNote] = useState({})  // id disponibilità -> testo
   const [rigaAperta, setRigaAperta] = useState(null)  // chiave della persona con la nota aperta
@@ -311,10 +311,11 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
       data: giorno,
       ora_inizio: preset.inizio,
       ora_fine: preset.fine,
+      titolo: preset.titolo?.trim() || null,
       creata_da: profilo.id,
     })
     if (error) setErrore(error.message)
-    else carica()
+    else { setApertura({ ...preset, titolo: '' }); carica() }
   }
 
   // Aggiunge lo stesso giorno della settimana per tutto il mese: utile
@@ -526,6 +527,7 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                 giorno === oggiIso ? 'oggi' : '',
                 giorno === scelto ? 'scelta' : '',
                 mia ? `mia-${mia.stato}` : '',
+                s?.titolo && !s.annullata ? 'con-titolo' : '',
               ].join(' ').trim()}
               aria-label={scoperta ? `${numero}: ancora nessun dimostratore` : undefined}
               onClick={() => setScelto(giorno === scelto ? null : giorno)}
@@ -558,6 +560,7 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
               {!serataScelta.annullata && ` · ${serataScelta.ora_inizio.slice(0, 5)}`}
               {serataScelta.annullata && ' · saltata'}
             </p>
+            {serataScelta.titolo && <p className="presenti-evento">{serataScelta.titolo}</p>}
             {serataScelta.annullata ? (
               <p className="aiuto" style={{ margin: 0 }}>Serata saltata: la sede resta chiusa.</p>
             ) : (
@@ -583,7 +586,8 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
       })()}
 
       <p className="aiuto legenda">
-        Bordo e ora: serata aperta (barrata se annullata). Numero in basso: quanti
+        Bordo e ora: serata aperta (barrata se annullata); ora sottolineata: serata
+        con un titolo, per esempio un torneo. Numero in basso: quanti
         dimostratori ci sono. Pallino rosso: serata scoperta, ancora nessun
         dimostratore. Striscia in alto: la tua risposta (verde sì, giallo forse,
         rosso no). Tocca un giorno per vedere chi c&rsquo;è.
@@ -696,6 +700,13 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                   <label>Alle</label>
                   <SceltaOra valore={apertura.fine} ore={ORE_FINE}
                     onCambia={(o) => setApertura({ ...apertura, fine: o })} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="a-titolo">Che serata è</label>
+                  <input id="a-titolo" value={apertura.titolo || ''} maxLength={60}
+                    onChange={(e) => setApertura({ ...apertura, titolo: e.target.value })}
+                    placeholder="Serata libera, torneo di Azul, demo novità…" />
+                  <p className="aiuto">Facoltativo: lo vedono i dimostratori nel calendario e nell&rsquo;invito su WhatsApp.</p>
                 </div>
                 <div className="riga-bottoni">
                   <button className="bottone" onClick={() => creaSerata(scelto, apertura)}>

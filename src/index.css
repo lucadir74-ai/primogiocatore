@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.23.0 - 202611241600 (calendario interno: pallino rosso sulle serate scoperte e chi c'è sotto il calendario)
+/* Primo Giocatore - foglio di stile v1.24.0 - 202611241700 (calendario interno: ora sottolineata sulle serate con titolo, pallino rosso sulle serate scoperte e chi c'è sotto il calendario)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -1466,6 +1466,9 @@ button, a, .cella, .pastiglia-nome, .pastiglia-stato {
 /* Subito sotto il calendario: chi c'è nel giorno scelto */
 .presenti-giorno { margin: 0.6rem 0 0; }
 .presenti-giorno .presenti-titolo { margin: 0 0 0.35rem; font-weight: 700; }
+.presenti-giorno .presenti-evento { margin: -0.15rem 0 0.45rem; font-weight: 600; color: var(--blu); }
+/* Serata con un titolo: una lineetta sotto l'ora, per dire «c'è qualcosa di speciale» */
+.cella.con-titolo .ora { text-decoration: underline; text-decoration-color: var(--blu); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .presenti-giorno .presenti-riga { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin: 0.25rem 0; }
 .presenti-giorno .presenti-etichetta { font-size: 0.85rem; color: var(--inchiostro-tenue); min-width: 3.2rem; }
 .presenti-giorno .scoperta { color: var(--rosso); font-weight: 700; margin: 0; }
