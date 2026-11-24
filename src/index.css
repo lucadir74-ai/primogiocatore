@@ -1209,6 +1209,14 @@ button.tasto-squadra { cursor: pointer; }
 .consenso input { flex: none; margin-top: 0.2rem; width: 1.1rem; height: 1.1rem; }
 
 .elenco-iscritti li { align-items: flex-start; }
+.elenco-iscritti .nome-giocatore strong { overflow-wrap: anywhere; }
+.lato-iscritto {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: none;
+  font-size: 0.85rem;
+}
 
 .azioni-iscritto {
   display: flex;
