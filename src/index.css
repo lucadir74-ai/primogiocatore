@@ -3255,3 +3255,23 @@ a.contatto .contatto-valore { color: var(--blu); }
 .variazione-ipg { font-variant-numeric: tabular-nums; }
 .variazione-ipg .su { color: var(--verde); }
 .variazione-ipg .giu { color: var(--rosso); }
+
+/* Campo numerico con − e + (CampoNumero.jsx) */
+.campo-numero { display: flex; align-items: stretch; gap: 0.35rem; }
+.campo .campo-numero input { flex: 1; min-width: 0; text-align: center; padding-left: 0.3rem; padding-right: 0.3rem; -moz-appearance: textfield; }
+.campo-numero input::-webkit-outer-spin-button,
+.campo-numero input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.campo-numero-passo {
+  flex: 0 0 2.9rem;
+  font: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--inchiostro);
+  background: var(--carta);
+  border: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.campo-numero-passo:disabled { opacity: 0.35; cursor: default; }
+.campo-numero-passo:focus-visible { outline: 2px solid var(--blu); outline-offset: 1px; }

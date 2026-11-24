@@ -21,6 +21,7 @@ import Serate from './Serate.jsx'
 import { chiediPosizione, distanza, scriviDistanza } from './posizione'
 import { cercaIndirizzo } from './indirizzo'
 import CampoIndirizzo from './CampoIndirizzo.jsx'
+import CampoNumero from './CampoNumero.jsx'
 import Locandina from './Locandina.jsx'
 import TavoloPubblico from './TavoloPubblico.jsx'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
@@ -1156,13 +1157,13 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         <div className="riga-campi">
           <div className="campo">
             <label htmlFor="t-min">Minimo</label>
-            <input id="t-min" type="number" min="1" value={modulo.posti_min}
-              onChange={(e) => setModulo({ ...modulo, posti_min: e.target.value })} />
+            <CampoNumero id="t-min" valore={modulo.posti_min}
+              onCambia={(v) => setModulo((m) => ({ ...m, posti_min: v }))} />
           </div>
           <div className="campo">
             <label htmlFor="t-max">Posti</label>
-            <input id="t-max" type="number" min="1" value={modulo.posti_max}
-              onChange={(e) => setModulo({ ...modulo, posti_max: e.target.value })} />
+            <CampoNumero id="t-max" valore={modulo.posti_max}
+              onCambia={(v) => setModulo((m) => ({ ...m, posti_max: v }))} />
           </div>
         </div>
 
