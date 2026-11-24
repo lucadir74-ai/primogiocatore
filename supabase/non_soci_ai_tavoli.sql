@@ -1,24 +1,27 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.4.0 - 202611242300 (anche gli iscritti confermati, prima che la partita sia registrata)
+-- v1.5.0 - 202611250000 (tutte le partite alla Tana, anche inserite a mano; luoghi «Tana» scritti in altri modi)
 -- Si può rilanciare senza danni.
 --
--- Chi è seduto senza account a un tavolo della Tana e non risulta
+-- Chi ha giocato senza account alla Tana di Roma e non risulta
 -- nell'elenco soci viene segnalato agli organizzatori, in Profilo → Soci
 -- e nel riquadro «Da guardare».
--- - Tavoli della Tana: il luogo del tavolo è la sede (luoghi.tipo = 'sede'),
---   fuori dagli eventi (agli eventi i non soci sono normali). Le partite
---   inserite a mano, i tavoli a casa o in altri luoghi e le partite
---   importate non contano.
--- - Si guardano due cose: gli ospiti delle partite registrate da quei
---   tavoli e gli iscritti confermati (anche a tavoli di domani), così una
---   persona si vede già quando si iscrive. Tavoli annullati esclusi.
+-- - Alla Tana: il luogo è la sede (luoghi.tipo = 'sede') oppure un luogo
+--   riconducibile alla Tana di Roma («TdG Roma», «Tana dei Goblin di
+--   Roma», «tana»…: e_luogo_tana(), script luogo_tana_unico.sql), che non
+--   sia una casa o online. Le Tane di altre città no.
+-- - Si guardano: tutte le partite giocate lì (inserite a mano o da un
+--   tavolo), le partite dei tavoli che si tengono lì, e gli iscritti
+--   confermati a quei tavoli (anche di domani), così una persona si vede
+--   già quando si iscrive. Tavoli annullati esclusi.
+-- - Fuori dagli eventi: agli eventi i non soci sono normali.
 -- - Una persona è il suo nome: ospite, iscritto e partita con lo stesso
---   nome e cognome contano come una sola. Il confronto (anche con l'elenco
+--   nome e cognome contano come una sola. Un tavolo e la partita che ne
+--   nasce contano una volta. Il confronto (anche con l'elenco
 --   soci) ignora maiuscole, accenti, spazi e apostrofi, e prova anche
 --   cognome prima del nome.
 -- - Chi ha un account non conta: l'account è già passato dal controllo soci.
 -- - «Visto» (per tutti gli organizzatori): la persona sparisce finché non
---   si siede a un altro tavolo della Tana.
+--   gioca di nuovo alla Tana (altra partita o altro tavolo).
 -- - L'elenco lo leggono solo gli organizzatori (e_organizzatore()); chi
 --   registra la partita non vede nulla. Consultarlo si segna nel registro
 --   delle operazioni, come l'elenco soci (al massimo ogni 10 minuti).
@@ -41,7 +44,7 @@ alter table public.non_soci_visti enable row level security;
 revoke all on public.non_soci_visti from anon, authenticated;   -- solo dalle funzioni qui sotto
 
 -- 2b. «Visto» per nome (v1.4): vale anche per chi non è un ospite, e
--- ricorda i tavoli già visti. La tabella di prima resta valida.
+-- ricorda le volte già viste (id del tavolo, o della partita se a mano). La tabella di prima resta valida.
 create table if not exists public.non_soci_visti_nomi (
   chiave     text primary key,
   tavoli     uuid[] not null default '{}',
@@ -51,14 +54,23 @@ create table if not exists public.non_soci_visti_nomi (
 alter table public.non_soci_visti_nomi enable row level security;
 revoke all on public.non_soci_visti_nomi from anon, authenticated;
 
+-- 2c. Luoghi della Tana di Roma ----------------------------------------------
+-- La regola per i nomi è e_luogo_tana() (luogo_tana_unico.sql, la stessa
+-- dell'app). Qui si sceglie solo quali luoghi contano.
+create or replace function public.luogo_e_tana(p_tipo text, p_nome text)
+ returns boolean language sql stable set search_path to 'public' as $f$
+  select coalesce(p_tipo, '') = 'sede'
+      or (coalesce(p_tipo, '') not in ('casa', 'online') and coalesce(public.e_luogo_tana(p_nome), false))
+$f$;
+
 -- 3. Il calcolo (interno) ------------------------------------------------------
--- v1.4 cambia le colonne: le vecchie funzioni vanno tolte prima.
+-- Le colonne cambiano fra le versioni: le vecchie funzioni vanno tolte prima.
 drop function if exists public.conta_non_soci_ai_tavoli();
 drop function if exists public.non_soci_ai_tavoli(int);
 drop function if exists public.calcola_non_soci_ai_tavoli(int);
 
 create or replace function public.calcola_non_soci_ai_tavoli(p_giorni int)
- returns table (chiave text, nome text, cognome text, tavoli int, nuove int, da_registrare int,
+ returns table (chiave text, nome text, cognome text, volte int, nuove int, da_registrare int,
                 ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz)
  language plpgsql stable security definer set search_path to 'public' set jit to off as $f$
 #variable_conflict use_column
@@ -66,29 +78,37 @@ begin
   -- Ogni nome si normalizza una volta sola e il confronto con i soci è
   -- un'uguaglianza semplice (v1.2: prima andava oltre gli 8 secondi).
   return query
-  with tavoli_tana as materialized (
+  with luoghi_tana as materialized (
+    select l.id from luoghi l where luogo_e_tana(l.tipo, l.nome)
+  ),
+  tavoli_tana as materialized (
     select t.id, t.inizio, t.gioco_id
       from tavoli t
-      join luoghi l on l.id = t.luogo_id and l.tipo = 'sede'
-     where t.evento_id is null
+     where t.luogo_id in (select id from luoghi_tana)
+       and t.evento_id is null
        and coalesce(t.stato, '') <> 'annullato'
        and t.inizio > now() - make_interval(days => p_giorni)
   ),
+  -- Partite alla Tana: luogo della partita, oppure nate da un tavolo là.
+  -- «volta» = il tavolo, o la partita stessa se inserita a mano.
   partite_tana as materialized (
-    select p.id, p.tavolo_id, coalesce(p.giocata_il, p.creata_il) as quando, p.creata_il, p.gioco_id, p.registrata_da
+    select p.id, coalesce(p.tavolo_id, p.id) as volta, p.tavolo_id,
+           coalesce(p.giocata_il, p.creata_il) as quando, p.creata_il, p.gioco_id, p.registrata_da
       from partite p
-      join tavoli_tana tt on tt.id = p.tavolo_id
      where p.evento_id is null
+       and coalesce(p.giocata_il, p.creata_il) > now() - make_interval(days => p_giorni)
+       and (p.luogo_id in (select id from luoghi_tana)
+            or p.tavolo_id in (select id from tavoli_tana))
   ),
-  -- Chi c'era: ospiti delle partite registrate…
+  -- Chi c'era: ospiti delle partite…
   sedute as materialized (
-    select pt.tavolo_id, o.nome, o.cognome, o.id as ospite_id, pt.quando, pt.creata_il,
+    select pt.volta, o.nome, o.cognome, o.id as ospite_id, pt.quando, pt.creata_il,
            pt.gioco_id, pt.registrata_da, false as solo_iscritto
       from partite_tana pt
       join partecipazioni pa on pa.partita_id = pt.id and pa.ospite_id is not null
       join ospiti o on o.id = pa.ospite_id and o.utente_collegato is null
     union all
-    -- …e iscritti confermati senza account (con o senza scheda ospite).
+    -- …e iscritti confermati senza account ai tavoli (con o senza scheda ospite).
     select tt.id, coalesce(o.nome, i.nome_visibile), case when o.id is null then null else o.cognome end,
            o.id, tt.inizio, null::timestamptz, tt.gioco_id, null::uuid,
            not exists (select 1 from partite_tana pt where pt.tavolo_id = tt.id)
@@ -119,7 +139,7 @@ begin
   ),
   segnate as materialized (
     select f.*,
-           not (f.tavolo_id = any(coalesce(vn.tavoli, '{}'::uuid[]))
+           not (f.volta = any(coalesce(vn.tavoli, '{}'::uuid[]))
                 or (v.visto_ospite is not null and coalesce(f.creata_il, f.quando) <= v.visto_ospite)) as nuova,
            greatest(vn.visto_il, v.visto_ospite) as visto
       from fuori f
@@ -129,9 +149,9 @@ begin
   select s.n,
          (array_agg(s.nome order by s.quando desc))[1],
          (array_agg(s.cognome order by s.quando desc))[1],
-         count(distinct s.tavolo_id)::int,
-         (count(distinct s.tavolo_id) filter (where s.nuova))::int,
-         (count(distinct s.tavolo_id) filter (where s.solo_iscritto))::int,
+         count(distinct s.volta)::int,
+         (count(distinct s.volta) filter (where s.nuova))::int,
+         (count(distinct s.volta) filter (where s.solo_iscritto))::int,
          max(s.quando),
          (array_agg(gi.nome order by s.quando desc) filter (where gi.nome is not null))[1],
          (array_agg(coalesce(nullif(trim(pr.nickname), ''), pr.nome) order by s.quando desc)
@@ -146,7 +166,7 @@ revoke all on function public.calcola_non_soci_ai_tavoli(int) from public, anon,
 
 -- 4. Per l'app: elenco, conteggio, «visto» -----------------------------------
 create or replace function public.non_soci_ai_tavoli(p_giorni int default 120)
- returns table (chiave text, nome text, cognome text, tavoli int, nuove int, da_registrare int,
+ returns table (chiave text, nome text, cognome text, volte int, nuove int, da_registrare int,
                 ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz)
  language plpgsql security definer set search_path to 'public' as $f$
 begin
@@ -175,7 +195,7 @@ $f$;
 revoke all on function public.conta_non_soci_ai_tavoli() from public, anon;
 grant execute on function public.conta_non_soci_ai_tavoli() to authenticated;
 
--- «Visto» per nome: segna come visti tutti i tavoli della Tana di quel nome
+-- «Visto» per nome: segna come viste tutte le volte (tavoli e partite) di quel nome
 -- fino a ora (ultimi 2 anni). Quella per scheda ospite (v1.3) resta per
 -- un'app non ancora aggiornata.
 create or replace function public.non_socio_visto_nome(p_chiave text)
@@ -188,11 +208,11 @@ begin
   end if;
   select coalesce(array_agg(distinct x.t), '{}') into v_tavoli
     from (
-      select pt.tavolo_id as t
+      select coalesce(pt.tavolo_id, pt.id) as t
         from partite pt
         join partecipazioni pa on pa.partita_id = pt.id
         join ospiti o on o.id = pa.ospite_id
-       where pt.tavolo_id is not null and nome_confronto(concat(o.nome, o.cognome)) = p_chiave
+       where nome_confronto(concat(o.nome, o.cognome)) = p_chiave
          and coalesce(pt.giocata_il, pt.creata_il) > now() - interval '730 days'
       union
       select i.tavolo_id
@@ -230,4 +250,6 @@ select
   (case when exists (select 1 from pg_proc where proname = 'non_socio_visto_nome') then 'sì' else 'no' end) as visto,
   (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria' then 'sì' else 'no' end) as confronto_nomi,
   (case when exists (select 1 from public.luoghi where tipo = 'sede') then 'sì' else 'no' end) as sede_trovata,
+  (case when public.luogo_e_tana(null, 'TdG Roma') and not public.luogo_e_tana(null, 'Tana dei Goblin Milano')
+          and not public.luogo_e_tana('casa', 'Tana') then 'sì' else 'no' end) as regola_tana,
   (select count(*) from public.calcola_non_soci_ai_tavoli(120)) as non_soci_adesso;
