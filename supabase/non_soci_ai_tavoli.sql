@@ -1,5 +1,5 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.5.0 - 202611250000 (tutte le partite alla Tana, anche inserite a mano; luoghi «Tana» scritti in altri modi)
+-- v1.8.0 - 202611250300 (secondo nome del socio; «forse è» per errori di battitura e nomi senza cognome)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato senza account alla Tana di Roma e non risulta
@@ -18,7 +18,20 @@
 --   nome e cognome contano come una sola. Un tavolo e la partita che ne
 --   nasce contano una volta. Il confronto (anche con l'elenco
 --   soci) ignora maiuscole, accenti, spazi e apostrofi, e prova anche
---   cognome prima del nome.
+--   cognome prima del nome. Vale anche il nick del socio, da solo o con
+--   il nome (v1.6: «Laura Hatake» o «Hatake» per la socia Laura, nick
+--   Hatake); nick di almeno 3 lettere.
+-- - v1.7: confronto anche per parole. Chi crea un ospite parte dal testo
+--   cercato e completa a mano, così restano parole ripetute o in più
+--   («Michele Marino marino», «Gaspa Giovanni gasparini»). L'ospite è un
+--   socio se contiene tutte le parole di nome e cognome del socio, oppure
+--   il nick e tutte le parole del nome. Ordine e ripetizioni non contano.
+-- - v1.8: del socio bastano il primo nome e il cognome («Carlo Trifogli»
+--   o «Carlo pennuto Trifogli» per Carlo Maria Trifogli, nick pennuto77).
+--   Per chi resta, la colonna «forse» propone il socio probabile, senza
+--   decidere: stesso primo nome e cognome quasi uguale (al massimo 2
+--   lettere diverse: «Maieli» per «Maielli»), oppure solo il nome (anche
+--   «Gabriella tana») e un solo socio con quel nome. Decide l'organizzatore.
 -- - Chi ha un account non conta: l'account è già passato dal controllo soci.
 -- - «Visto» (per tutti gli organizzatori): la persona sparisce finché non
 --   gioca di nuovo alla Tana (altra partita o altro tavolo).
@@ -33,6 +46,51 @@ create or replace function public.nome_confronto(p text)
            translate(lower(coalesce(p, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
            '[^a-z]', '', 'g')
 $f$;
+
+-- 1b. Le parole di un nome (v1.7): minuscole, senza accenti, senza doppioni.
+create or replace function public.nome_parole(p text)
+ returns text[] language sql immutable as $f$
+  select coalesce(array_agg(distinct w), '{}')
+    from regexp_split_to_table(
+           translate(lower(coalesce(p, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
+           '[^a-z]+') w
+   where w <> ''
+$f$;
+
+-- 1c. Le parole in ordine (v1.8): serve la prima, il nome.
+create or replace function public.nome_lista(p text)
+ returns text[] language sql immutable as $f$
+  select coalesce(array_agg(w order by i), '{}')
+    from regexp_split_to_table(
+           btrim(regexp_replace(
+             translate(lower(coalesce(p, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
+             '[^a-z]+', ' ', 'g')), ' ') with ordinality as x(w, i)
+   where w <> ''
+$f$;
+
+-- 1d. Quante lettere cambiano fra due parole (distanza di Levenshtein),
+-- solo per i pochi nomi rimasti. Si ferma oltre p_max.
+create or replace function public.lettere_diverse(a text, b text, p_max int default 2)
+ returns int language plpgsql immutable as $f$
+declare
+  la int := length(a); lb int := length(b);
+  prec int[]; cur int[]; i int; j int; minimo int;
+begin
+  if abs(la - lb) > p_max then return p_max + 1; end if;
+  prec := array(select generate_series(0, lb));
+  for i in 1..la loop
+    cur := array[i];
+    minimo := i;
+    for j in 1..lb loop
+      cur := cur || least(prec[j + 1] + 1, cur[j] + 1,
+                          prec[j] + case when substr(a, i, 1) = substr(b, j, 1) then 0 else 1 end);
+      minimo := least(minimo, cur[j + 1]);
+    end loop;
+    if minimo > p_max then return p_max + 1; end if;
+    prec := cur;
+  end loop;
+  return prec[lb + 1];
+end $f$;
 
 -- 2. Chi è stato visto -------------------------------------------------------------
 create table if not exists public.non_soci_visti (
@@ -71,7 +129,7 @@ drop function if exists public.calcola_non_soci_ai_tavoli(int);
 
 create or replace function public.calcola_non_soci_ai_tavoli(p_giorni int)
  returns table (chiave text, nome text, cognome text, volte int, nuove int, da_registrare int,
-                ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz)
+                ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz, forse text)
  language plpgsql stable security definer set search_path to 'public' set jit to off as $f$
 #variable_conflict use_column
 begin
@@ -124,11 +182,37 @@ begin
     select nome_confronto(concat(s.nome, s.cognome)) as n from soci s
     union
     select nome_confronto(concat(s.cognome, s.nome)) from soci s
+    union
+    select x.n from soci s
+     cross join lateral (values
+       (nome_confronto(s.nickname)),
+       (nome_confronto(concat(s.nome, s.nickname))),
+       (nome_confronto(concat(s.nickname, s.nome)))) x(n)
+     where length(nome_confronto(s.nickname)) >= 3
   ),
-  fuori as materialized (
-    select c.* from con_nome c
+  -- Prima il confronto esatto (veloce), poi per parole sui pochi rimasti.
+  quasi as materialized (
+    select c.*, nome_parole(concat_ws(' ', c.nome, c.cognome)) as parole from con_nome c
      where c.n <> ''
        and not exists (select 1 from soci_nomi s where s.n = c.n)
+  ),
+  soci_parole as materialized (
+    select (nome_lista(s.nome))[1] as primo,
+           nome_parole(s.cognome) as del_cognome,
+           nome_confronto(s.cognome) as cognome_unito,
+           nullif(nome_confronto(s.nickname), '') as nick,
+           concat_ws(' ', s.nome, s.cognome) || coalesce(' (' || nullif(trim(s.nickname), '') || ')', '') as chi
+      from soci s
+     where trim(coalesce(s.nome, '')) <> '' and trim(coalesce(s.cognome, '')) <> ''
+  ),
+  -- Socio: primo nome + tutte le parole del cognome, oppure primo nome + nick.
+  fuori as materialized (
+    select q.* from quasi q
+     where not exists (
+       select 1 from soci_parole sp
+        where sp.primo = any(q.parole)
+          and (sp.del_cognome <@ q.parole
+               or (length(sp.nick) >= 3 and sp.nick = any(q.parole))))
   ),
   -- «Visto»: per nome (v1.4) oppure, da prima, per scheda ospite.
   visti as materialized (
@@ -146,28 +230,56 @@ begin
       join visti v on v.n = f.n
       left join non_soci_visti_nomi vn on vn.chiave = f.n
   )
+  , gruppi as materialized (
   select s.n,
-         (array_agg(s.nome order by s.quando desc))[1],
-         (array_agg(s.cognome order by s.quando desc))[1],
-         count(distinct s.volta)::int,
-         (count(distinct s.volta) filter (where s.nuova))::int,
-         (count(distinct s.volta) filter (where s.solo_iscritto))::int,
-         max(s.quando),
-         (array_agg(gi.nome order by s.quando desc) filter (where gi.nome is not null))[1],
+         (array_agg(s.nome order by s.quando desc))[1] as g_nome,
+         (array_agg(s.cognome order by s.quando desc))[1] as g_cognome,
+         count(distinct s.volta)::int as g_volte,
+         (count(distinct s.volta) filter (where s.nuova))::int as g_nuove,
+         (count(distinct s.volta) filter (where s.solo_iscritto))::int as g_da_registrare,
+         max(s.quando) as g_ultima,
+         (array_agg(gi.nome order by s.quando desc) filter (where gi.nome is not null))[1] as g_gioco,
          (array_agg(coalesce(nullif(trim(pr.nickname), ''), pr.nome) order by s.quando desc)
-            filter (where pr.id is not null))[1],
-         max(s.visto)
+            filter (where pr.id is not null))[1] as g_da,
+         max(s.visto) as g_visto
     from segnate s
     left join giochi gi on gi.id = s.gioco_id
     left join profili pr on pr.id = s.registrata_da
-   group by s.n;
+   group by s.n
+  ),
+  -- «Forse è»: le parole dell'ospite in ordine; «tana» da sola non è un cognome.
+  liste as materialized (
+    select g.*, l.lista, l.lista[1] as primo,
+           array(select w from unnest(l.lista[2:]) w where w <> 'tana') as resto
+      from gruppi g
+     cross join lateral (select nome_lista(concat_ws(' ', g.g_nome, g.g_cognome)) as lista) l
+  )
+  select li.n, li.g_nome, li.g_cognome, li.g_volte, li.g_nuove, li.g_da_registrare,
+         li.g_ultima, li.g_gioco, li.g_da, li.g_visto,
+         (select string_agg(x.chi, ' oppure ' order by x.chi)
+            from (
+              -- stesso primo nome, cognome quasi uguale
+              select sp.chi from soci_parole sp
+               where sp.primo = li.primo and cardinality(li.resto) > 0
+                 and length(sp.cognome_unito) >= 4
+                 and exists (select 1 from unnest(li.resto) w
+                              where lettere_diverse(w, sp.cognome_unito) <= 2
+                                 or lettere_diverse(array_to_string(li.resto, ''), sp.cognome_unito) <= 2)
+              union
+              -- solo il nome, e un solo socio con quel nome
+              select min(sp.chi) from soci_parole sp
+               where cardinality(li.resto) = 0 and sp.primo = li.primo
+              having count(*) = 1
+              limit 3
+            ) x)
+    from liste li;
 end $f$;
 revoke all on function public.calcola_non_soci_ai_tavoli(int) from public, anon, authenticated;
 
 -- 4. Per l'app: elenco, conteggio, «visto» -----------------------------------
 create or replace function public.non_soci_ai_tavoli(p_giorni int default 120)
  returns table (chiave text, nome text, cognome text, volte int, nuove int, da_registrare int,
-                ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz)
+                ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz, forse text)
  language plpgsql security definer set search_path to 'public' as $f$
 begin
   if not public.e_organizzatore() then
@@ -248,7 +360,8 @@ select
   (case when exists (select 1 from pg_proc where proname = 'non_soci_ai_tavoli') then 'sì' else 'no' end) as elenco,
   (case when exists (select 1 from pg_proc where proname = 'conta_non_soci_ai_tavoli') then 'sì' else 'no' end) as conteggio,
   (case when exists (select 1 from pg_proc where proname = 'non_socio_visto_nome') then 'sì' else 'no' end) as visto,
-  (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria' then 'sì' else 'no' end) as confronto_nomi,
+  (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria'
+          and public.nome_parole('Michele Marino marino') @> public.nome_parole('marino MICHELE') then 'sì' else 'no' end) as confronto_nomi,
   (case when exists (select 1 from public.luoghi where tipo = 'sede') then 'sì' else 'no' end) as sede_trovata,
   (case when public.luogo_e_tana(null, 'TdG Roma') and not public.luogo_e_tana(null, 'Tana dei Goblin Milano')
           and not public.luogo_e_tana('casa', 'Tana') then 'sì' else 'no' end) as regola_tana,
