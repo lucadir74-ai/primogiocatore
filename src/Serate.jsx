@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, nomeOspite, daMostrare } from './supabase'
 import CercaGiocoBgg from './CercaGiocoBgg.jsx'
+import CampoNumero from './CampoNumero.jsx'
 import { SceltaOra } from './SceltaQuando.jsx'
 import { IMMAGINE_TAVOLO_LIBERO, copertinaTavolo } from './immagini'
 
@@ -961,9 +962,8 @@ export default function Serate({ profilo, meseIniziale = null, daLink = false })
                               <div className="riga-campi">
                                 <div className="campo">
                                   <label htmlFor="a-posti">Posti</label>
-                                  <input id="a-posti" type="number" min="1" inputMode="numeric"
-                                    value={assegna.posti}
-                                    onChange={(e) => setAssegna({ ...assegna, posti: e.target.value })} />
+                                  <CampoNumero id="a-posti" valore={assegna.posti}
+                                    onCambia={(v) => setAssegna((x) => ({ ...x, posti: v }))} />
                                 </div>
                               </div>
 
