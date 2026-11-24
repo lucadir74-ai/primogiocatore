@@ -1,5 +1,5 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.1.0 - 202611241600 (anche le partite inserite a mano in sede)
+-- v1.2.0 - 202611241700 (calcolo più veloce: dall'app andava oltre gli 8 secondi)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato come ospite (nome e cognome, senza account) a una
@@ -40,44 +40,56 @@ revoke all on public.non_soci_visti from anon, authenticated;   -- solo dalle fu
 create or replace function public.calcola_non_soci_ai_tavoli(p_giorni int)
  returns table (ospite_id uuid, nome text, cognome text, partite int, nuove int,
                 ultima timestamptz, ultimo_gioco text, registrata_da text, visto_il timestamptz)
- language sql stable security definer set search_path to 'public' as $f$
-  with soci_nomi as (
-    select nome_confronto(concat(s.nome, s.cognome)) as n1,
-           nome_confronto(concat(s.cognome, s.nome)) as n2
-      from soci s
-  ),
-  giocate as (
-    select o.id as ospite_id, o.nome, o.cognome, p.id as partita_id,
-           coalesce(p.giocata_il, p.creata_il) as quando, p.creata_il,
-           g.nome as gioco, coalesce(nullif(trim(pr.nickname), ''), pr.nome) as chi
+ language plpgsql stable security definer set search_path to 'public' set jit to off as $f$
+#variable_conflict use_column
+begin
+  -- v1.2: ogni nome si normalizza una volta sola (prima: per ogni coppia
+  -- partita × socio, oltre gli 8 secondi concessi all'app), e il confronto
+  -- con i soci è un'uguaglianza semplice. L'elenco soci contiene già
+  -- entrambi gli ordini (nome+cognome e cognome+nome).
+  return query
+  with partite_tana as materialized (
+    select p.id, coalesce(p.giocata_il, p.creata_il) as quando, p.creata_il, p.gioco_id, p.registrata_da
       from partite p
-      join partecipazioni pa on pa.partita_id = p.id and pa.ospite_id is not null
-      join ospiti o on o.id = pa.ospite_id and o.utente_collegato is null
-      left join giochi g on g.id = p.gioco_id
-      left join profili pr on pr.id = p.registrata_da
-     where (p.tavolo_id is not null
-            or exists (select 1 from luoghi l where l.id = p.luogo_id and l.tipo = 'sede'))
-       and p.evento_id is null
+      left join luoghi l on l.id = p.luogo_id
+     where p.evento_id is null
+       and (p.tavolo_id is not null or l.tipo = 'sede')
        and coalesce(p.giocata_il, p.creata_il) > now() - make_interval(days => p_giorni)
   ),
-  fuori as (
-    select x.* from giocate x
-     where not exists (
-       select 1 from soci_nomi s
-        where s.n1 <> ''
-          and s.n1 in (nome_confronto(concat(x.nome, x.cognome)), nome_confronto(concat(x.cognome, x.nome))))
+  giocate as materialized (
+    select pa.ospite_id, pt.id as partita_id, pt.quando, pt.creata_il, pt.gioco_id, pt.registrata_da
+      from partite_tana pt
+      join partecipazioni pa on pa.partita_id = pt.id and pa.ospite_id is not null
+  ),
+  ospiti_tana as materialized (
+    select o.id, o.nome, o.cognome, nome_confronto(concat(o.nome, o.cognome)) as n
+      from ospiti o
+     where o.utente_collegato is null
+       and o.id in (select g.ospite_id from giocate g)
+  ),
+  soci_nomi as materialized (
+    select nome_confronto(concat(s.nome, s.cognome)) as n from soci s
+    union
+    select nome_confronto(concat(s.cognome, s.nome)) from soci s
+  ),
+  fuori as materialized (
+    select o.* from ospiti_tana o
+     where not exists (select 1 from soci_nomi s where s.n = o.n and s.n <> '')
   )
-  select f.ospite_id, f.nome, f.cognome,
-         count(distinct f.partita_id)::int,
-         count(distinct f.partita_id) filter (where v.visto_il is null or f.creata_il > v.visto_il)::int,
-         max(f.quando),
-         (array_agg(f.gioco order by f.quando desc))[1],
-         (array_agg(f.chi order by f.quando desc))[1],
+  select f.id, f.nome, f.cognome,
+         count(distinct g.partita_id)::int,
+         (count(distinct g.partita_id) filter (where v.visto_il is null or g.creata_il > v.visto_il))::int,
+         max(g.quando),
+         (array_agg(gi.nome order by g.quando desc))[1],
+         (array_agg(coalesce(nullif(trim(pr.nickname), ''), pr.nome) order by g.quando desc))[1],
          v.visto_il
     from fuori f
-    left join non_soci_visti v on v.ospite_id = f.ospite_id
-   group by f.ospite_id, f.nome, f.cognome, v.visto_il
-$f$;
+    join giocate g on g.ospite_id = f.id
+    left join giochi gi on gi.id = g.gioco_id
+    left join profili pr on pr.id = g.registrata_da
+    left join non_soci_visti v on v.ospite_id = f.id
+   group by f.id, f.nome, f.cognome, v.visto_il;
+end $f$;
 revoke all on function public.calcola_non_soci_ai_tavoli(int) from public, anon, authenticated;
 
 -- 4. Per l'app: elenco, conteggio, «visto» -----------------------------------

@@ -46,7 +46,7 @@ export default function NonSociTavoli({ onCambio }) {
 
   const nuove = (righe || []).filter((r) => r.nuove > 0)
   const viste = (righe || []).filter((r) => r.nuove === 0)
-  const nota = righe == null ? '…' : nuove.length ? `${nuove.length} da guardare` : righe.length ? `${righe.length} già viste` : 'nessuno'
+  const nota = righe == null ? '…' : errore ? 'da riprovare' : nuove.length ? `${nuove.length} da guardare` : righe.length ? `${righe.length} già viste` : 'nessuno'
 
   const riga = (r) => (
     <li key={r.ospite_id} style={{ display: 'block' }}>
