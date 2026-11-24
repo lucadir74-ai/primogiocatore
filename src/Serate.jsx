@@ -1,6 +1,9 @@
 // Primo Giocatore - calendario interno delle serate
-// v4.11.0 - 202611171200 (orari a bottoni come nei tavoli; appello: Sì/Forse/No accanto a ogni dimostratore)
+// v4.12.0 - 202611241400 (invito su WhatsApp e «Copia link» per gli organizzatori; dal link, in evidenza le serate senza la tua risposta)
 //
+// meseIniziale ('AAAA-MM'): il mese da aprire, dal link /tavoli/calendario/AAAA-MM.
+// daLink: si arriva dal link mandato nel gruppo; in cima le serate del mese
+// a cui non hai ancora risposto, con Sì / Forse / No già pronti.
 // Un mese alla volta: si tocca il giorno per aprirlo o crearlo.
 // I dimostratori danno la disponibilità, gli organizzatori decidono
 // quali giorni la sede è aperta e con quale orario. Gli organizzatori
@@ -47,11 +50,37 @@ const STATI = [
   { id: 'no', etichetta: 'Non posso', corta: 'No' },
 ]
 
-export default function Serate({ profilo }) {
+// «mar 2 dicembre, 20:45–01:00 · Torneo»: una riga dell'invito.
+const rigaInvito = (s) =>
+  `• ${new Date(s.data + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'long' })}`
+  + `, ${s.ora_inizio.slice(0, 5)}${s.ora_fine ? `–${s.ora_fine.slice(0, 5)}` : ''}`
+  + (s.titolo ? ` · ${s.titolo}` : '')
+
+// Negli appunti, anche dove navigator.clipboard non c'è (pagina non sicura,
+// browser dentro qualche app).
+async function copiaNegliAppunti(testo) {
+  try { await navigator.clipboard.writeText(testo); return true } catch { /* si prova alla vecchia */ }
+  try {
+    const t = document.createElement('textarea')
+    t.value = testo; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0'
+    document.body.appendChild(t); t.select()
+    const ok = document.execCommand('copy')
+    t.remove()
+    return ok
+  } catch { return false }
+}
+
+export default function Serate({ profilo, meseIniziale = null, daLink = false }) {
   const [mese, setMese] = useState(() => {
+    const m = /^(\d{4})-(\d{2})$/.exec(meseIniziale || '')
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1)
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
+  // Le serate a cui hai risposto da qui: restano nel riquadro con la
+  // risposta accesa, invece di sparire appena tocchi.
+  const [risposteOra, setRisposteOra] = useState(() => new Set())
+  const [copiato, setCopiato] = useState(null)   // 'si' | 'no': esito di «Copia link»
   const [serate, setSerate] = useState([])
   const [tavoli, setTavoli] = useState([])
   const [caricamento, setCaricamento] = useState(true)
@@ -378,6 +407,37 @@ export default function Serate({ profilo }) {
   const tavoliDelGiorno = (giorno) =>
     tavoli.filter((t) => t.inizio.slice(0, 10) === giorno)
 
+  // Le serate ancora da fare (non saltate) e quelle senza la mia risposta.
+  const mia = (s) => (s.disponibilita || []).find((d) => d.profilo_id === profilo.id)
+  const prossime = serate.filter((s) => !s.annullata && s.data >= oggiIso)
+  const senzaRisposta = prossime.filter((s) => !mia(s))
+  const daMostrareInCima = prossime.filter((s) => !mia(s) || risposteOra.has(s.id))
+  const nomeMese = MESI[mese.getMonth()] + (mese.getFullYear() !== new Date().getFullYear() ? ` ${mese.getFullYear()}` : '')
+
+  async function rispondi(s, stato) {
+    setRisposteOra((r) => new Set(r).add(s.id))
+    if (mia(s)?.stato === stato) await ritira(s.id)
+    else await dai(s.id, stato)
+  }
+
+  // L'invito per il gruppo WhatsApp: link al mese ed elenco delle serate.
+  const linkMese = `${window.location.origin}/tavoli/calendario/${primoDelMese.slice(0, 7)}`
+  const testoInvito = [
+    `Calendario di ${nomeMese} aperto: segna se ci sei 👉 ${linkMese}`,
+    '',
+    ...prossime.map(rigaInvito),
+  ].join('\n')
+
+  // L'esito si vede sul tasto stesso: un avviso in cima resterebbe fuori vista.
+  async function copiaLink() {
+    setCopiato(await copiaNegliAppunti(linkMese) ? 'si' : 'no')
+  }
+  useEffect(() => {
+    if (copiato !== 'si') return
+    const t = setTimeout(() => setCopiato(null), 4000)
+    return () => clearTimeout(t)
+  }, [copiato])
+
   return (
     <>
       {errore && <div className="avviso errore">{errore}</div>}
@@ -393,6 +453,57 @@ export default function Serate({ profilo }) {
           aria-label="Mese successivo">›</button>
       </div>
 
+      {/* Dal link del gruppo: prima di tutto, le serate che aspettano la tua risposta. */}
+      {daLink && !caricamento && (
+        prossime.length === 0 ? (
+          <div className="riquadro-manuale da-rispondere">
+            <p className="aiuto">
+              {serate.length === 0
+                ? `Per ${nomeMese} non ci sono ancora serate in calendario.`
+                : `Per ${nomeMese} non ci sono altre serate aperte.`}
+              {' '}Con la freccia guardi il mese dopo.
+            </p>
+          </div>
+        ) : (
+          <div className="riquadro-manuale da-rispondere">
+            {senzaRisposta.length === 0 ? (
+              <p className="da-rispondere-titolo fatto">Hai risposto a tutte le serate di {nomeMese}. Grazie!</p>
+            ) : (
+              <p className="da-rispondere-titolo">
+                {senzaRisposta.length === 1
+                  ? 'Ti manca 1 serata: ci sei?'
+                  : `Ti mancano ${senzaRisposta.length} serate: ci sei?`}
+              </p>
+            )}
+            {daMostrareInCima.map((s) => {
+              const r = mia(s)
+              return (
+                <div key={s.id} className="riga-serata" style={RIGA}>
+                  <button type="button" className="nome-serata" onClick={() => setScelto(s.data)}>
+                    <strong>{new Date(s.data + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric' })}</strong>
+                    <span className="anno block">
+                      {s.ora_inizio.slice(0, 5)}{s.ora_fine ? `–${s.ora_fine.slice(0, 5)}` : ''}
+                      {s.titolo ? ` · ${s.titolo}` : ''}
+                    </span>
+                  </button>
+                  <div className="scelte-appello">
+                    {STATI.map((st) => (
+                      <button key={st.id} type="button"
+                        className={`pastiglia-stato appello ${st.id}${r?.stato === st.id ? ' scelto' : ''}`}
+                        aria-pressed={r?.stato === st.id}
+                        aria-label={`${dataLunga(s.data)}: ${st.etichetta}`}
+                        onClick={() => rispondi(s, st.id)}>
+                        {st.corta}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      )}
+
       <div className="griglia-giorni">
         {GIORNI_CORTI.map((g) => <span className="intestazione-giorno" key={g}>{g}</span>)}
 
@@ -402,6 +513,7 @@ export default function Serate({ profilo }) {
           const numero = Number(giorno.slice(8))
           const disponibili = s ? (s.disponibilita || []).filter((d) => d.stato === 'si').length : 0
           const mia = s ? (s.disponibilita || []).find((d) => d.profilo_id === profilo.id) : null
+          const manca = daLink && s && senzaRisposta.includes(s)
 
           return (
             <button
@@ -413,7 +525,9 @@ export default function Serate({ profilo }) {
                 giorno === oggiIso ? 'oggi' : '',
                 giorno === scelto ? 'scelta' : '',
                 mia ? `mia-${mia.stato}` : '',
+                manca ? 'manca-risposta' : '',
               ].join(' ').trim()}
+              aria-label={manca ? `${numero}: manca la tua risposta` : undefined}
               onClick={() => setScelto(giorno === scelto ? null : giorno)}
             >
               <span className="numero">{numero}</span>
@@ -433,7 +547,36 @@ export default function Serate({ profilo }) {
         Bordo e ora: serata aperta (barrata se annullata). Numero in basso: quanti
         dimostratori ci sono. Striscia in alto: la tua risposta (verde sì, giallo
         forse, rosso no). Puntino: quel giorno ci sono tavoli in programma.
+        {daLink && ' Bordo giallo spesso: serata a cui non hai ancora risposto.'}
       </p>
+
+      {profilo.organizzatore && (
+        <div className="invito-calendario">
+          {prossime.length > 0 ? (
+            <a className="bottone" target="_blank" rel="noopener noreferrer"
+              href={`https://wa.me/?text=${encodeURIComponent(testoInvito)}`}
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+              Invita a segnarsi su WhatsApp
+            </a>
+          ) : (
+            <p className="aiuto">
+              Per {nomeMese} non ci sono serate aperte da oggi in poi: aprine qualcuna, poi invita i dimostratori.
+            </p>
+          )}
+          <button type="button" className="bottone bottone-secondario" onClick={copiaLink}>
+            {copiato === 'si' ? 'Link copiato ✓' : 'Copia link'}
+          </button>
+          {copiato === 'no' && (
+            <p className="aiuto">Non riesco a copiarlo da solo: tieni premuto sul link per copiarlo. <a href={linkMese}>{linkMese}</a></p>
+          )}
+          {prossime.length > 0 && (
+            <p className="aiuto">
+              Si apre WhatsApp con il messaggio già scritto: scegli il gruppo e cambialo come vuoi prima di mandarlo.
+              Il link apre questo mese del calendario, solo a chi è entrato con il suo account.
+            </p>
+          )}
+        </div>
+      )}
 
       {profilo.organizzatore && (
         <button className="bottone-piatto" onClick={() => setPannello(!pannello)}>

@@ -1,4 +1,4 @@
-/* Primo Giocatore - foglio di stile v1.21.0 - 202611011030 (righe dei giochi toccabili e finestra con la scheda del gioco)
+/* Primo Giocatore - foglio di stile v1.22.0 - 202611241400 (calendario interno: serate senza la tua risposta e invito su WhatsApp)
    Tema chiaro "Pulita" di giorno, scuro "Serata" di sera: segue l'impostazione del telefono.
    Colori presi dal logo della Tana: bordeaux #982121, verde #74AE45, verde scuro #30481E, oro #F1DD43. */
 
@@ -1389,6 +1389,23 @@ button.tasto-squadra { cursor: pointer; }
 .cella.mia-no::before { background: var(--rosso); }
 
 .cella:focus-visible { outline: 2px solid var(--blu); outline-offset: -2px; }
+
+/* Aperto dal link del gruppo: le serate che aspettano la tua risposta. */
+.cella.manca-risposta { border: 2px solid var(--giallo); }
+.cella.manca-risposta::after {
+  content: '';
+  position: absolute;
+  top: 0.2rem; right: 0.2rem;
+  width: 0.4rem; height: 0.4rem;
+  border-radius: 50%;
+  background: var(--giallo);
+}
+.riquadro-manuale.da-rispondere { border-left: 4px solid var(--giallo); margin: 0 0 0.8rem; }
+.da-rispondere-titolo { margin: 0 0 0.2rem; font-weight: 700; }
+.da-rispondere-titolo.fatto { color: var(--verde); }
+
+/* Invito degli organizzatori: WhatsApp e «Copia link». */
+.invito-calendario { margin: 0.8rem 0; }
 
 .legenda { margin: 0.6rem 0 0; }
 

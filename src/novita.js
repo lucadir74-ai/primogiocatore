@@ -16,6 +16,15 @@ export const FIRMA = {
 
 export const NOVITA = [
   {
+    versione: '4.56.0',
+    data: '2026-11-24',
+    voci: [
+      'Calendario interno con un link: /tavoli/calendario (o /tavoli/calendario/2026-12 per un mese) apre i Tavoli già sul calendario; chi non è entrato passa dall’accesso e poi ci arriva',
+      'Aperto dal link, in cima le serate del mese a cui non hai ancora risposto, con Sì / Forse / No a portata di dito, e un bordo giallo sui loro giorni',
+      'Organizzatori: «Invita a segnarsi su WhatsApp» (messaggio pronto con il link al mese e l’elenco delle serate) e «Copia link»',
+    ],
+  },
+  {
     versione: '4.55.0',
     data: '2026-11-24',
     voci: [

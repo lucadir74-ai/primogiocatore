@@ -1,4 +1,4 @@
-// Primo Giocatore v4.33.0 - 202611182000 (profilo: modifiche in bozza fino a «Salva»)
+// Primo Giocatore v4.56.0 - 202611241400 (link /tavoli/calendario[/AAAA-MM]: apre il calendario interno, anche dopo l'accesso)
 // Punto 2: registrazione, accesso, profilo.
 // Punto 3a: catalogo giochi da BoardGameGeek.
 // Punto 3b: registrazione partite con timer e punteggi.
@@ -173,7 +173,9 @@ function linkWhatsApp({ nickname, nome, email }) {
 // daEvento: si arriva dal link di un evento, aperto anche a chi non è
 // socio. Niente domanda «sei socio?» né controllo dell'email: se è un
 // socio il database lo riconosce lo stesso dall'email.
-function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
+// daCalendario: si arriva dal link del calendario interno, mandato nel
+// gruppo dei dimostratori. Dopo l'accesso si apre il calendario.
+function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false, daCalendario = false }) {
   const [modo, setModo] = useState(modoIniziale)   // entra | iscriviti | recupero
   // Iscrizione a passi: domanda → (no: WhatsApp) | (sì: email → dati)
   const [passo, setPasso] = useState(daEvento ? 'dati' : 'domanda')   // domanda | no | email | dati
@@ -241,8 +243,9 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
         // Supabase manda un messaggio con un collegamento che riporta
         // qui dentro già autenticati, giusto il tempo di scegliere
         // una password nuova.
+        // Dal link del calendario si torna lì, a password scelta.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
+          redirectTo: window.location.origin + (daCalendario ? window.location.pathname : ''),
         })
         if (error) throw error
         setOk('Ti ho mandato un messaggio: apri il collegamento e scegli la password nuova. Controlla anche la posta indesiderata.')
@@ -285,7 +288,8 @@ function Accesso({ modoIniziale = 'entra', onBenvenuto, daEvento = false }) {
           : 'Password dimenticata'}
       </h2>
       <p className="sottotitolo">
-        {modo === 'entra' ? 'Riprendi da dove eri rimasto.'
+        {modo === 'entra' && daCalendario ? 'Entra con il tuo account: poi si apre il calendario interno, dove segni a quali serate ci sei.'
+          : modo === 'entra' ? 'Riprendi da dove eri rimasto.'
           : modo === 'iscriviti' && daEvento ? 'Ti serve per iscriverti ai tavoli dell’evento e registrare le partite.'
           : modo === 'iscriviti' ? 'Ti serve per registrare le partite e iscriverti ai tavoli.'
           : 'Scrivi il tuo indirizzo: ti mando un collegamento per sceglierne una nuova.'}
@@ -955,22 +959,29 @@ function InAttesa({ profilo, onRicontrolla, onCodiceEvento }) {
 // chiudere l'app, e un indirizzo si può salvare o riaprire.
 const PAGINE = ['home', 'partita', 'tavoli', 'storico', 'statistiche', 'classifiche', 'giochi', 'giocatori', 'contatti', 'profilo']
 
-function percorsoDi(scheda, partitaId, sezione) {
+// calendario: { mese } quando i Tavoli sono aperti dal link del calendario
+// interno (/tavoli/calendario, o /tavoli/calendario/2026-12 per un mese).
+function percorsoDi(scheda, partitaId, sezione, calendario) {
   if (scheda === 'home') return '/'
   if (scheda === 'partita') return partitaId ? `/partita/${partitaId}` : '/partita'
   if (scheda === 'profilo') return sezione && sezione !== 'profilo' ? `/profilo/${sezione}` : '/profilo'
+  if (scheda === 'tavoli' && calendario) return '/tavoli/calendario' + (calendario.mese ? `/${calendario.mese}` : '')
   return '/' + scheda
 }
 
+const MESE_VALIDO = /^\d{4}-(0[1-9]|1[0-2])$/
+
 function leggiPercorso() {
   try {
-    const [, a, b] = window.location.pathname.split('/')
-    if (!a) return { scheda: 'home', partitaId: null, sezione: null }
+    const [, a, b, c] = window.location.pathname.split('/')
+    if (!a) return { scheda: 'home', partitaId: null, sezione: null, calendario: null }
     if (!PAGINE.includes(a)) return null
     return {
       scheda: a,
       partitaId: a === 'partita' && b ? decodeURIComponent(b) : null,
       sezione: a === 'profilo' ? (b || 'profilo') : null,
+      // Un mese scritto male non blocca niente: si apre il mese di oggi.
+      calendario: a === 'tavoli' && b === 'calendario' ? { mese: MESE_VALIDO.test(c || '') ? c : null } : null,
     }
   } catch { return null }
 }
@@ -1053,6 +1064,9 @@ export default function App() {
   // Tavolo da aprire subito arrivando dalla Home: { id, quando }.
   const [apriTavolo, setApriTavolo] = useState(null)
   const [classificaEvento, setClassificaEvento] = useState(null)   // le Classifiche aperte sulla scheda di un evento
+  // Tavoli aperti dal link del calendario interno: { mese } (mese può essere null).
+  // Resta valido anche passando dall'accesso, perché l'indirizzo non cambia.
+  const [calendario, setCalendario] = useState(() => leggiPercorso()?.calendario || null)
   const [erroreProfilo, setErroreProfilo] = useState('')
   const [riprova, setRiprova] = useState(0)
   const [partitaId, setPartitaId] = useState(() => leggiPercorso()?.partitaId || null)
@@ -1066,6 +1080,9 @@ export default function App() {
   // Senza sessione: pagina di benvenuto, oppure accesso/iscrizione.
   const [ingresso, setIngresso] = useState(() => {
     if (codiceEventoInSospeso()) return 'evento'
+    // Dal link del calendario interno (solo per chi ha già un account):
+    // subito la schermata di accesso, non la presentazione dell'app.
+    if (leggiPercorso()?.calendario) return 'entra'
     try { return localStorage.getItem(CHIAVE_GIA_ENTRATO) ? 'entra' : 'benvenuto' } catch { return 'benvenuto' }
   })
   const [sezioneProfilo, setSezioneProfilo] = useState(() => {
@@ -1374,9 +1391,13 @@ export default function App() {
 
   // La pagina aperta finisce nell'indirizzo e nella cronologia.
   const inApp = !!(sessione && profilo && !tavoloPubblico && !daBga)
+  // Il calendario interno è solo di dimostratori e organizzatori: per gli
+  // altri il link apre i Tavoli normali e l'indirizzo torna /tavoli.
+  const calendarioMio = calendario && profilo && (profilo.dimostratore || profilo.organizzatore) ? calendario : null
+  useEffect(() => { if (scheda !== 'tavoli') setCalendario(null) }, [scheda])
   useEffect(() => {
     if (!inApp) return
-    const percorso = percorsoDi(scheda, partitaId, sezioneProfilo)
+    const percorso = percorsoDi(scheda, partitaId, sezioneProfilo, scheda === 'tavoli' ? calendarioMio : null)
     const modo = modoStoria.current
     modoStoria.current = 'push'
     const stato = { pg: true, ...(statoProssimo.current || {}) }
@@ -1386,7 +1407,7 @@ export default function App() {
       if (modo === 'replace') window.history.replaceState(stato, '', percorso)
       else window.history.pushState(stato, '', percorso)
     } catch { /* niente: si resta sulla pagina senza cronologia */ }
-  }, [inApp, scheda, partitaId, sezioneProfilo])
+  }, [inApp, scheda, partitaId, sezioneProfilo, calendarioMio?.mese, Boolean(calendarioMio)])
 
   // Tasto indietro (o avanti) del telefono: si apre la pagina dell'indirizzo.
   useEffect(() => {
@@ -1394,6 +1415,7 @@ export default function App() {
       const r = leggiPercorso()
       if (!r) return
       setScheda(r.scheda)
+      setCalendario(r.calendario)
       setPartitaId(r.partitaId)
       if (r.sezione) setSezioneProfilo(r.sezione)
       window.scrollTo({ top: 0 })
@@ -1499,6 +1521,7 @@ export default function App() {
           />
         ) : (
           <Accesso key={ingresso} modoIniziale={ingresso} daEvento={Boolean(codiceEvento)}
+            daCalendario={Boolean(calendario) && !codiceEvento}
             onBenvenuto={() => setIngresso(codiceEvento ? 'evento' : 'benvenuto')} />
         )
       ) : !profilo ? (
@@ -1545,6 +1568,7 @@ export default function App() {
                   // Dal menu in basso si riparte da capo: il ritorno alla
                   // partita aperta vale solo subito dopo una modifica.
                   setRitornoStorico(null)
+                  setCalendario(null)
                   if (id === 'tavoli') setApriTavolo(null)
                   setScheda(id)
                   // Sempre dall'inizio: senza, la pagina nuova si apriva
@@ -1660,6 +1684,7 @@ export default function App() {
               key={apriTavolo?.quando || 'tavoli'}
               apriSubito={apriTavolo?.id}
               apriEvento={apriTavolo?.evento}
+              apriCalendario={calendarioMio}
               onClassificaEvento={(id) => {
                 statoProssimo.current = { ritornoA: '/tavoli' }
                 // Tornando indietro si ritrova il programma dell'evento.

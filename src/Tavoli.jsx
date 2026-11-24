@@ -1,6 +1,8 @@
 // Primo Giocatore - Tavoli
-// v2.31.0 - 202611241000 (nella testata dell'evento il tasto «Classifica dell'evento»)
+// v2.32.0 - 202611241400 (apriCalendario: aperta dal link /tavoli/calendario, parte dal calendario interno)
 //
+// apriCalendario: { mese } quando si arriva dal link del calendario
+// interno; App lo passa solo a dimostratori e organizzatori.
 // evento: aperta dentro un evento (l'app di chi partecipa, o la scheda
 // dell'evento toccata qui), solo i tavoli di quell'evento, giorno per
 // giorno. soloEvento: chi non è socio, che il luogo non lo sceglie (non
@@ -63,7 +65,7 @@ const VUOTO = {
 const RAGGI = [5, 10, 25]
 
 export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichieste, evento = null, soloEvento = false,
-  organizzo = false, apriEvento = null, onIndietro = null, onClassificaEvento = null }) {
+  organizzo = false, apriEvento = null, onIndietro = null, onClassificaEvento = null, apriCalendario = null }) {
   // Gli eventi che vedo: per scegliere l'evento di un tavolo nuovo e per
   // il codice nelle locandine dei tavoli degli eventi.
   const [eventi, setEventi] = useState(evento ? [evento] : [])
@@ -98,7 +100,10 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
   const [iscritti, setIscritti] = useState([])
   const [persone, setPersone] = useState([])
   const [aMano, setAMano] = useState(null)   // { nome, email, telefono, utente_id }
-  const [sezione, setSezione] = useState('tavoli')
+  const puoCalendario = !evento && Boolean(profilo.dimostratore || profilo.organizzatore)
+  const [sezione, setSezione] = useState(apriCalendario && puoCalendario ? 'calendario' : 'tavoli')
+  // Il profilo può arrivare aggiornato dopo (dimostratore appena nominato).
+  useEffect(() => { if (apriCalendario && puoCalendario) setSezione('calendario') }, [Boolean(apriCalendario), puoCalendario])
   const [disponibili, setDisponibili] = useState([])
   const [luoghiNoti, setLuoghiNoti] = useState([])
   const [serateFuture, setSerateFuture] = useState([])
@@ -1560,7 +1565,7 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
     <div className="scheda">
       <h2>{evento ? 'Tavoli dell’evento' : 'Tavoli'}</h2>
 
-      {!evento && (profilo.dimostratore || profilo.organizzatore) && (
+      {puoCalendario && (
         <BarraScorrevole><div className="sottoschede">
           <button className={sezione === 'tavoli' ? 'attiva' : ''} onClick={() => setSezione('tavoli')}>
             Tavoli
@@ -1571,7 +1576,9 @@ export default function Tavoli({ profilo, onRegistraPartita, apriSubito, onRichi
         </div></BarraScorrevole>
       )}
 
-      {sezione === 'calendario' ? <Serate profilo={profilo} /> : <>
+      {sezione === 'calendario' && puoCalendario ? (
+        <Serate profilo={profilo} meseIniziale={apriCalendario?.mese} daLink={Boolean(apriCalendario)} />
+      ) : <>
 
       <p className="sottotitolo">
         {!evento ? 'Serate aperte a cui ci si può iscrivere.'
