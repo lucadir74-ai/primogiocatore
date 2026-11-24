@@ -1,13 +1,14 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.2.0 - 202611241700 (calcolo più veloce: dall'app andava oltre gli 8 secondi)
+-- v1.3.0 - 202611242200 (solo chi era seduto a un tavolo della Tana)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato come ospite (nome e cognome, senza account) a una
 -- partita della Tana e non risulta nell'elenco soci viene segnalato agli
 -- organizzatori, in Profilo → Soci e nel riquadro «Da guardare».
--- - Partite della Tana: quelle nate da un tavolo (partite.tavolo_id) e
---   quelle inserite a mano con luogo la sede (luoghi.tipo = 'sede').
---   Le partite a casa o importate da altri luoghi non contano.
+-- - Contano solo le partite nate da un tavolo della Tana: partite.tavolo_id
+--   con il luogo del tavolo la sede (luoghi.tipo = 'sede'). Le partite
+--   inserite a mano (anche in sede), i tavoli a casa o in altri luoghi e
+--   le partite importate non contano.
 -- - Fuori dagli eventi: agli eventi i non soci sono normali.
 -- - Il confronto con l'elenco soci ignora maiuscole, accenti, spazi e
 --   apostrofi, e prova anche cognome prima del nome.
@@ -51,9 +52,10 @@ begin
   with partite_tana as materialized (
     select p.id, coalesce(p.giocata_il, p.creata_il) as quando, p.creata_il, p.gioco_id, p.registrata_da
       from partite p
-      left join luoghi l on l.id = p.luogo_id
+      join tavoli t on t.id = p.tavolo_id
+      join luoghi l on l.id = t.luogo_id and l.tipo = 'sede'
      where p.evento_id is null
-       and (p.tavolo_id is not null or l.tipo = 'sede')
+       and t.evento_id is null
        and coalesce(p.giocata_il, p.creata_il) > now() - make_interval(days => p_giorni)
   ),
   giocate as materialized (

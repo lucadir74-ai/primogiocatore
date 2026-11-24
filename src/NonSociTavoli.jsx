@@ -1,8 +1,7 @@
 // Primo Giocatore - giocatori non soci alla Tana (per gli organizzatori)
-// v1.1.0 - 202611241600 (anche le partite inserite a mano in sede)
+// v1.2.0 - 202611242200 (solo chi era seduto a un tavolo della Tana)
 //
-// Chi ha giocato come ospite a un tavolo della Tana o in una partita
-// inserita a mano con luogo la sede (fuori dagli eventi)
+// Chi ha giocato come ospite a un tavolo della Tana (fuori dagli eventi)
 // e non risulta nell'elenco soci. Il confronto lo fa il database
 // (supabase/non_soci_ai_tavoli.sql): l'elenco soci non arriva al telefono.
 // «Visto» vale per tutti gli organizzatori: la persona torna fra le
@@ -72,8 +71,7 @@ export default function NonSociTavoli({ onCambio }) {
     <Sezione key={nuove.length > 0 ? 'nuove' : 'niente'} apri={nuove.length > 0}
       id="soci-non-soci-tavoli" titolo="Non soci alla Tana" nota={nota}>
       <p className="aiuto">
-        Chi negli ultimi 4 mesi ha giocato come ospite alla Tana (partita creata da un tavolo, oppure inserita a mano
-        con luogo la sede) e non risulta nell&rsquo;elenco soci, per nome e cognome. Le partite degli eventi non contano. Se è un socio scritto in modo diverso,
+        Chi negli ultimi 4 mesi era seduto come ospite a un tavolo della Tana e non risulta nell&rsquo;elenco soci, per nome e cognome. Le partite degli eventi non contano. Se è un socio scritto in modo diverso,
         correggi il nome nell&rsquo;elenco soci oppure segna «visto».
       </p>
       {errore && <div className="avviso errore">{errore}</div>}
