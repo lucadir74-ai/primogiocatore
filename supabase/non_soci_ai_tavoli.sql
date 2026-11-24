@@ -1,5 +1,5 @@
 -- Primo Giocatore - giocatori non soci ai tavoli
--- v1.6.0 - 202611250100 (riconosce anche il nick del socio: «Laura Hatake», «Hatake»)
+-- v1.7.0 - 202611250200 (confronto per parole: «Michele Marino marino», «Gaspa Giovanni Gasparini»)
 -- Si può rilanciare senza danni.
 --
 -- Chi ha giocato senza account alla Tana di Roma e non risulta
@@ -21,6 +21,11 @@
 --   cognome prima del nome. Vale anche il nick del socio, da solo o con
 --   il nome (v1.6: «Laura Hatake» o «Hatake» per la socia Laura, nick
 --   Hatake); nick di almeno 3 lettere.
+-- - v1.7: confronto anche per parole. Chi crea un ospite parte dal testo
+--   cercato e completa a mano, così restano parole ripetute o in più
+--   («Michele Marino marino», «Gaspa Giovanni gasparini»). L'ospite è un
+--   socio se contiene tutte le parole di nome e cognome del socio, oppure
+--   il nick e tutte le parole del nome. Ordine e ripetizioni non contano.
 -- - Chi ha un account non conta: l'account è già passato dal controllo soci.
 -- - «Visto» (per tutti gli organizzatori): la persona sparisce finché non
 --   gioca di nuovo alla Tana (altra partita o altro tavolo).
@@ -34,6 +39,16 @@ create or replace function public.nome_confronto(p text)
   select regexp_replace(
            translate(lower(coalesce(p, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
            '[^a-z]', '', 'g')
+$f$;
+
+-- 1b. Le parole di un nome (v1.7): minuscole, senza accenti, senza doppioni.
+create or replace function public.nome_parole(p text)
+ returns text[] language sql immutable as $f$
+  select coalesce(array_agg(distinct w), '{}')
+    from regexp_split_to_table(
+           translate(lower(coalesce(p, '')), 'àáâäãèéêëìíîïòóôöõùúûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
+           '[^a-z]+') w
+   where w <> ''
 $f$;
 
 -- 2. Chi è stato visto -------------------------------------------------------------
@@ -134,10 +149,25 @@ begin
        (nome_confronto(concat(s.nickname, s.nome)))) x(n)
      where length(nome_confronto(s.nickname)) >= 3
   ),
-  fuori as materialized (
-    select c.* from con_nome c
+  -- Prima il confronto esatto (veloce), poi per parole sui pochi rimasti.
+  quasi as materialized (
+    select c.*, nome_parole(concat_ws(' ', c.nome, c.cognome)) as parole from con_nome c
      where c.n <> ''
        and not exists (select 1 from soci_nomi s where s.n = c.n)
+  ),
+  soci_parole as materialized (
+    select nome_parole(concat_ws(' ', s.nome, s.cognome)) as tutte,
+           nome_parole(s.nome) as del_nome,
+           nullif(nome_confronto(s.nickname), '') as nick
+      from soci s
+     where trim(coalesce(s.nome, '')) <> '' and trim(coalesce(s.cognome, '')) <> ''
+  ),
+  fuori as materialized (
+    select q.* from quasi q
+     where not exists (
+       select 1 from soci_parole sp
+        where sp.tutte <@ q.parole
+           or (length(sp.nick) >= 3 and sp.nick = any(q.parole) and sp.del_nome <@ q.parole))
   ),
   -- «Visto»: per nome (v1.4) oppure, da prima, per scheda ospite.
   visti as materialized (
@@ -257,7 +287,8 @@ select
   (case when exists (select 1 from pg_proc where proname = 'non_soci_ai_tavoli') then 'sì' else 'no' end) as elenco,
   (case when exists (select 1 from pg_proc where proname = 'conta_non_soci_ai_tavoli') then 'sì' else 'no' end) as conteggio,
   (case when exists (select 1 from pg_proc where proname = 'non_socio_visto_nome') then 'sì' else 'no' end) as visto,
-  (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria' then 'sì' else 'no' end) as confronto_nomi,
+  (case when public.nome_confronto('D''Àngelo  Maria') = 'dangelomaria'
+          and public.nome_parole('Michele Marino marino') @> public.nome_parole('marino MICHELE') then 'sì' else 'no' end) as confronto_nomi,
   (case when exists (select 1 from public.luoghi where tipo = 'sede') then 'sì' else 'no' end) as sede_trovata,
   (case when public.luogo_e_tana(null, 'TdG Roma') and not public.luogo_e_tana(null, 'Tana dei Goblin Milano')
           and not public.luogo_e_tana('casa', 'Tana') then 'sì' else 'no' end) as regola_tana,
