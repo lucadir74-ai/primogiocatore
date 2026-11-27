@@ -23,8 +23,8 @@ const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // Dove riporta il link della mail: solo indirizzi dell'app.
-const SITO = 'https://www.tdgroma.it'
-const AMMESSI = [/^https:\/\/(www\.)?tdgroma\.it$/, /^https:\/\/[a-z0-9-]+\.vercel\.app$/, /^http:\/\/localhost(:\d+)?$/]
+const SITO = 'https://app.tdgroma.it'
+const AMMESSI = [/^https:\/\/app\.tdgroma\.it$/, /^https:\/\/[a-z0-9-]+\.vercel\.app$/, /^http:\/\/localhost(:\d+)?$/]
 
 // Impronta: nel database non finiscono né l'IP né quello che si è scritto.
 const impronta = (t) => createHash('sha256').update(`${SERVIZIO || ''}|${t}`).digest('hex').slice(0, 32)

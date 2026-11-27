@@ -20,7 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVIZIO = process.env.SUPABASE_SERVICE_ROLE_KEY
 const BASE = process.env.GEOCODER_URL || 'https://nominatim.openstreetmap.org'
-const AGENTE = 'PrimoGiocatore/1.0 (app della Tana dei Goblin Roma; +https://primogiocatore.vercel.app)'
+const AGENTE = 'PrimoGiocatore/1.0 (app della Tana dei Goblin Roma; +https://app.tdgroma.it)'
 
 const PAUSA_MINIMA = 1100
 let ultimaChiamata = 0
@@ -58,7 +58,7 @@ async function cerca(q) {
     countrycodes: 'it', 'accept-language': 'it',
   })
   const r = await fetch(`${BASE}/search?${p}`, {
-    headers: { 'User-Agent': AGENTE, Referer: 'https://primogiocatore.vercel.app' },
+    headers: { 'User-Agent': AGENTE, Referer: 'https://app.tdgroma.it' },
     signal: AbortSignal.timeout(8000),
   })
   if (!r.ok) throw new Error(`il servizio delle mappe ha risposto ${r.status}`)

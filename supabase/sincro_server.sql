@@ -20,7 +20,7 @@ select cron.schedule(
   '*/10 * * * *',
   $$
   select net.http_post(
-    url := 'https://primogiocatore.vercel.app/api/sincro',
+    url := 'https://app.tdgroma.it/api/sincro',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer INCOLLA_QUI_IL_SEGRETO'),
